@@ -1,0 +1,11 @@
+{
+    "relay": {
+        "serverAddress": "http://localhost:3000",
+        "listenerPath": "/listener",
+        "generatorPath": "/generator",
+        "serialDevicePath": "/dev/ttyMOCK",
+        "baudRate": 9600,
+        "bufferThreshold": 256,
+        "debugFormat": "b"
+    }
+}
