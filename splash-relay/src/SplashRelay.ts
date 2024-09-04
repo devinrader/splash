@@ -55,7 +55,6 @@ Options:
       return;
     }
 
-
     try {
       this._config.init(parsedargs);
     } catch (error: any) {
