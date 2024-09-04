@@ -1,0 +1,32 @@
+module.exports = {
+    apps: [
+      {
+        name: 'splash-relay',
+        script: 'npm start',
+        time: true,
+        instances: 1,
+        autorestart: true,
+        max_restarts: 50,
+        watch: false,
+        max_memory_restart: '1G',
+        env: { },
+      },
+    ],
+    deploy: {
+      production: {
+        user: 'username',
+        host: 'relay.rader.haus',
+        key: 'deploy.key',
+        ref: 'origin/main',
+        repo: 'http://teacup.rader.haus:3000/devin/splash',
+        path: '/home/username/myapp',
+        'post-deploy':
+          'yarn install && yarn build && pm2 reload ecosystem.config.js --env production && pm2 save && git checkout yarn.lock',
+        env: {
+          NODE_ENV: 'production',
+          DATABASE_ADDRESS: process.env.DATABASE_ADDRESS
+        },
+      },
+    },
+  }
+  
