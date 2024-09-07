@@ -14,9 +14,9 @@ module.exports = {
     ],
     deploy: {
       production: {
-        user: 'username',
+        user: 'devinrader',
         host: 'relay.rader.haus',
-        key: 'deploy.key',
+        key: '~/.ssh/deploy.key',
         ref: 'origin/main',
         repo: 'http://teacup.rader.haus:3000/devin/splash',
         path: '/home/username/myapp',
