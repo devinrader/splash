@@ -31,7 +31,7 @@ jobs:
           echo SPLASH_SERVER_ADDRESS=${{ secrets.SPLASH_SERVER_ADDRESS }} >> .env
 
       - name: Install PM2
-        run: npm i pm2
+        run: npm i pm2 -g
 
       - name: Deploy
         run: env $(cat .env | grep -v \"#\" | xargs) pm2 deploy ecosystem.config.js production
