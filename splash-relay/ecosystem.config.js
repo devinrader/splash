@@ -24,9 +24,10 @@ module.exports = {
           'yarn install && yarn build && pm2 reload ecosystem.config.js --env production && pm2 save && git checkout yarn.lock',
         env: {
           NODE_ENV: 'production',
-          DATABASE_ADDRESS: process.env.DATABASE_ADDRESS
+          SPLASH_SERVER_ADDRESS: process.env.SPLASH_SERVER_ADDRESS
         },
       },
     },
   }
+  
   

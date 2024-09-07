@@ -28,13 +28,13 @@ jobs:
       - name: Create env file
         run: |
           touch .env
-          echo DATABASE_ADDRESS=${{ secrets.DATABASE_ADDRESS }} >> .env
+          echo SPLASH_SERVER_ADDRESS=${{ secrets.SPLASH_SERVER_ADDRESS }} >> .env
 
       - name: Install PM2
         run: npm i pm2
 
       - name: Deploy
-        run: env $(cat .env | grep -v \"#\" | xargs) pm2 deploy ecosystem.config.js staging
+        run: env $(cat .env | grep -v \"#\" | xargs) pm2 deploy ecosystem.config.js production
         # Or alternately, put this deploy script in your package.json's scripts and run it using yarn/npm:
         # run: yarn deploy
 
