@@ -19,7 +19,7 @@ module.exports = {
         key: '~/.ssh/deploy.key',
         ref: 'origin/main',
         repo: 'http://teacup.rader.haus:3000/devin/splash',
-        path: '/home/username/myapp',
+        path: '/home/devinrader/splash/splash-relay',
         'post-deploy':
           'yarn install && yarn build && pm2 reload ecosystem.config.js --env production && pm2 save && git checkout yarn.lock',
         env: {
