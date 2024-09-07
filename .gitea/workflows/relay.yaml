@@ -34,7 +34,7 @@ jobs:
         run: npm i pm2 -g
 
       - name: Deploy
-        run: env $(cat .env | grep -v \"#\" | xargs) pm2 deploy splash-relay/ecosystem.config.js production
+        run: env $(cat .env | grep -v \"#\" | xargs) pm2 deploy splash-relay/ecosystem.config.js production setup
         # Or alternately, put this deploy script in your package.json's scripts and run it using yarn/npm:
         # run: yarn deploy
 
