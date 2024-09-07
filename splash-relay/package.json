@@ -2,9 +2,7 @@
   "name": "pooldata",
   "version": "1.0.0",
   "main": "dist/src/main.js",
-  "type": "module",
   "scripts": {
-    "test": "mocha 'test/**/*.ts' --recursive",
     "build": "tsc",
     "start": "node dist/main.js"
   },
