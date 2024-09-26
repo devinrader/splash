@@ -14,11 +14,11 @@ module.exports = {
     ],
     deploy: {
       production: {
-        user: 'devinrader',
+        user: 'devin',
         host: 'relay.rader.haus',
         key: '~/.ssh/deploy.key',
         ref: 'origin/main',
-        repo: 'http://teacup.rader.haus:3000/devin/splash',
+        repo: 'http://teacup.rader.haus:3000/devin/splash.git',
         path: '/home/devinrader/splash/splash-relay',
         'post-deploy':
           'yarn install && yarn build && pm2 reload ecosystem.config.js --env production && pm2 save && git checkout yarn.lock',
