@@ -12,21 +12,22 @@ module.exports = {
         env: { },
       },
     ],
-    deploy: {
-      production: {
-        user: 'devin',
-        host: 'relay.rader.haus',
-        key: '~/.ssh/deploy.key',
-        ref: 'origin/main',
-        repo: 'http://teacup.rader.haus:3000/devin/splash.git',
-        path: '/home/devinrader/splash/splash-relay',
-        'post-deploy':
-          'yarn install && yarn build && pm2 reload ecosystem.config.js --env production && pm2 save && git checkout yarn.lock',
-        env: {
-          NODE_ENV: 'production',
-          SPLASH_SERVER_ADDRESS: process.env.SPLASH_SERVER_ADDRESS
-        },
-      },
-    },
   }
+
+  // deploy: {
+  //   production: {
+  //     user: 'devin',
+  //     host: 'relay.rader.haus',
+  //     key: '~/.ssh/deploy.key',
+  //     ref: 'origin/main',
+  //     repo: 'http://teacup.rader.haus:3000/devin/splash.git',
+  //     path: '/home/devinrader/splash/splash-relay',
+  //     'post-deploy':
+  //       'yarn install && yarn build && pm2 reload ecosystem.config.js --env production && pm2 save && git checkout yarn.lock',
+  //     env: {
+  //       NODE_ENV: 'production',
+  //       SPLASH_SERVER_ADDRESS: process.env.SPLASH_SERVER_ADDRESS
+  //     },
+  //   },
+  // },
   

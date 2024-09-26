@@ -10,35 +10,53 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      #
-      # ... your other steps, such as running tests, etc...
-      #
-      - name: Set up SSH
+      - uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+      - name: "Install & build"
         run: |
-          mkdir -p ~/.ssh/
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy.key
-          sudo chmod 600 ~/.ssh/deploy.key
-          echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-        shell: bash
-        env:
-          SSH_PRIVATE_KEY: ${{secrets.SSH_PRIVATE_KEY}}
-          SSH_KNOWN_HOSTS: ${{secrets.SSH_KNOWN_HOSTS}}
+          npm i
+          npm run build
+      - name: "Push to server"
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "splash-relay/dist/"
+          strip_components: 1
+          target: "/home/devinrader/splash/splash-relay"
 
       # (optional - only needed if your config uses environment variables)
-      - name: Create env file
-        run: |
-          touch .env
-          echo SPLASH_SERVER_ADDRESS=${{ secrets.SPLASH_SERVER_ADDRESS }} >> .env
+      # - name: Create env file
+      #   run: |
+      #     touch .env
+      #     echo SPLASH_SERVER_ADDRESS=${{ secrets.SPLASH_SERVER_ADDRESS }} >> .env
 
-      - name: Install PM2
-        run: npm i pm2 -g
+      # - name: Install PM2
+      #   run: npm i pm2 -g
 
-      - name: Deploy
-        run: env $(cat .env | grep -v \"#\" | xargs) pm2 deploy splash-relay/ecosystem.config.js production setup
+      # - name: Deploy
+      #   run: env $(cat .env | grep -v \"#\" | xargs) pm2 deploy splash-relay/ecosystem.config.js production setup
         # Or alternately, put this deploy script in your package.json's scripts and run it using yarn/npm:
         # run: yarn deploy
 
 # jobs:
+      #
+      # ... your other steps, such as running tests, etc...
+      #
+      # - name: Set up SSH
+      #   run: |
+      #     mkdir -p ~/.ssh/
+      #     echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy.key
+      #     sudo chmod 600 ~/.ssh/deploy.key
+      #     echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      #   shell: bash
+      #   env:
+      #     SSH_PRIVATE_KEY: ${{secrets.SSH_PRIVATE_KEY}}
+      #     SSH_KNOWN_HOSTS: ${{secrets.SSH_KNOWN_HOSTS}}
+
 #   Explore-Gitea-Actions:
 #     runs-on: ubuntu-latest
 #     steps:
