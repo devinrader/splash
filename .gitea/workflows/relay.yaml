@@ -28,6 +28,7 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           rm: true
           source: "splash-relay/deploy.sh,splash-relay/ecosystem.config.js,splash-relay/dist/*"
+          strip_components: 1
           target: "~/splash/splash-relay"
       - name: "Start server"
         uses: appleboy/ssh-action@master
