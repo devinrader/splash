@@ -39,8 +39,9 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            sudo chmod +x /home/devinrader/splash/splash-relay/deploy.sh
-            sudo /home/devinrader/splash/splash-relay/deploy.sh
+            whoami
+            sudo chmod +x ~/splash/splash-relay/deploy.sh
+            sudo ~/splash/splash-relay/deploy.sh
 
       # (optional - only needed if your config uses environment variables)
       # - name: Create env file

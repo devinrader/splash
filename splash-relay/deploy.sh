@@ -1,3 +1,4 @@
+whoami
 echo $HOME
 echo "Checking node.js installation"
 which node >/dev/null
