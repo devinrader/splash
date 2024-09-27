@@ -3,7 +3,7 @@
         "serverAddress": "http://localhost:3000",
         "listenerPath": "/ingest",
         "generatorPath": "/generator",
-        "serialDevicePath": "/dev/ttyUSB0",
+        "serialDevicePath": "/dev/ttyACM0",
         "baudRate": 9600,
         "bufferThreshold": 256,
         "debugFormat": "b"
