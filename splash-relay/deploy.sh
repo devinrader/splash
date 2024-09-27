@@ -5,6 +5,7 @@ if which node >/dev/null
   else
     echo "node.js installation not found. Please install node.js."
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    export NVM_DIR="$HOME/.nvm"
     command -v nvm
     nvm install node
   fi
