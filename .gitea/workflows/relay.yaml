@@ -29,7 +29,7 @@ jobs:
           rm: true
           source: "splash-relay/deploy.sh,splash-relay/ecosystem.config.js,splash-relay/dist/*"
           strip_components: 1
-          target: "/opt/splash/splash-relay"
+          target: "~/splash/splash-relay"
       - name: "Start server"
         uses: appleboy/ssh-action@master
         with:
@@ -40,8 +40,8 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             whoami
-            sudo chmod +x /opt/splash/splash-relay/deploy.sh
-            sudo /opt/splash/splash-relay/deploy.sh
+            sudo chmod +x ~/splash/splash-relay/deploy.sh
+            sudo ~/splash/splash-relay/deploy.sh
 
       # (optional - only needed if your config uses environment variables)
       # - name: Create env file

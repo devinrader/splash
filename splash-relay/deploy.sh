@@ -16,6 +16,9 @@ if which node >/dev/null
     node -v
   fi
 
+mkdir -p /opt/splash/splash-relay
+cp ~/splash/splash-relay/ /opt/splash/splash-relay
+
 npm install pm2@latest -g
 pm2 update
 pm2 start /opt/splash/splash-relay/ecosystem.config.js
