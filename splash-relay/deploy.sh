@@ -6,7 +6,7 @@ if which node >/dev/null
     echo "node.js installation found"
   else
     echo "node.js installation not found. Please install node.js."
-    sudo apt update && sudo apt install -y nodejs    
+    sudo apt update && sudo apt install -y nodejs npm   
   fi
 
 npm install pm2@latest -g
