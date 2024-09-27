@@ -1,7 +1,7 @@
-echo "Checking node.js installation"
-which node >/dev/null
-which npm >/dev/null
+echo "Running as user"
+whoami
 
+echo "Checking node.js installation"
 if which node >/dev/null
   then
     echo "node.js installation found"
