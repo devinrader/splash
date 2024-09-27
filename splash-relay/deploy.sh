@@ -16,11 +16,11 @@ if which node >/dev/null
     node -v
   fi
 
-sudo rm -r /opt/splash
+sudo rm -r /opt/splash/
 sudo mkdir -p /opt/splash/splash-relay
 sudo cp -r ~/splash/splash-relay/* /opt/splash/splash-relay
 
-npm install pm2@latest -g
+sudo npm install pm2@latest -g
 pm2 update
 pm2 start /opt/splash/splash-relay/ecosystem.config.js
 pm2 save
