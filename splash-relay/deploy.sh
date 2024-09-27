@@ -23,4 +23,3 @@ sudo cp -r ~/splash/splash-relay/* /opt/splash/splash-relay
 sudo npm install pm2@latest -g
 pm2 update
 pm2 start /opt/splash/splash-relay/ecosystem.config.js
-pm2 save
