@@ -5,5 +5,4 @@ function main() {
   const app = new SplashRelay();
   app.start();
 }
-
 main();
