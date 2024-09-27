@@ -27,7 +27,7 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
           rm: true
-          source: "splash-relay/package.json,splash-relay/deploy.sh,splash-relay/ecosystem.config.js,splash-relay/config/*,splash-relay/dist/*,splash-relay/node_modules/*"
+          source: "splash-relay/package.json,splash-relay/deploy.sh,splash-relay/findusbdev.sh,splash-relay/ecosystem.config.js,splash-relay/config/*,splash-relay/dist/*,splash-relay/node_modules/*"
           strip_components: 1
           target: "~/splash/splash-relay"
       - name: "Start server"
@@ -43,49 +43,3 @@ jobs:
             whoami
             sudo chmod +x ~/splash/splash-relay/deploy.sh
             ~/splash/splash-relay/deploy.sh
-
-            
-
-      # (optional - only needed if your config uses environment variables)
-      # - name: Create env file
-      #   run: |
-      #     touch .env
-      #     echo SPLASH_SERVER_ADDRESS=${{ secrets.SPLASH_SERVER_ADDRESS }} >> .env
-
-      # - name: Install PM2
-      #   run: npm i pm2 -g
-
-      # - name: Deploy
-      #   run: env $(cat .env | grep -v \"#\" | xargs) pm2 deploy splash-relay/ecosystem.config.js production setup
-        # Or alternately, put this deploy script in your package.json's scripts and run it using yarn/npm:
-        # run: yarn deploy
-
-# jobs:
-      #
-      # ... your other steps, such as running tests, etc...
-      #
-      # - name: Set up SSH
-      #   run: |
-      #     mkdir -p ~/.ssh/
-      #     echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy.key
-      #     sudo chmod 600 ~/.ssh/deploy.key
-      #     echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-      #   shell: bash
-      #   env:
-      #     SSH_PRIVATE_KEY: ${{secrets.SSH_PRIVATE_KEY}}
-      #     SSH_KNOWN_HOSTS: ${{secrets.SSH_KNOWN_HOSTS}}
-
-#   Explore-Gitea-Actions:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - run: echo "🎉 The job was automatically triggered by a ${{ gitea.event_name }} event."
-#       - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by Gitea!"
-#       - run: echo "🔎 The name of your branch is ${{ gitea.ref }} and your repository is ${{ gitea.repository }}."
-#       - name: Check out repository code
-#         uses: actions/checkout@v4
-#       - run: echo "💡 The ${{ gitea.repository }} repository has been cloned to the runner."
-#       - run: echo "🖥️ The workflow is now ready to test your code on the runner."
-#       - name: List files in the repository
-#         run: |
-#           ls ${{ gitea.workspace }}
-#       - run: echo "🍏 This job's status is ${{ job.status }}."

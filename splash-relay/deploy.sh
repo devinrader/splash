@@ -1,6 +1,3 @@
-echo "Running as user"
-whoami
-
 echo "Checking node.js installation"
 if which node >/dev/null
   then
