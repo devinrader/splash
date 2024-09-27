@@ -1,4 +1,7 @@
+echo $HOME
 echo "Checking node.js installation"
+which node >/dev/null
+
 if which node >/dev/null
   then
     echo "node.js installation found"

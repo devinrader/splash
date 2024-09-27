@@ -26,6 +26,7 @@ jobs:
           #key: ${{ secrets.SSH_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
+          rm: true
           source: "splash-relay/deploy.sh,splash-relay/ecosystem.config.js,splash-relay/dist/*"
           strip_components: 1
           target: "/home/devinrader/splash/splash-relay"
