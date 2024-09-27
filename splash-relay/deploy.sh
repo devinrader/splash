@@ -17,7 +17,7 @@ if which node >/dev/null
   fi
 
 sudo rm -r /opt/splash
-mkdir -p /opt/splash/splash-relay
+sudo mkdir -p /opt/splash/splash-relay
 sudo cp -r ~/splash/splash-relay/* /opt/splash/splash-relay
 
 npm install pm2@latest -g
