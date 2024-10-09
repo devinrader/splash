@@ -20,12 +20,13 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: "20"
-      - name: "Build Splash Relay"
-        run: cd splash-relay
-        run: npm ci
       #- run: npm run lint
       #- run: npm tun test
-        run: npm run build
+      - name: "Build Splash Relay"
+        run: |
+          cd splash-relay
+          npm ci
+          npm run build
 
   publish:
     runs-on: ubuntu-latest
