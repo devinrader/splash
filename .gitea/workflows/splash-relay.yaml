@@ -33,7 +33,7 @@ jobs:
     needs: build
 
     permissions:
-      contents: read
+      contents: write
       packages: write
       attestations: write
       id-token: write
@@ -71,6 +71,7 @@ jobs:
         with:
           context: "{{defaultContext}}:splash-relay"
           push: true
+          github-token: ${{ secrets.GH_PAT }}
           tags: |
             ghcr.io/devinrader/splash:latest
             ghcr.io/devinrader/splash:1.0.0 
