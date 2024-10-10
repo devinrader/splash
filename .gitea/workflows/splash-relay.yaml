@@ -42,7 +42,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GH_PAT }}
           # username: ${{ vars.DOCKERHUB_USERNAME }}
           # password: ${{ secrets.DOCKERHUB_TOKEN }}
       # - name: Build and push
