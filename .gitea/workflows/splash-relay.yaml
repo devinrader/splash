@@ -39,8 +39,8 @@ jobs:
       id-token: write
 
     steps:
-      #- name: Checkout Repository
-      #  uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
       - name: Debug Print secret
         run: echo $GITHUB_TOKEN|base64
