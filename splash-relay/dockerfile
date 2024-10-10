@@ -1,10 +1,10 @@
-FROM node:10-alpine
+FROM node:latest
 
-RUN mkdir -p /home/node/splash/splash-relay/node_modules && chown -R node:node /home/node/splash/splash-relay
+# RUN mkdir -p /home/node/splash/splash-relay/node_modules && chown -R node:node /home/node/splash/splash-relay
 
 WORKDIR /home/node/splash/splash-relay
 
-COPY package*.json ./
+COPY package*.json .
 
 USER node
 
