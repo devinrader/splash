@@ -67,7 +67,7 @@ jobs:
 
       - name: Build the hello-docker Docker image
         run: |
-          docker build . --tag ghcr.io/devinrader/splash:latest -f splash-relay/Dockerfile
+          docker build . --no-cache --progress-plain --tag ghcr.io/devinrader/splash:latest -f splash-relay/Dockerfile
           docker push ghcr.io/devinrader/splash:latest 
         # docker run ghcr.io/devinrader/splash:latest
       # - name: Extract metadata (tags, labels) for Docker

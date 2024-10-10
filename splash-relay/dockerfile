@@ -6,6 +6,8 @@ USER node
 WORKDIR /home/node/splash/splash-relay
 
 RUN ls
+RUN pwd
+RUN echo "$PWD"
 
 COPY package*.json .
 
