@@ -9,6 +9,7 @@ RUN ls
 RUN pwd
 RUN echo "$PWD"
 RUN pwd && ls
+RUN ls ..
 
 COPY package*.json .
 
