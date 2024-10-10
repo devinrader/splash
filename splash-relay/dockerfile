@@ -1,17 +1,16 @@
 FROM node:latest
 
 # RUN mkdir -p /home/node/splash/splash-relay/node_modules && chown -R node:node /home/node/splash/splash-relay
+USER node
 
 WORKDIR /home/node/splash/splash-relay
 
-COPY package*.json .
-
-USER node
+COPY --chown=app:node package*.json .
 
 RUN npm install
 
-COPY --chown=node:node . .
+COPY --chown=app:node . .
 
 EXPOSE 8080
 
-CMD [ "node", "app.js" ]
+CMD [ "npm", "start" ]
