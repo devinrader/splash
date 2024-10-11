@@ -49,7 +49,7 @@ jobs:
           # username: ${{ vars.DOCKERHUB_USERNAME }}
           # password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build the hello-docker Docker image
+      - name: Build the splash-relay Docker image
         run: |
           docker build . --no-cache --platform linux/arm/v7 --tag ghcr.io/devinrader/splash-relay:latest -f splash-relay/Dockerfile
           docker push ghcr.io/devinrader/splash-relay:latest 
