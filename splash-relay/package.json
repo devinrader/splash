@@ -4,6 +4,7 @@
   "main": "dist/src/main.js",
   "scripts": {
     "build": "tsc",
+    "lint": "npx eslint .",
     "start": "node dist/main.js"
   },
   "keywords": [],
@@ -19,11 +20,15 @@
     "toml": "^3.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.12.0",
     "@types/config": "^3.3.4",
+    "@types/eslint__js": "^8.42.3",
     "@types/eventsource": "^1.1.15",
     "@types/minimist": "^1.2.5",
     "@types/node": "^20.14.3",
     "@types/serialport": "^8.0.5",
-    "typescript": "^5.4.5"
+    "eslint": "^9.12.0",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.8.1"
   }
 }
