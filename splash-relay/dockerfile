@@ -1,6 +1,5 @@
 FROM node:latest
 
-# RUN mkdir -p /home/node/splash/splash-relay/node_modules && chown -R node:node /home/node/splash/splash-relay
 USER node
 
 WORKDIR /home/node/splash/splash-relay

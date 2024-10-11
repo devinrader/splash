@@ -5,7 +5,7 @@ on:
   push:
     paths:
       - 'splash-relay/**'
-      - '.gitea/workflows/**'
+      - '.gitea/workflows/splash-relay.yaml'
 
 env:
   REGISTRY: ghcr.io
@@ -42,17 +42,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Debug Print secret
-        run: echo $GITHUB_TOKEN|base64
-      
-      - name: Debug Print env
-        run: env
-
-      - name: Dump GitHub context
-        env:
-          GITHUB_CONTEXT: ${{ toJson(github) }}
-        run: echo "$GITHUB_CONTEXT"
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -67,55 +56,6 @@ jobs:
 
       - name: Build the hello-docker Docker image
         run: |
-          ls
-          docker build . --no-cache --progress=plain --tag ghcr.io/devinrader/splash:latest -f splash-relay/Dockerfile
-          docker push ghcr.io/devinrader/splash:latest 
+          docker build . --tag ghcr.io/devinrader/splash-relay:latest -f splash-relay/Dockerfile
+          docker push ghcr.io/devinrader/splash-relay:latest 
         # docker run ghcr.io/devinrader/splash:latest
-      # - name: Extract metadata (tags, labels) for Docker
-      #   id: meta
-      #   uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
-      #   with:
-      #     images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-
-
-      # - name: Build and push
-      #   uses: docker/build-push-action@v6
-      #   with:
-      #     context: "{{defaultContext}}:splash-relay"
-      #     push: true
-      #     github-token: ${{ secrets.GH_PAT }}
-      #     tags: |
-      #       ghcr.io/devinrader/splash:latest
-      #       ghcr.io/devinrader/splash:1.0.0 
-
-      # - name: Build and push
-      #   run: |
-      #     TODAY=$(date +'%Y-%m-%d')
-      #     docker build -t ${REGISTRY}/${REPO_OWNER}/${IMAGE_NAME}:${TODAY} -t ${REGISTRY}/${REPO_OWNER}/${IMAGE_NAME}:latest .
-      #     docker push ${REGISTRY}/${REPO_OWNER}/${IMAGE_NAME}:${TODAY}
-      #     docker push ${REGISTRY}/${REPO_OWNER}/${IMAGE_NAME}:latest 
-      # - name: "Push to server"
-      #   uses: appleboy/scp-action@master
-      #   with:
-      #     host: ${{ secrets.SSH_HOST }}
-      #     username: ${{ secrets.SSH_USERNAME }}
-      #     #key: ${{ secrets.SSH_KEY }}
-      #     password: ${{ secrets.SSH_PASSWORD }}
-      #     port: ${{ secrets.SSH_PORT }}
-      #     rm: true
-      #     source: "splash-relay/package.json,splash-relay/deploy.sh,splash-relay/findusbdev.sh,splash-relay/ecosystem.config.js,splash-relay/config/*,splash-relay/dist/*,splash-relay/node_modules/*"
-      #     strip_components: 1
-      #     target: "~/splash/splash-relay"
-      # - name: "Start server"
-      #   uses: appleboy/ssh-action@master
-      #   with:
-      #     debug: true
-      #     host: ${{ secrets.SSH_HOST }}
-      #     username: "devinrader"
-      #     #key: ${{ secrets.SSH_KEY }}
-      #     password: ${{ secrets.SSH_PASSWORD }}
-      #     port: ${{ secrets.SSH_PORT }}
-      #     script: |
-      #       whoami
-      #       sudo chmod +x ~/splash/splash-relay/deploy.sh
-      #       ~/splash/splash-relay/deploy.sh
