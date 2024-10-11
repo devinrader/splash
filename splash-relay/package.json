@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc",
     "lint": "npx eslint .",
-    "start": "node dist/main.js"
+    "start": "ls && node dist/main.js"
   },
   "keywords": [],
   "author": "",
