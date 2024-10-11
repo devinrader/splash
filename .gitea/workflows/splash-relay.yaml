@@ -54,6 +54,6 @@ jobs:
 
       - name: Build the hello-docker Docker image
         run: |
-          docker build . --platform linux/arm/v7 --tag ghcr.io/devinrader/splash-relay:latest -f splash-relay/Dockerfile
+          docker build . --no-cache --platform linux/arm/v7 --tag ghcr.io/devinrader/splash-relay:latest -f splash-relay/Dockerfile
           docker push ghcr.io/devinrader/splash-relay:latest 
         # docker run ghcr.io/devinrader/splash:latest

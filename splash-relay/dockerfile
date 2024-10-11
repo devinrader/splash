@@ -10,7 +10,7 @@ RUN npm install
 
 COPY --chown=node:node splash-relay/ .
 
-RUN ls -la /splash-relay/*
+RUN ls -la splash-relay/*
 RUN ls -la /home/node/splash/splash-relay/*
 
 EXPOSE 8080
