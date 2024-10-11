@@ -9,7 +9,7 @@ export default class SplashRelay {
 
   private _config: Configuration = new Configuration();
   private _buffer: Buffer = Buffer.alloc(0);
-  private _port: any;
+  //private _port: any;
   private _eventSource: EventSource | undefined = undefined;
 
   public start(stream: SerialPortStream | undefined = undefined): void {
@@ -57,8 +57,9 @@ Options:
 
     try {
       this._config.init(parsedargs);
-    } catch (error: any) {
-      console.error(error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error(err.message);
       return;
     }
 
@@ -97,7 +98,9 @@ Options:
         console.log(data)
       } else if (this._config.DebugFormat === 'd') {
         console.log(Array.from(data));
-      } else { }
+      } else { 
+        console.log('Unknown DebugFormat')
+      }
 
       this._buffer = Buffer.concat([this._buffer, data]);
 

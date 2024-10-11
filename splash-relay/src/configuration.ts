@@ -99,6 +99,7 @@ export default class Configuration {
       new URL(url);
       return true;
     } catch (error) {
+      console.log(error)
       return false;
     }
   }
