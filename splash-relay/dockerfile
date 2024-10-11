@@ -11,7 +11,7 @@ RUN echo "$PWD"
 RUN pwd && ls
 RUN ls ..
 
-COPY package*.json .
+COPY splash-relay/package*.json .
 
 RUN npm install
 
