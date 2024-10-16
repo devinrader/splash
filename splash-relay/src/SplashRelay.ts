@@ -1,6 +1,5 @@
 import minimist, { ParsedArgs } from 'minimist';
 import EventSource from 'eventsource';
-import Configuration from './configuration.js'
 import { SerialPort } from 'serialport';
 import { SerialPortStream } from '@serialport/stream'
 import axios from 'axios';
