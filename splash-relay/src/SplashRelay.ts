@@ -7,7 +7,9 @@ import axios from 'axios';
 
 export default class SplashRelay {
 
-  private _config: Configuration = new Configuration();
+  //Add a constructor that access a config object
+
+  //private _config: Configuration = new Configuration();
   private _buffer: Buffer = Buffer.alloc(0);
   //private _port: any;
   private _eventSource: EventSource | undefined = undefined;
@@ -16,25 +18,23 @@ export default class SplashRelay {
 
     const parsedargs: ParsedArgs = minimist(process.argv.slice(2), {
       alias: {
-        c: 'configPath',
-        p: 'serialDevicePath',
-        b: 'baudRate',
-        s: 'serverAddress',
-        l: 'listenerPath',
-        g: 'generatedPath',
-        z: 'bufferThreshold',
-        d: 'debugFormat',
-        h: 'help'
+        device: 'serialDevicePath',
+        baud: 'baudRate',
+        server: 'serverAddress',
+        listner: 'listenerPath',
+        generator: 'generatedPath',
+        buffer: 'bufferThreshold',
+        debug: 'debugFormat',
+        help: 'help'
       },
       default: {
-        configPath: undefined,
         serialDevicePath: undefined, // '/dev/ttyUSB0', '/dev/ttyACM0', '/dev/ttyMOCK';
-        baudRate: undefined,
+        baudRate: 9600,
         serverAddress: undefined,
-        listenerPath: undefined,
-        generatorPath: undefined,
-        bufferThreshold: undefined,
-        debugFormat: undefined
+        listenerPath: '/listener',
+        generatorPath: '/generator',
+        bufferThreshold: 256,
+        debugFormat: 'b'
       },
       string: ['configPath', 'serialDevicePath', 'baudRate', 'serverAddress', 'listenerPath', 'generatorPath', 'bufferThreshold', 'debugFormat']
     });
@@ -44,59 +44,58 @@ export default class SplashRelay {
 Usage: node index.js [options]
 
 Options:
--c, --configpath <value>    Specify the path to the .splash configuration file.
--p, --devicepath <value>    Specify the path of the serial device
--b, --baud <value>    Specify the serial baud rate.  Defaults to 9600.
--s, --serveraddress <value>    The host name or IP address of where to send commands
--z, --buffersize <value> Specify the amount of data to buffer before sending to the server
--d, --debug <value>   Specify debug output type (byte or decimal)
--h, --help            Show help
+-device, --devicepath <value>    Specify the path of the serial device
+-baud, --baud <value>    Specify the serial baud rate.  Defaults to 9600.
+-server, --serveraddress <value>    The host name or IP address of where to send commands
+-buffer, --buffersize <value> Specify the amount of data to buffer before sending to the server
+-debug, --debug <value>   Specify debug output type (byte or decimal)
+-help, --help            Show help
 `);
       return;
     }
 
     try {
-      this._config.init(parsedargs);
+      //this._config.init(parsedargs);
     } catch (error: unknown) {
       const err = error as Error;
       console.error(err.message);
       return;
     }
 
-    if (!this._config.IsInitialzed) {
-      console.error('Failed to initialize');
-      return;
-    }
+    // if (!this._config.IsInitialzed) {
+    //   console.error('Failed to initialize');
+    //   return;
+    // }
 
     console.log(`Starting Splash Relay`)
 
-    console.log(`Connecting to event server ${this._config.GeneratorFullPath}`);
-    this._eventSource = new EventSource(this._config.GeneratorFullPath);
-    this._eventSource.onopen = () => {
-      console.log(`Connected to server.  Waiting for events.`);
-    };
-    this._eventSource.addEventListener('message', (event: MessageEvent) => {
-      console.log('Message received:', event.data);
-    });
-    this._eventSource.addEventListener('error', (err) => {
-      console.error('EventSource error event:', err);
-    });
+    // console.log(`Connecting to event server ${this._config.GeneratorFullPath}`);
+    // this._eventSource = new EventSource(this._config.GeneratorFullPath);
+    // this._eventSource.onopen = () => {
+    //   console.log(`Connected to server.  Waiting for events.`);
+    // };
+    // this._eventSource.addEventListener('message', (event: MessageEvent) => {
+    //   console.log('Message received:', event.data);
+    // });
+    // this._eventSource.addEventListener('error', (err) => {
+    //   console.error('EventSource error event:', err);
+    // });
 
     if (stream) {
       console.log(`Using existing stream ${stream.path}`);
     } else {
-      console.log(`Opening port ${this._config.SerialDevicePath}`);
-      stream = new SerialPort({ path: this._config.SerialDevicePath, baudRate: this._config.BaudRate });
+      console.log(`Opening port ${parsedargs.serialDevicePath}`);
+      stream = new SerialPort({ path: parsedargs.serialDevicePath, baudRate: parsedargs.baudRate });
     }
 
     stream.on('open', () => {
-      console.log(`Serial port ${this._config.SerialDevicePath} is open`);
+      console.log(`Serial port ${parsedargs.serialDevicePath} is open`);
     });
 
     stream.on('data', async (data: Buffer) => {
-      if (this._config.DebugFormat === 'b') {
+      if (parsedargs.debugFormat === 'b') {
         console.log(data)
-      } else if (this._config.DebugFormat === 'd') {
+      } else if (parsedargs.debugFormat === 'd') {
         console.log(Array.from(data));
       } else { 
         console.log('Unknown DebugFormat')
@@ -104,8 +103,8 @@ Options:
 
       this._buffer = Buffer.concat([this._buffer, data]);
 
-      if (this._buffer.length >= this._config.BufferThreshold) {
-        const response = await axios.post(this._config.ListenerFullPath, this._buffer.toString('base64'), { headers: { 'Content-Type':'text/plain'}});
+      if (this._buffer.length >= parsedargs.bufferThreshold) {
+        const response = await axios.post(parsedargs.listenerFullPath, this._buffer.toString('base64'), { headers: { 'Content-Type':'text/plain'}});
         if (response.status == 200) {
           this._buffer = Buffer.alloc(0); //if the response is OK, then clear the buffer
         }

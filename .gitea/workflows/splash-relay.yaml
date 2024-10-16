@@ -10,6 +10,8 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  SERIAL_DEVICE_PATH: ${vars.SERIAL_DEVICE_PATH}
+  SERVER_ADDRESS: http://splash.rader.haus
 
 jobs:
   build_and_publish:
