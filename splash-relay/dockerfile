@@ -20,6 +20,8 @@ COPY --chown=node:node splash-relay/ .
 
 RUN ls -la 
 
+RUN bash findusbdev.sh
+
 EXPOSE 8080
 
 CMD [ "npm", "start" ]
