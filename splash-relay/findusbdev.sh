@@ -1,4 +1,4 @@
-#!/bin/bash                                                            
+#!/bin/sh
 #findusbdev.sh
                                                            
 if [[ "$1" =~ ^(-h|--help)$ ]]; then                                   

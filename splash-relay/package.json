@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc",
     "lint": "npx eslint .",
-    "start": "bash findusbdev.sh && node dist/main.js --device=/dev/ttyUSB0"
+    "start": "./findusbdev.sh && node dist/main.js --device=/dev/ttyUSB0"
   },
   "keywords": [],
   "author": "",

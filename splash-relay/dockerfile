@@ -22,6 +22,8 @@ RUN ls -la
 
 EXPOSE 8080
 
+# CMD ["./findusbdev.sh"]
+
 CMD [ "npm", "start" ]
 
 # how to config server address, listner path, generator path and serial device path
