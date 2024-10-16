@@ -1,7 +1,7 @@
 import minimist, { ParsedArgs } from 'minimist';
 import EventSource from 'eventsource';
 import { SerialPort } from 'serialport';
-import { SerialPortStream } from '@serialport/stream'
+//import { SerialPortStream } from '@serialport/stream'
 import axios from 'axios';
 
 export default class SplashRelay {
@@ -13,7 +13,7 @@ export default class SplashRelay {
   //private _port: any;
   private _eventSource: EventSource | undefined = undefined;
 
-  public start(stream: SerialPortStream | undefined = undefined): void {
+  public start(port: SerialPort | undefined = undefined): void {
 
     const parsedargs: ParsedArgs = minimist(process.argv.slice(2), {
       alias: {
@@ -80,18 +80,23 @@ Options:
     //   console.error('EventSource error event:', err);
     // });
 
-    if (stream) {
-      console.log(`Using existing stream ${stream.path}`);
+    if (port) {
+      console.log(`Using existing stream ${port.path}`);
     } else {
       console.log(`Opening port ${parsedargs.serialDevicePath}`);
-      stream = new SerialPort({ path: parsedargs.serialDevicePath, baudRate: parsedargs.baudRate });
+      port = new SerialPort({ path: parsedargs.serialDevicePath, baudRate: parsedargs.baudRate });
     }
 
-    stream.on('open', () => {
+// Open errors will be emitted as an error event
+    port.on('error', function(err) {
+      console.log('Error: ', err.message)
+    })
+
+    port.on('open', () => {
       console.log(`Serial port ${parsedargs.serialDevicePath} is open`);
     });
 
-    stream.on('data', async (data: Buffer) => {
+    port.on('data', async (data: Buffer) => {
       if (parsedargs.debugFormat === 'b') {
         console.log(data)
       } else if (parsedargs.debugFormat === 'd') {
