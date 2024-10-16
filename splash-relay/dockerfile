@@ -20,7 +20,7 @@ COPY --chown=node:node splash-relay/ .
 
 RUN ls -la 
 
-RUN chown +x ./findusbdev.sh
+RUN chmod +x ./findusbdev.sh
 
 EXPOSE 8080
 
