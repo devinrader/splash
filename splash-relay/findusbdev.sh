@@ -1,7 +1,7 @@
 #!/bin/sh
 #findusbdev.sh
                                                            
-if [[ "$1" =~ ^(-h|--help)$ ]]; then                                   
+if [ "$1" = "h" ] || [ "$1" = "--help" ]; then                                   
                                                                        
 echo "Find which USB devices are associated with which /dev/ nodes     
 Usage:                                                                 
@@ -18,9 +18,8 @@ the FTDI FT232 chipset.
     exit 0                                                             
 fi                                                                     
                                                                        
-devs=$( (                                                              
+devs=$(                                                         
 for sysdevpath in $(find /sys/bus/usb/devices/usb*/ -name dev ); do    
-    # ( to launch a subshell here                                      
     (                                                                  
         syspath="${sysdevpath%/dev}"                                   
         devname="$(udevadm info -q name -p $syspath)"                  
