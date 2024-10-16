@@ -1,9 +1,10 @@
 FROM node:22-alpine
 
-ENV SERVER_ADDRESS=${SERVER_ADDRESS}
-ENV SERIAL_DEVICE_PATH=${SERIAL_DEVICE_PATH}
+#ENV SERVER_ADDRESS=${SERVER_ADDRESS}
+#ENV SERIAL_DEVICE_PATH=${SERIAL_DEVICE_PATH}
 
-RUN usermod -aG dialout node
+# usermod doesn't exist in Alpine
+#RUN usermod -aG dialout node
 
 USER node
 
