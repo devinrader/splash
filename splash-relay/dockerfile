@@ -22,12 +22,15 @@ COPY --chown=node:node splash-relay/ .
 RUN ls -la 
 
 RUN chmod +x ./findusbdev.sh
+RUN chmod +x ./run.sh
 
 EXPOSE 8080
 
 # CMD ["./findusbdev.sh"]
 
-CMD [ "npm", "start" ]
+#CMD [ "npm", "start" ]
+
+CMD [ "./run.sh" ]
 
 #CMD ["node", "dist/main.js", "--device=/dev/ttyUSB0"]
 

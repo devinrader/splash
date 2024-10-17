@@ -2,14 +2,14 @@ import minimist, { ParsedArgs } from 'minimist';
 import EventSource from 'eventsource';
 import { SerialPort } from 'serialport';
 
-import SegfaultHandler from 'segfault-handler';
+// import SegfaultHandler from 'segfault-handler';
 
-SegfaultHandler.registerHandler('crash.log', (signal: any, address: any, stack: any) => {
-  console.error('Segmentation fault occurred!');
-  console.error('Signal:', signal);
-  console.error('Address:', address);
-  console.error('Stack trace:\n', stack);
-});
+// SegfaultHandler.registerHandler('crash.log', (signal: any, address: any, stack: any) => {
+//   console.error('Segmentation fault occurred!');
+//   console.error('Signal:', signal);
+//   console.error('Address:', address);
+//   console.error('Stack trace:\n', stack);
+// });
 
 //import { SerialPortStream } from '@serialport/stream'
 import axios from 'axios';
