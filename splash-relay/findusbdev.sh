@@ -19,7 +19,8 @@ if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
   exit 0                                                             
 fi  
 
-for sysdevpath in $(find /sys/bus/usb/devices/usb*/ -name dev ); do 
+devs=$(
+for sysdevpath in $(find /sys/bus/usb/devices/usb*/ -name dev ); do
   (
     echo $sysdevpath;
     syspath="${sysdevpath%/dev}"
@@ -35,10 +36,17 @@ for sysdevpath in $(find /sys/bus/usb/devices/usb*/ -name dev ); do
   )
   done
   wait
-
+)
                                                                    
+devs=$(echo "$devs" | sort)
 
-# devs=$(                                                         
+if [ -z "$1" ]; then                                                   
+  echo "${devs}"                                                     
+else                                                                   
+  echo "${devs}" | grep "$1" | awk '{print $1}'                      
+fi 
+
+#devs=$(                                                         
 #     syspath="${sysdevpath%/dev}"
 #     devname="$(udevadm info -q name -p "$syspath")"
 #     case "$devname" in
