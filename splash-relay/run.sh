@@ -9,3 +9,5 @@ ls -l -R /dev | grep \"188, *0\"
 ./findusbdev.sh
 
 node dist/main.js --device=/dev/ttyUSB0
+
+serialport-terminal --list
