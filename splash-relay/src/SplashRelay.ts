@@ -1,17 +1,10 @@
 import minimist, { ParsedArgs } from 'minimist';
 import EventSource from 'eventsource';
 import { SerialPort } from 'serialport';
-
-//import { SerialPortStream } from '@serialport/stream'
 import axios, { AxiosError } from 'axios';
 
 export default class SplashRelay {
-
-  //Add a constructor that access a config object
-
-  //private _config: Configuration = new Configuration();
   private _buffer: Buffer = Buffer.alloc(0);
-  //private _port: any;
   private _eventSource: EventSource | undefined = undefined;
 
   public start(port: SerialPort | undefined = undefined): void {
@@ -54,18 +47,7 @@ Options:
       return;
     }
 
-    try {
-      //this._config.init(parsedargs);
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.error(err.message);
-      return;
-    }
-
-    // if (!this._config.IsInitialzed) {
-    //   console.error('Failed to initialize');
-    //   return;
-    // }
+    // Test to see if the remote server exists so we know if we should try to send buffer data to it or not.
 
     console.log(`Starting Splash Relay`)
 
@@ -85,16 +67,12 @@ Options:
       console.log(`Using existing stream ${port.path}`);
     } else {
       console.log(`Opening port ${parsedargs.serialDevicePath}, ${parsedargs.baudRate}`);
-      //port = new SerialPort({ path: parsedargs.serialDevicePath, baudRate: parsedargs.baudRate });
-      port = new SerialPort({ path: parsedargs.serialDevicePath, baudRate: 9600 });
-
-      console.log(`Post port init`)
-      console.log(port)
+      port = new SerialPort({ path: parsedargs.serialDevicePath, baudRate: parsedargs.baudRate });
     }
 
     // Open errors will be emitted as an error event
     port.on('error', function (err) {
-      console.log('Error: ', err.message)
+      console.log('Serial port error: ', err.message)
     })
 
     port.on('open', () => {
@@ -102,6 +80,7 @@ Options:
     });
 
     port.on('data', async (data: Buffer) => {
+
       if (parsedargs.debugFormat === 'b') {
         console.log(data)
       } else if (parsedargs.debugFormat === 'd') {
@@ -122,29 +101,16 @@ Options:
           const error = err as Error | AxiosError;
           if (axios.isAxiosError(error)) {
             if (error.response) {
-              /*
-               * The request was made and the server responded with a
-               * status code that falls out of the range of 2xx
-               */
-              console.log(error.response.data);
               console.log(error.response.status);
-              console.log(error.response.headers);
             } else if (error.request) {
-              /*
-               * The request was made but no response was received, `error.request`
-               * is an instance of XMLHttpRequest in the browser and an instance
-               * of http.ClientRequest in Node.js
-               */
-              console.log(error.request);
+              //console.log(error.request);
             } else {
               // Something happened in setting up the request and triggered an Error
               console.log('Error', error.message);
             }
-            console.log(error);
           }
         }
       }
     });
   }
-
 }

@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc",
     "lint": "npx eslint .",
-    "start": "node dist/main.js --device=/dev/ttyUSB0"
+    "start": "node dist/main.js"
   },
   "keywords": [],
   "author": "",
