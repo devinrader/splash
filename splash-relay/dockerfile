@@ -18,7 +18,8 @@ RUN ls -la
 
 COPY --chown=node:node splash-relay/package*.json .
 
-RUN npm install
+#RUN npm install
+RUN npm install --build-from-source=serialport
 RUN npm install @serialport/terminal
 
 COPY --chown=node:node splash-relay/ .
