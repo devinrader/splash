@@ -12,7 +12,7 @@ import { SerialPort } from 'serialport';
 // });
 
 //import { SerialPortStream } from '@serialport/stream'
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 
 export default class SplashRelay {
 
@@ -101,8 +101,8 @@ Options:
       console.log(port)
     }
 
-// Open errors will be emitted as an error event
-    port.on('error', function(err) {
+    // Open errors will be emitted as an error event
+    port.on('error', function (err) {
       console.log('Error: ', err.message)
     })
 
@@ -115,16 +115,41 @@ Options:
         console.log(data)
       } else if (parsedargs.debugFormat === 'd') {
         console.log(Array.from(data));
-      } else { 
+      } else {
         console.log('Unknown DebugFormat')
       }
 
       this._buffer = Buffer.concat([this._buffer, data]);
 
       if (this._buffer.length >= parsedargs.bufferThreshold) {
-        const response = await axios.post(parsedargs.listenerFullPath, this._buffer.toString('base64'), { headers: { 'Content-Type':'text/plain'}});
-        if (response.status == 200) {
-          this._buffer = Buffer.alloc(0); //if the response is OK, then clear the buffer
+        try {
+          const response = await axios.post(parsedargs.listenerFullPath, this._buffer.toString('base64'), { headers: { 'Content-Type': 'text/plain' } });
+          if (response.status == 200) {
+            this._buffer = Buffer.alloc(0); //if the response is OK, then clear the buffer
+          }
+        } catch (error: unknown | AxiosError) {
+          if (axios.isAxiosError(error)) {
+            if (error.response) {
+              /*
+               * The request was made and the server responded with a
+               * status code that falls out of the range of 2xx
+               */
+              console.log(error.response.data);
+              console.log(error.response.status);
+              console.log(error.response.headers);
+            } else if (error.request) {
+              /*
+               * The request was made but no response was received, `error.request`
+               * is an instance of XMLHttpRequest in the browser and an instance
+               * of http.ClientRequest in Node.js
+               */
+              console.log(error.request);
+            } else {
+              // Something happened in setting up the request and triggered an Error
+              console.log('Error', error.message);
+            }
+            console.log(error);
+          }
         }
       }
     });
