@@ -2,7 +2,7 @@ import minimist, { ParsedArgs } from 'minimist';
 import EventSource from 'eventsource';
 import { SerialPort } from 'serialport';
 
-const SegfaultHandler = require('segfault-handler');
+import SegfaultHandler from 'segfault-handler';
 
 SegfaultHandler.registerHandler('crash.log', (signal: any, address: any, stack: any) => {
   console.error('Segmentation fault occurred!');
