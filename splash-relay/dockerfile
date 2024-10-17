@@ -1,37 +1,37 @@
 FROM node:20-alpine
 
-RUN apk add --update --no-cache make gcc g++ linux-headers udev
-RUN apk add --upddate --no-cache python3 py3-pip
-RUN apk add eudev udev-init-scripts
+# Once the issue with serialnode cpp bindings on Alpine goes away, remove these
+#RUN apk add --update --no-cache make gcc g++ linux-headers udev
+RUN apk add --update --no-cache python3 py3-pip
 
 #ENV SERVER_ADDRESS=${SERVER_ADDRESS}
 #ENV SERIAL_DEVICE_PATH=${SERIAL_DEVICE_PATH}
-ENV DEBUG=serialport*
 
-# usermod doesn't exist in Alpine
-#RUN usermod -aG dialout node
+# This enables serialports verbose debug mode
+#ENV DEBUG=serialport*
+
 RUN addgroup node dialout
 
 USER node
 
 WORKDIR /home/node/splash/splash-relay
 
-RUN ls -la 
-
-COPY --chown=node:node splash-relay/package*.json .
+#COPY --chown=node:node splash-relay/package*.json .
+COPY --chown=node:node splash-relay/ .
 
 RUN npm install
-RUN npm install @serialport/terminal
+#RUN npm install @serialport/terminal
 
+# Work-around for outdated cpp bindings is to rebuild them on the device
 WORKDIR /home/node/splash/splash-relay/node_modules/@serialport/bindings-cpp
 RUN npm run rebuild
 WORKDIR /home/node/splash/splash-relay
 
-COPY --chown=node:node splash-relay/ .
+#COPY --chown=node:node splash-relay/ .
 
-RUN ls -la 
+#RUN ls -la 
 
-RUN chmod +x ./findusbdev.sh
+#RUN chmod +x ./findusbdev.sh
 RUN chmod +x ./run.sh
 
 EXPOSE 8080
@@ -47,5 +47,3 @@ CMD [ "./run.sh" ]
 #CMD ["lsusb","-t"]
 
 #CMD ["ls", "-lha /dev/tty*"]
-
-# how to config server address, listner path, generator path and serial device path
