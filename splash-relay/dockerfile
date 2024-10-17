@@ -27,6 +27,8 @@ EXPOSE 8080
 
 # CMD ["./findusbdev.sh"]
 
-CMD [ "npm", "start" ]
+#CMD [ "npm", "start" ]
+
+CMD ["node", "dist/main.js", "--device=/dev/ttyUSB0"]
 
 # how to config server address, listner path, generator path and serial device path
