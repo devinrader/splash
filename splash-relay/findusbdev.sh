@@ -22,7 +22,7 @@ fi
 devs=$(
 for sysdevpath in $(find /sys/bus/usb/devices/usb*/ -name dev ); do
   (
-    echo $sysdevpath;
+    #echo $sysdevpath;
     syspath="${sysdevpath%/dev}"
     devname="$(udevadm info -q name -p "$syspath")"
     case "$devname" in
