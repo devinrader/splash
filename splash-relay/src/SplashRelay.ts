@@ -101,12 +101,14 @@ Options:
           const error = err as Error | AxiosError;
           if (axios.isAxiosError(error)) {
             if (error.response) {
-              console.log(error.response.status);
+              //console.log(error.response.status);
+              console.log(`Response Status Error`)
             } else if (error.request) {
               //console.log(error.request);
             } else {
               // Something happened in setting up the request and triggered an Error
-              console.log('Error', error.message);
+              //console.log('Error', error.message);
+              console.log(`Request Setup Error`);
             }
           }
         }
