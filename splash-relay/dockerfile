@@ -19,7 +19,9 @@ RUN ls -la
 COPY --chown=node:node splash-relay/package*.json .
 
 RUN npm install
-RUN npm install -g @serialport/terminal --unsafe-perm
+#RUN npm install -g @serialport/terminal --unsafe-perm
+RUN npm -g config set user root
+RUN npm -g install @serialport/terminal
 
 COPY --chown=node:node splash-relay/ .
 
