@@ -33,6 +33,6 @@ EXPOSE 8080
 
 #CMD ["lsusb","-t"]
 
-CMD ["ls", " -lha", "/dev/tty*"]
+CMD ["ls -lha /dev/tty*"]
 
 # how to config server address, listner path, generator path and serial device path
