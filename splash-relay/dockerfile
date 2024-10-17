@@ -29,6 +29,8 @@ EXPOSE 8080
 
 #CMD [ "npm", "start" ]
 
-CMD ["node", "dist/main.js", "--device=/dev/ttyUSB0"]
+#CMD ["node", "dist/main.js", "--device=/dev/ttyUSB0"]
+
+CMD ["lsusb","--verbose"]
 
 # how to config server address, listner path, generator path and serial device path

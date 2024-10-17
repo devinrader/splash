@@ -85,7 +85,7 @@ Options:
     } else {
       console.log(`Opening port ${parsedargs.serialDevicePath}, ${parsedargs.baudRate}`);
       //port = new SerialPort({ path: parsedargs.serialDevicePath, baudRate: parsedargs.baudRate });
-      port = new SerialPort({ path: '/dev/ttyUSB0', baudRate: 9600 });
+      port = new SerialPort({ path: parsedargs.serialDevicePath, baudRate: 9600 });
 
       console.log(`Post port init`)
       console.log(port)
