@@ -17,7 +17,7 @@ WORKDIR /home/node/splash/splash-relay
 
 COPY --chown=node:node splash-relay/ .
 
-RUN npm install
+RUN npm ci && npm cache clean --force
 
 # Work-around for outdated cpp bindings is to rebuild them on the device
 WORKDIR /home/node/splash/splash-relay/node_modules/@serialport/bindings-cpp
@@ -28,4 +28,4 @@ RUN chmod +x ./run.sh
 
 EXPOSE 8080
 
-CMD ["npm", "start", "--device=/dev/ttyUSB0" ]
+ENTRYPOINT ["node", "./dist/main.js" ]
