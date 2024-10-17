@@ -5,6 +5,7 @@ FROM node:22-alpine
 
 # usermod doesn't exist in Alpine
 #RUN usermod -aG dialout node
+RUN addgroup node dialout
 
 USER node
 
