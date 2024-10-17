@@ -83,8 +83,9 @@ Options:
     if (port) {
       console.log(`Using existing stream ${port.path}`);
     } else {
-      console.log(`Opening port ${parsedargs.serialDevicePath}`);
-      port = new SerialPort({ path: parsedargs.serialDevicePath, baudRate: parsedargs.baudRate });
+      console.log(`Opening port ${parsedargs.serialDevicePath}, ${parsedargs.baudRate}`);
+      //port = new SerialPort({ path: parsedargs.serialDevicePath, baudRate: parsedargs.baudRate });
+      port = new SerialPort({ path: '/dev/ttyUSB0', baudRate: 9600 });
     }
 
 // Open errors will be emitted as an error event
