@@ -2,15 +2,6 @@ import minimist, { ParsedArgs } from 'minimist';
 import EventSource from 'eventsource';
 import { SerialPort } from 'serialport';
 
-// import SegfaultHandler from 'segfault-handler';
-
-// SegfaultHandler.registerHandler('crash.log', (signal: any, address: any, stack: any) => {
-//   console.error('Segmentation fault occurred!');
-//   console.error('Signal:', signal);
-//   console.error('Address:', address);
-//   console.error('Stack trace:\n', stack);
-// });
-
 //import { SerialPortStream } from '@serialport/stream'
 import axios, { AxiosError } from 'axios';
 
@@ -127,7 +118,8 @@ Options:
           if (response.status == 200) {
             this._buffer = Buffer.alloc(0); //if the response is OK, then clear the buffer
           }
-        } catch (error: unknown | AxiosError) {
+        } catch (err) {
+          const error = err as Error | AxiosError;
           if (axios.isAxiosError(error)) {
             if (error.response) {
               /*
