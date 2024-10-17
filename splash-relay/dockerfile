@@ -1,5 +1,6 @@
 FROM node:20-alpine
 
+RUN apk add --no-cache make gcc g++ python linux-headers udev
 RUN apk add eudev udev-init-scripts
 
 #ENV SERVER_ADDRESS=${SERVER_ADDRESS}
@@ -18,9 +19,12 @@ RUN ls -la
 
 COPY --chown=node:node splash-relay/package*.json .
 
-#RUN npm install
-RUN npm install --build-from-source=serialport
+RUN npm install
 RUN npm install @serialport/terminal
+
+WORKDIR /home/node/splash/splash-relay/node_modules/@serialport/bindings-cpp
+RUN npm run rebuild
+WORKDIR /home/node/splash/splash-relay
 
 COPY --chown=node:node splash-relay/ .
 
