@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import bodyParser from 'body-parser';
-import PentairCommandFactory from './PentairMessageFactory';
+//import PentairCommandFactory from './PentairMessageFactory';
 import PentairMessageFactory from './PentairMessageFactory';
 
 
