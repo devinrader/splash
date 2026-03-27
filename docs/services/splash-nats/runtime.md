@@ -9,6 +9,7 @@
 It should:
 
 - start under Docker Compose
+- be deployed from a versioned artifact or image rather than a host-local ad hoc build
 - bind to the LAN so `splash-zero` can connect
 - provide both Core NATS and JetStream in the same service instance for v1
 

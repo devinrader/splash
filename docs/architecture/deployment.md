@@ -51,14 +51,14 @@ flowchart TB
 ### `splash-core`
 
 - Raspberry Pi 4/5, arm64
-- Docker Compose deployment
+- Docker Compose runtime using package-backed service images
 - mDNS hostname: `splash-core.local`
 - Exposes NATS across the LAN
 
 ### `splash-zero`
 
 - Raspberry Pi Zero 2W, arm32/armv7
-- Native Go binary managed by `systemd`
+- Native service installed from an OS package and managed by `systemd`
 - mDNS hostname: `splash-zero.local`
 - Connects to NATS at `nats://splash-core.local:4222`
 
@@ -67,6 +67,7 @@ flowchart TB
 ### Core host Compose responsibilities
 
 - `splash-core/docker-compose.yml` runs all services except `splash-serial`
+- Compose services should consume prebuilt, versioned package-backed images rather than building directly from unchecked source on the host
 - NATS binds to `0.0.0.0:4222` for LAN clients
 - API binds to `0.0.0.0:8080`
 - Frontend binds to `0.0.0.0:3000`
@@ -76,8 +77,58 @@ flowchart TB
 
 - `splash-zero` uses a `systemd` unit instead of Docker
 - Runtime configuration comes from `/etc/splash/splash-serial.env`
-- The serial binary is cross-compiled and copied to the host
+- `splash-serial` should be installed from an OS package rather than a manually copied binary
 - `splash-serial` exposes a small local HTTP listener for health and Prometheus metrics
+- Repository deployment assets for this host live under `deploy/splash-zero/`, including the Debian-package build inputs for `splash-serial`
+
+## Artifact and distribution model
+
+Splash prefers package-based artifacts across both hosts.
+
+### Package-first rules
+
+- versioned packages are the preferred release artifact for services
+- host-native services such as `splash-serial` should prefer OS-native packages, with Debian packages as the expected v1 path on Raspberry Pi hosts
+- containerized services on `splash-core` should still originate from versioned packaged service builds wherever practical, with OCI images treated as the deployment wrapper rather than the only distributable artifact
+- deployment automation should install or assemble from published packages instead of compiling from source on production hosts
+- Gitea package publishing is the preferred internal distribution mechanism for release artifacts
+- package publication should happen on every merge to `main`
+- semver tags publish stable artifacts, while merges to `main` publish prerelease artifacts
+
+### Registry mapping
+
+- Debian registry: host-installed packages such as `splash-serial`
+- Container registry: runtime images for containerized services on `splash-core`
+- Package registry: intermediate application packages, such as Node package artifacts that are later assembled into container images
+
+### Naming and ownership
+
+- the initial package namespace is `devinrader`
+- published package names should match service names exactly where practical, such as `splash-serial`, `splash-api`, `splash-scheduler`, `splash-protocol`, and `splash-frontend`
+
+### Versioning and promotion
+
+- tagged releases use stable semver versions such as `0.1.0`
+- merge builds on `main` use semver-based prerelease versions
+- prerelease versions should include enough branch, date, or commit information to stay unique and sortable
+- deployment automation should default to stable versions unless explicitly configured to consume prerelease builds
+
+### Retention and rollback
+
+- retain the most recent 25 published versions per service and channel
+- rollback should be performed by redeploying or reinstalling a previously retained version from the registry
+
+### Package examples
+
+- `splash-serial`: Debian package installed on `splash-zero`, enabling consistent placement of the binary, `systemd` unit, and default config assets
+- `splash-api`, `splash-scheduler`, `splash-protocol`, `splash-frontend`: versioned service packages that can be embedded into container images used by Compose on `splash-core`
+- `splash-nats`: infrastructure image remains containerized, but release and deployment should still prefer versioned artifacts over host-local ad hoc builds
+
+### Configuration ownership
+
+- package-installed configuration files should be samples or defaults, not the authoritative environment-specific runtime config
+- Ansible should render the live environment-specific configuration on target hosts
+- local manual edits should not be the primary configuration management path
 
 ### Example environment variables
 
@@ -139,14 +190,23 @@ Caption: Remote access model for the future Cloudflare Tunnel deployment. The so
 
 Provisioning, deployment, backup, and disaster recovery are Ansible-driven.
 
+Deployment expectations:
+
+- Ansible installs published artifacts from the appropriate Gitea registry
+- `splash-zero` installs Debian packages from the Gitea Debian registry
+- `splash-core` deploys published OCI images assembled from versioned package-backed builds
+- registry publishing credentials should be provided through Gitea Actions secrets using dedicated automation credentials rather than personal interactive credentials
+
 ![Ansible deployment flow](../images/ansible-deployment-flow.png)
 
 Caption: Provisioning and deployment automation flow managed by Ansible across `splash-core` and `splash-zero`.
 
 ## Deployment notes
 
-- `splash-serial` is cross-compiled with `GOOS=linux GOARCH=arm GOARM=7`
+- `splash-serial` package builds still require `GOOS=linux GOARCH=arm GOARM=7`
 - the serial-service container is intentionally avoided on Pi Zero due to resource overhead
 - `splash-protocol` is expected to run on `splash-core`, where protocol plugins and Protocol Explorer support can be managed without hardware coupling
-- TypeScript services on `splash-core` may run in containers with the Node.js runtime; there is no requirement that every backend service compile to a single native binary
+- TypeScript services on `splash-core` may run in containers with the Node.js runtime, but should still be released through a package-first artifact flow
 - `splash-serial` health and Prometheus endpoints should be bound locally unless an explicit remote-scrape design is added later
+- `splash-serial` deployment artifacts should build a Debian package that installs the binary, `systemd` unit, and env-file defaults without manual file copy steps
+- the package-provided `/etc/splash/splash-serial.env` should be treated as a sample or default artifact, with Ansible responsible for rendering the live host-specific file

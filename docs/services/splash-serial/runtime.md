@@ -9,6 +9,7 @@
 It should:
 
 - start independently of Docker
+- be installed from an OS package rather than a manually copied binary
 - load runtime configuration from `/etc/splash/splash-serial.env`
 - connect to NATS on `splash-core`
 - own a single active serial port session in v1

@@ -6,8 +6,8 @@
 
 Splash is distributed across dedicated devices on the local network:
 
-- `splash-core` on a Raspberry Pi 4/5 runs the main containerized services
-- `splash-zero` on a Raspberry Pi Zero 2W runs the RS-485 serial service as a native Go binary
+- `splash-core` on a Raspberry Pi 4/5 runs the main services, usually as containers orchestrated by Docker Compose
+- `splash-zero` on a Raspberry Pi Zero 2W runs the RS-485 serial service as a `systemd`-managed native service
 - developer machines may run local app services against shared infrastructure on `splash-core`
 
 ```mermaid
@@ -77,6 +77,18 @@ TODO: The original document says the living architecture diagram also exists in 
 - Event backbone: NATS with JetStream
 - Metrics: Prometheus
 - Future predictive layer: Python in a later phase
+
+## Deployment artifact strategy
+
+Splash prefers package-based service artifacts wherever practical.
+
+Rules:
+
+- each deployable service should produce a versioned package artifact as its primary release unit
+- host-installed services should prefer OS-native packages over ad hoc binary copies
+- services that run in containers should still prefer a package-first build flow, with the container image acting as the runtime wrapper around a versioned packaged service build
+- deployment automation should install or assemble versioned packages rather than build services directly on target hosts
+- artifact publication should be compatible with Gitea-hosted package distribution
 
 ## Core architectural patterns
 

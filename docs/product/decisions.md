@@ -15,7 +15,9 @@
 - Use TypeScript/Node.js for `splash-api`, `splash-scheduler`, and `splash-protocol`.
 - Use Go for `splash-serial`.
 - Use a polyglot monorepo rather than requiring all backend services to share one language toolchain.
-- Run containerized services on `splash-core` but keep `splash-serial` as a native binary on `splash-zero`.
+- Prefer package-based artifacts for deployable services, even when the final runtime is containerized.
+- Run most application services on `splash-core` under Docker Compose, but treat the container image as a deployment wrapper around a versioned packaged service build.
+- Keep `splash-serial` as a native `systemd`-managed service on `splash-zero`, installed from an OS package rather than by copying an ad hoc binary.
 - `splash-serial` is a transport-edge service, not the owner of protocol decode and encode.
 - `splash-protocol` is the protocol boundary for all vendor-specific framing, checksum, decode, and encode behavior.
 - Use NATS as the backbone between services.
@@ -58,6 +60,13 @@
 ## Operational decisions
 
 - Ansible is the provisioning and disaster-recovery mechanism.
+- Gitea package publishing is the preferred internal distribution path for service artifacts.
+- Every merge to `main` publishes a new prerelease artifact for the affected service.
+- Semver tags publish stable release artifacts.
+- Package namespace should start under `devinrader`, with package names matching service names where practical.
+- Target hosts should consume published artifacts through Ansible rather than building locally.
+- Package-installed configuration is sample-only by default; Ansible renders the live environment-specific config.
+- Keep the most recent 25 published versions per service or channel to support rollback.
 - Secrets live in Ansible Vault, not in committed `.env` files.
 - Docker log rotation is required because Splash targets embedded hosts with limited storage.
 - Prometheus is included for metrics; Grafana is recommended but not required in the base v1 topology.

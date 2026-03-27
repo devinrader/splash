@@ -83,8 +83,10 @@
 - Run on Raspberry Pi hardware
 - Keep `splash-serial` lightweight enough for a Pi Zero 2W
 - Use Docker Compose on `splash-core`
-- Use a native Go binary with `systemd` on `splash-zero`
+- Use `systemd` on `splash-zero` for the installed `splash-serial` service, with package-managed deployment preferred over raw binary copy
 - Keep `splash-serial` observability lightweight through a minimal local HTTP health and metrics surface
+- Prefer package-based release artifacts for deployable services, including services that ultimately run inside containers
+- Publish prerelease artifacts on every merge to `main` and stable artifacts on semver tags
 
 ### Maintainability
 
@@ -116,7 +118,9 @@
 - USB-to-RS-485 adapter
 - Weather provider API key
 - Docker and Docker Compose on `splash-core`
+- Gitea package registry for internal artifact distribution
 - Ansible for provisioning and disaster recovery
+- Gitea Actions secrets for non-interactive package and image publishing
 
 ## Risks
 
