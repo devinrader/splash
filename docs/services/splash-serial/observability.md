@@ -46,6 +46,7 @@ Local health should reflect:
 - whether reconnect is in progress
 - whether writes are currently blocked or waiting on idle timing
 - whether required configuration is valid
+- whether the NATS dependency is currently connected
 
 ## Metrics expectations
 
@@ -98,6 +99,13 @@ NATS remains part of the platform event model through:
 - `serial.tx.raw`
 
 But direct service health and Prometheus scraping must not depend on NATS publication succeeding.
+
+If NATS is unavailable at startup or becomes unavailable later:
+
+- `GET /healthz` should remain reachable
+- `GET /metrics` should remain reachable
+- health should report a degraded dependency state for NATS rather than crashing the process
+- the service should continue retrying NATS in the background
 
 ## Observability dependencies
 

@@ -252,6 +252,64 @@ func TestHandleWriteRequestRejectsInvalidHex(t *testing.T) {
 	}
 }
 
+func TestSetNATSStateMarksHealthySerialSessionDegraded(t *testing.T) {
+	app := &App{
+		logger:        log.New(io.Discard, "", 0),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222"),
+		serialManager: serial.NewManager("/dev/ttyUSB0", time.Second, serial.NewUnsupportedFactory()),
+		healthServer: httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{
+			Status:          httpapi.StatusOK,
+			StreamID:        "stream-1",
+			SerialDevice:    "/dev/ttyUSB0",
+			ConnectionState: string(serial.StateConnected),
+			NATS:            httpapi.DependencyUnknown,
+			Configuration:   httpapi.ConfigurationValid,
+		}),
+		serialStatus: httpapi.StatusOK,
+		natsState:    httpapi.DependencyUnknown,
+	}
+
+	app.setNATSState(httpapi.DependencyError)
+
+	health := app.healthServer.Health()
+	if health.Status != httpapi.StatusDegraded {
+		t.Fatalf("expected degraded health, got %q", health.Status)
+	}
+
+	if health.NATS != httpapi.DependencyError {
+		t.Fatalf("expected NATS error state, got %q", health.NATS)
+	}
+}
+
+func TestSetNATSStateMarksHealthySerialSessionOK(t *testing.T) {
+	app := &App{
+		logger:        log.New(io.Discard, "", 0),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222"),
+		serialManager: serial.NewManager("/dev/ttyUSB0", time.Second, serial.NewUnsupportedFactory()),
+		healthServer: httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{
+			Status:          httpapi.StatusDegraded,
+			StreamID:        "stream-1",
+			SerialDevice:    "/dev/ttyUSB0",
+			ConnectionState: string(serial.StateConnected),
+			NATS:            httpapi.DependencyUnknown,
+			Configuration:   httpapi.ConfigurationValid,
+		}),
+		serialStatus: httpapi.StatusOK,
+		natsState:    httpapi.DependencyUnknown,
+	}
+
+	app.setNATSState(httpapi.DependencyOK)
+
+	health := app.healthServer.Health()
+	if health.Status != httpapi.StatusOK {
+		t.Fatalf("expected ok health, got %q", health.Status)
+	}
+
+	if health.NATS != httpapi.DependencyOK {
+		t.Fatalf("expected NATS ok state, got %q", health.NATS)
+	}
+}
+
 type appFactory struct {
 	open func(device string) (serial.Port, error)
 }

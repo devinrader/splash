@@ -1,12 +1,13 @@
 package app
 
 import (
-	"encoding/hex"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"sync"
 	"time"
 
 	"gitea.rader.haus/devinrader/splash/services/splash-serial/internal/config"
@@ -22,6 +23,9 @@ type App struct {
 	serialManager *serial.Manager
 	healthServer  *httpapi.Server
 	after         func(time.Duration) <-chan time.Time
+	healthMu      sync.RWMutex
+	serialStatus  httpapi.Status
+	natsState     httpapi.DependencyState
 }
 
 func New() (*App, error) {
@@ -56,6 +60,8 @@ func New() (*App, error) {
 		serialManager: serialManager,
 		healthServer:  server,
 		after:         time.After,
+		serialStatus:  httpapi.StatusDegraded,
+		natsState:     httpapi.DependencyUnknown,
 	}, nil
 }
 
@@ -78,6 +84,7 @@ func (a *App) Run(ctx context.Context) error {
 	go func() {
 		errCh <- a.runWriteLoop(ctx)
 	}()
+	go a.runNATSLoop(ctx)
 
 	select {
 	case <-ctx.Done():
@@ -96,6 +103,26 @@ func (a *App) runWriteLoop(ctx context.Context) error {
 	return a.natsClient.SubscribeSerialWriteRequests(ctx, func(request nats.SerialWriteRequest) error {
 		return a.handleWriteRequest(request)
 	})
+}
+
+func (a *App) runNATSLoop(ctx context.Context) {
+	for {
+		if err := a.natsClient.Connect(); err == nil {
+			a.setNATSState(httpapi.DependencyOK)
+			<-ctx.Done()
+			a.natsClient.Close()
+			return
+		} else {
+			a.logger.Printf("nats connect failed for %s: %v", a.natsClient.URL(), err)
+			a.setNATSState(httpapi.DependencyError)
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-a.after(a.serialManager.ReconnectInterval()):
+		}
+	}
 }
 
 func (a *App) runSessionLoop(ctx context.Context) error {
@@ -120,7 +147,7 @@ func (a *App) runSessionLoop(ctx context.Context) error {
 		}
 
 		a.logger.Printf("serial session connected: stream_id=%s device=%s", session.StreamID, session.Device)
-		a.setHealth(httpapi.StatusDegraded, session.StreamID)
+		a.setHealth(httpapi.StatusOK, session.StreamID)
 		if err := a.publishStatus(session.StreamID, serial.StateConnected, "adapter connected"); err != nil {
 			return fmt.Errorf("publish connected status: %w", err)
 		}
@@ -190,14 +217,31 @@ func (a *App) readLoop(ctx context.Context, session *serial.Session) error {
 }
 
 func (a *App) setHealth(status httpapi.Status, streamID string) {
+	a.healthMu.Lock()
+	a.serialStatus = status
+	natsState := a.natsState
+	a.healthMu.Unlock()
+
 	a.healthServer.UpdateHealth(httpapi.HealthState{
-		Status:          status,
+		Status:          a.overallStatus(status, natsState),
 		StreamID:        streamID,
 		SerialDevice:    a.serialManager.Device(),
 		ConnectionState: string(a.serialManager.State()),
-		NATS:            httpapi.DependencyUnknown,
+		NATS:            natsState,
 		Configuration:   httpapi.ConfigurationValid,
 	})
+}
+
+func (a *App) setNATSState(state httpapi.DependencyState) {
+	a.healthMu.Lock()
+	a.natsState = state
+	serialStatus := a.serialStatus
+	a.healthMu.Unlock()
+
+	current := a.healthServer.Health()
+	current.Status = a.overallStatus(serialStatus, state)
+	current.NATS = state
+	a.healthServer.UpdateHealth(current)
 }
 
 func (a *App) handleWriteRequest(request nats.SerialWriteRequest) error {
@@ -248,4 +292,16 @@ func (a *App) publishStatus(streamID string, state serial.ConnectionState, detai
 
 func (a *App) chunkID() string {
 	return fmt.Sprintf("chunk-%d", time.Now().UnixNano())
+}
+
+func (a *App) overallStatus(serialStatus httpapi.Status, natsState httpapi.DependencyState) httpapi.Status {
+	if serialStatus == httpapi.StatusError {
+		return httpapi.StatusError
+	}
+
+	if serialStatus == httpapi.StatusOK && natsState == httpapi.DependencyOK {
+		return httpapi.StatusOK
+	}
+
+	return httpapi.StatusDegraded
 }

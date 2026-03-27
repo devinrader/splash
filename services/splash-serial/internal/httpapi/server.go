@@ -25,6 +25,7 @@ type DependencyState string
 
 const (
 	DependencyOK      DependencyState = "ok"
+	DependencyError   DependencyState = "error"
 	DependencyUnknown DependencyState = "unknown"
 )
 
@@ -44,8 +45,8 @@ type HealthState struct {
 }
 
 type Server struct {
-	addr string
-	mu   sync.RWMutex
+	addr   string
+	mu     sync.RWMutex
 	health HealthState
 }
 

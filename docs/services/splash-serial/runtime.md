@@ -22,6 +22,18 @@ The runtime model assumes:
 - `systemd` handles restart behavior
 - Prometheus or local operators may access the local HTTP health and metrics listener
 
+If NATS is unavailable at startup:
+
+- `splash-serial` should still start
+- local health and metrics should remain available
+- health should report a degraded NATS dependency state
+- NATS connection attempts should continue in the background until a connection is established
+- serial-port lifecycle may continue independently of NATS availability
+
+ASSUMPTION: in v1, background NATS reconnect attempts may reuse the existing
+`SERIAL_RECONNECT_INTERVAL_MS` timing until a dedicated NATS reconnect setting
+is added to the design
+
 ## Session model
 
 A port session is the active runtime binding between `splash-serial` and the configured serial adapter.
