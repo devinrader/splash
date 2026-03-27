@@ -3,16 +3,36 @@ run-name: splash-serial CI
 
 on:
   push:
+    branches:
+      - main
+    tags:
+      - "v*"
     paths:
       - "services/splash-serial/**"
       - "docs/services/splash-serial/**"
+      - "deploy/splash-zero/**"
+      - "docs/architecture/deployment.md"
+      - "docs/product/decisions.md"
+      - "docs/product/requirements.md"
       - ".gitea/workflows/splash-serial.yaml"
   pull_request:
     paths:
       - "services/splash-serial/**"
       - "docs/services/splash-serial/**"
+      - "deploy/splash-zero/**"
+      - "docs/architecture/deployment.md"
+      - "docs/product/decisions.md"
+      - "docs/product/requirements.md"
       - ".gitea/workflows/splash-serial.yaml"
   workflow_dispatch:
+
+env:
+  GO_VERSION: "1.26.1"
+  PACKAGE_OWNER: devinrader
+  PACKAGE_NAME: splash-serial
+  PACKAGE_ARCH: armhf
+  PACKAGE_DISTRIBUTION: bookworm
+  PACKAGE_COMPONENT: main
 
 jobs:
   unit:
@@ -26,7 +46,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.1"
+          go-version: ${{ env.GO_VERSION }}
           cache: false
 
       - name: Run unit test suite
@@ -48,7 +68,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.1"
+          go-version: ${{ env.GO_VERSION }}
           cache: false
 
       - name: Detect integration tests
@@ -79,3 +99,80 @@ jobs:
           echo "No *_integration_test.go files found for services/splash-serial."
           echo "Integration CI is wired, but independent integration coverage is not yet measurable."
           echo "Add PTY-backed integration tests to satisfy the serial-service design and coverage policy."
+
+  package:
+    name: Build And Publish Debian Package
+    runs-on: ubuntu-latest
+    needs:
+      - unit
+      - integration
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Resolve package version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            version="${GITHUB_REF#refs/tags/v}"
+            channel="stable"
+          else
+            timestamp="$(date -u +%Y%m%d%H%M%S)"
+            short_sha="${GITHUB_SHA::7}"
+            version="0.0.0~main.${timestamp}+${short_sha}"
+            channel="prerelease"
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Debian package
+        shell: bash
+        run: |
+          ./deploy/splash-zero/build-splash-serial-deb.sh "${{ steps.version.outputs.version }}"
+
+      - name: Inspect Debian package
+        shell: bash
+        run: |
+          package_path="deploy/splash-zero/dist/${PACKAGE_NAME}_${{ steps.version.outputs.version }}_${PACKAGE_ARCH}.deb"
+          dpkg-deb --info "${package_path}"
+          dpkg-deb --contents "${package_path}"
+
+      - name: Publish Debian package to Gitea
+        env:
+          GITEA_PACKAGE_USERNAME: ${{ secrets.GITEA_PACKAGE_USERNAME }}
+          GITEA_PACKAGE_TOKEN: ${{ secrets.GITEA_PACKAGE_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "${GITEA_PACKAGE_USERNAME}" || -z "${GITEA_PACKAGE_TOKEN}" ]]; then
+            echo "Missing GITEA_PACKAGE_USERNAME or GITEA_PACKAGE_TOKEN secret."
+            exit 1
+          fi
+
+          package_path="deploy/splash-zero/dist/${PACKAGE_NAME}_${{ steps.version.outputs.version }}_${PACKAGE_ARCH}.deb"
+          upload_url="${{ github.server_url }}/api/packages/${PACKAGE_OWNER}/debian/pool/${PACKAGE_DISTRIBUTION}/${PACKAGE_COMPONENT}/upload"
+
+          curl --fail --silent --show-error \
+            --user "${GITEA_PACKAGE_USERNAME}:${GITEA_PACKAGE_TOKEN}" \
+            --upload-file "${package_path}" \
+            "${upload_url}"
+
+      - name: Report published package
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.version }}
+          PACKAGE_CHANNEL: ${{ steps.version.outputs.channel }}
+        shell: bash
+        run: |
+          package_path="deploy/splash-zero/dist/${PACKAGE_NAME}_${PACKAGE_VERSION}_${PACKAGE_ARCH}.deb"
+          echo "Published ${PACKAGE_NAME} ${PACKAGE_VERSION} (${PACKAGE_CHANNEL}) from ${package_path}"
