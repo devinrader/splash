@@ -135,6 +135,12 @@ For any meaningful change:
 
 ---
 
+## Delivery Governance
+
+All code changes must map to an applicable Gitea Issue. All commits must reference the single most relevant issue. Relevant unit and integration tests must be run before commit. Unit and integration coverage must be monitored independently and warned on if either falls below 80%. No commit may be made with less than 100% passing required tests unless Devin gives explicit permission for that specific commit.
+
+---
+
 ## Ambiguity Handling
 
 When encountering ambiguity:
