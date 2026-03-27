@@ -34,9 +34,9 @@ dedicated runner is provisioned.
 
 This is an explicit temporary override of the preferred runner design.
 
-Track restoration of the dedicated runner path in:
+Track restoration of the dedicated runner path as a `v.next` enhancement in:
 
-- Gitea issue `#28` `Task: Provision dedicated splash-serial-ci runner`
+- Gitea issue `#28` `Feature Enhancement: Restore dedicated splash-serial-ci runner (v.next)`
 
 ## Required runner-image behavior
 
@@ -89,13 +89,13 @@ runs-on:
 
 or a more general Ubuntu label if the workflow intentionally separates PTY-dependent and PTY-independent jobs.
 
-Temporary current state while `#28` is open:
+Temporary current state while `#28` remains deferred:
 
 ```yaml
 runs-on: ubuntu-latest
 ```
 
-This fallback is acceptable only until the dedicated runner is available again.
+This fallback is acceptable for the current delivery path while `#28` remains deferred.
 
 ### Avoid overriding the container image unintentionally
 
