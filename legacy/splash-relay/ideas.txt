@@ -1,0 +1,59 @@
+consumer/receiver/injest/inflow
+ingress/egress
+
+Vendor Commands
+- base command - contains the vendor specific start frame delimiter
+    - Pentair
+        - Pentair specific equipment commands
+    - Jandy
+    - Hayward
+
+- Server loads commands at startup
+
+
+
+
+
+
+https://splash.diy
+
+-- Change Relay config to use environemtn vars
+    - USB tty (ttyUSB0 or ttyACM0)
+    - URL to splash server
+
+ - node-usb - https://github.com/node-usb/node-usb
+
+ -  Add check for server url parameter
+    - env vars
+    - command line
+
+- check to see if there is a "dialout" group - add node user so rthey can access TTY
+
+ data buffer
+- data event (chunk)
+    - if command buffer exists (meaning already found a preamble)
+        - add chunk to command buffer
+        - if command contains more than one preamble
+            - split command on second preamble
+            - create command from completed command buffer
+            - create new command buffer from second preamble
+
+    -otherwise
+        - if chunk is more than 4 values
+            - if, using indexOf, chunk contains ff00ffa5
+                - split chunk on indexOf
+                - create command buffer and add split chunk
+            
+
+
+
+
+
+
+            - if the buffer length is more than 4, check the last four values of the command buffer for the next delimiter pattern
+            - if found
+                    - take the content of the command buffer (-minus the last four values) and convert into a command
+                    - clear the command buffer (minus the last four values)
+                - otherwise, wait for next event
+            - otherwise, wait for next event
+    - otherwise, wait for next event
