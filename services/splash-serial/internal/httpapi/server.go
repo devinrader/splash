@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -43,7 +44,8 @@ type HealthState struct {
 }
 
 type Server struct {
-	addr   string
+	addr string
+	mu   sync.RWMutex
 	health HealthState
 }
 
@@ -52,6 +54,18 @@ func NewServer(addr string, health HealthState) *Server {
 		addr:   addr,
 		health: health,
 	}
+}
+
+func (s *Server) UpdateHealth(health HealthState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.health = health
+}
+
+func (s *Server) Health() HealthState {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.health
 }
 
 func (s *Server) Run(ctx context.Context) error {
@@ -92,15 +106,17 @@ func (s *Server) handler() http.Handler {
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+	health := s.Health()
 	statusCode := http.StatusOK
-	if s.health.Status == StatusError {
+	if health.Status == StatusError {
 		statusCode = http.StatusServiceUnavailable
 	}
 
-	writeJSON(w, statusCode, s.health)
+	writeJSON(w, statusCode, health)
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
+	health := s.Health()
 	body := fmt.Sprintf(
 		"# HELP splash_serial_connection_state Current connection state gauge.\n"+
 			"# TYPE splash_serial_connection_state gauge\n"+
@@ -120,7 +136,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 			"# HELP splash_serial_stream_age_seconds Current active stream age.\n"+
 			"# TYPE splash_serial_stream_age_seconds gauge\n"+
 			"splash_serial_stream_age_seconds 0\n",
-		s.health.ConnectionState,
+		health.ConnectionState,
 		"rejected",
 	)
 

@@ -97,6 +97,31 @@ func TestHandleMetricsIncludesExpectedMetricNames(t *testing.T) {
 	}
 }
 
+func TestUpdateHealthReplacesSnapshot(t *testing.T) {
+	server := NewServer("127.0.0.1:9108", HealthState{
+		Status:          StatusDegraded,
+		ConnectionState: "connecting",
+	})
+
+	server.UpdateHealth(HealthState{
+		Status:          StatusOK,
+		StreamID:        "stream-2",
+		SerialDevice:    "/dev/ttyUSB1",
+		ConnectionState: "connected",
+		NATS:            DependencyOK,
+		Configuration:   ConfigurationValid,
+	})
+
+	health := server.Health()
+	if health.Status != StatusOK {
+		t.Fatalf("expected status ok, got %q", health.Status)
+	}
+
+	if health.StreamID != "stream-2" {
+		t.Fatalf("expected updated stream id, got %q", health.StreamID)
+	}
+}
+
 func TestRunReturnsListenError(t *testing.T) {
 	t.Cleanup(func() {
 		listen = net.Listen
