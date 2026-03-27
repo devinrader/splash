@@ -105,6 +105,107 @@ func TestManagerDisconnectWithoutSessionIsSafe(t *testing.T) {
 	}
 }
 
+func TestManagerReadWithoutSessionFails(t *testing.T) {
+	manager := NewManager("/dev/ttyUSB0", 10*time.Second, nil)
+
+	if _, err := manager.Read(make([]byte, 8)); err == nil {
+		t.Fatal("expected read error without session")
+	}
+}
+
+func TestManagerReadUsesActiveSessionPort(t *testing.T) {
+	manager := NewManager("/dev/ttyUSB0", 10*time.Second, fakeFactory{
+		open: func(string) (Port, error) {
+			return &scriptedPort{
+				device:  "/dev/ttyUSB0",
+				readSeq: []readResult{{data: []byte{0x01, 0x02}}},
+			}, nil
+		},
+	})
+	manager.newStreamID = func() string { return "stream-1" }
+
+	if _, err := manager.Connect(); err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+
+	buf := make([]byte, 4)
+	n, err := manager.Read(buf)
+	if err != nil {
+		t.Fatalf("Read returned error: %v", err)
+	}
+
+	if n != 2 {
+		t.Fatalf("expected 2 bytes read, got %d", n)
+	}
+}
+
+func TestManagerWriteRejectsStaleStream(t *testing.T) {
+	manager := NewManager("/dev/ttyUSB0", 10*time.Second, nil)
+
+	outcome := manager.Write("stream-1", []byte{0x01}, time.Second, 0)
+	if outcome.WriteResult != WriteResultStaleStream {
+		t.Fatalf("expected stale stream, got %q", outcome.WriteResult)
+	}
+}
+
+func TestManagerWriteUsesActiveSession(t *testing.T) {
+	port := &scriptedPort{
+		device: "/dev/ttyUSB0",
+	}
+	manager := NewManager("/dev/ttyUSB0", 10*time.Second, fakeFactory{
+		open: func(string) (Port, error) {
+			return port, nil
+		},
+	})
+	manager.newStreamID = func() string { return "stream-1" }
+
+	session, err := manager.Connect()
+	if err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+
+	outcome := manager.Write(session.StreamID, []byte{0x01, 0x02}, time.Second, 0)
+	if outcome.WriteResult != WriteResultOK {
+		t.Fatalf("expected ok, got %q", outcome.WriteResult)
+	}
+
+	if port.lastWrite != "0102" {
+		t.Fatalf("unexpected write payload: %q", port.lastWrite)
+	}
+}
+
+func TestManagerWriteTimeout(t *testing.T) {
+	blocked := make(chan struct{})
+	manager := NewManager("/dev/ttyUSB0", 10*time.Second, fakeFactory{
+		open: func(string) (Port, error) {
+			return &scriptedPort{
+				device: "/dev/ttyUSB0",
+				writeFn: func([]byte) (int, error) {
+					<-blocked
+					return 0, nil
+				},
+			}, nil
+		},
+	})
+	manager.newStreamID = func() string { return "stream-1" }
+	manager.after = func(time.Duration) <-chan time.Time {
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch
+	}
+
+	session, err := manager.Connect()
+	if err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+
+	outcome := manager.Write(session.StreamID, []byte{0x01}, time.Millisecond, 0)
+	close(blocked)
+	if outcome.WriteResult != WriteResultTimeout {
+		t.Fatalf("expected timeout, got %q", outcome.WriteResult)
+	}
+}
+
 func TestManagerGettersAndCurrentSession(t *testing.T) {
 	manager := NewManager("/dev/ttyUSB0", 15*time.Second, fakeFactory{
 		open: func(string) (Port, error) {
@@ -217,10 +318,10 @@ func (f fakeFactory) Open(device string) (Port, error) {
 }
 
 type scriptedPort struct {
-	device    string
-	readSeq   []readResult
+	device  string
+	readSeq []readResult
 	lastWrite string
-	writeFn   func([]byte) (int, error)
+	writeFn func([]byte) (int, error)
 }
 
 type readResult struct {

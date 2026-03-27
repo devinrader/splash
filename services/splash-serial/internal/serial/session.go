@@ -1,26 +1,29 @@
 package serial
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 )
 
 type Session struct {
-	StreamID     string
-	Device       string
-	State        ConnectionState
-	ConnectedAt  time.Time
+	StreamID    string
+	Device      string
+	State       ConnectionState
+	ConnectedAt time.Time
 	LastActivity time.Time
-	port         Port
+	port        Port
 }
 
 type Manager struct {
 	mu                sync.RWMutex
+	writeMu           sync.Mutex
 	device            string
 	reconnectInterval time.Duration
 	factory           Factory
 	now               func() time.Time
+	after             func(time.Duration) <-chan time.Time
 	newStreamID       func() string
 	state             ConnectionState
 	session           *Session
@@ -36,6 +39,7 @@ func NewManager(device string, reconnectInterval time.Duration, factory Factory)
 		reconnectInterval: reconnectInterval,
 		factory:           factory,
 		now:               time.Now,
+		after:             time.After,
 		newStreamID: func() string {
 			return fmt.Sprintf("stream-%d", time.Now().UnixNano())
 		},
@@ -121,4 +125,131 @@ func (m *Manager) Reconnect() (*Session, error) {
 	}
 
 	return m.Connect()
+}
+
+func (m *Manager) Read(data []byte) (int, error) {
+	m.mu.RLock()
+	session := m.session
+	m.mu.RUnlock()
+
+	if session == nil {
+		return 0, errors.New("no active serial session")
+	}
+
+	n, err := session.port.Read(data)
+	if n > 0 {
+		m.mu.Lock()
+		if m.session != nil {
+			m.session.LastActivity = m.now()
+		}
+		m.mu.Unlock()
+	}
+
+	return n, err
+}
+
+type WriteResult string
+
+const (
+	WriteResultOK          WriteResult = "ok"
+	WriteResultStaleStream WriteResult = "stale_stream"
+	WriteResultTimeout     WriteResult = "timeout"
+	WriteResultPortError   WriteResult = "port_error"
+	WriteResultRejected    WriteResult = "rejected"
+)
+
+type WriteOutcome struct {
+	StreamID    string
+	ByteCount   int
+	WriteResult WriteResult
+	ErrorCode   *string
+	Detail      *string
+}
+
+func (m *Manager) Write(streamID string, data []byte, timeout time.Duration, requiresIdle time.Duration) WriteOutcome {
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+
+	m.mu.RLock()
+	session := m.session
+	m.mu.RUnlock()
+
+	if session == nil || session.StreamID != streamID {
+		code := "stale_stream"
+		detail := "write request targeted an inactive stream"
+		return WriteOutcome{
+			StreamID:    streamID,
+			ByteCount:   len(data),
+			WriteResult: WriteResultStaleStream,
+			ErrorCode:   &code,
+			Detail:      &detail,
+		}
+	}
+
+	if wait := m.idleWait(session, requiresIdle); wait > 0 {
+		select {
+		case <-m.after(wait):
+		}
+	}
+
+	type result struct {
+		n   int
+		err error
+	}
+
+	resultCh := make(chan result, 1)
+	go func() {
+		n, err := session.port.Write(data)
+		resultCh <- result{n: n, err: err}
+	}()
+
+	select {
+	case res := <-resultCh:
+		if res.err != nil {
+			code := "port_error"
+			detail := res.err.Error()
+			return WriteOutcome{
+				StreamID:    streamID,
+				ByteCount:   len(data),
+				WriteResult: WriteResultPortError,
+				ErrorCode:   &code,
+				Detail:      &detail,
+			}
+		}
+
+		m.mu.Lock()
+		if m.session != nil && m.session.StreamID == streamID {
+			m.session.LastActivity = m.now()
+		}
+		m.mu.Unlock()
+
+		return WriteOutcome{
+			StreamID:    streamID,
+			ByteCount:   res.n,
+			WriteResult: WriteResultOK,
+		}
+	case <-m.after(timeout):
+		code := "timeout"
+		detail := "write attempt exceeded timeout"
+		return WriteOutcome{
+			StreamID:    streamID,
+			ByteCount:   len(data),
+			WriteResult: WriteResultTimeout,
+			ErrorCode:   &code,
+			Detail:      &detail,
+		}
+	}
+}
+
+func (m *Manager) idleWait(session *Session, requiresIdle time.Duration) time.Duration {
+	if requiresIdle <= 0 {
+		return 0
+	}
+
+	elapsed := m.now().Sub(session.LastActivity)
+	if elapsed >= requiresIdle {
+		return 0
+	}
+
+	return requiresIdle - elapsed
 }

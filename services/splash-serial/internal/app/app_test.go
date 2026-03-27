@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"gitea.rader.haus/devinrader/splash/services/splash-serial/internal/config"
 	"gitea.rader.haus/devinrader/splash/services/splash-serial/internal/httpapi"
 	"gitea.rader.haus/devinrader/splash/services/splash-serial/internal/nats"
 	"gitea.rader.haus/devinrader/splash/services/splash-serial/internal/serial"
@@ -115,6 +117,11 @@ func TestRunSessionLoopRetriesAndUpdatesHealth(t *testing.T) {
 			if finalHealth.ConnectionState != string(serial.StateDisconnected) {
 				t.Fatalf("expected disconnected health after cancel, got %q", finalHealth.ConnectionState)
 			}
+
+			published := app.natsClient.PublishedMessages()
+			if len(published) == 0 {
+				t.Fatal("expected published status messages")
+			}
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -125,12 +132,165 @@ func TestRunSessionLoopRetriesAndUpdatesHealth(t *testing.T) {
 	t.Fatal("session loop did not reach connected state")
 }
 
+func TestReadLoopPublishesNativeReadBoundary(t *testing.T) {
+	manager := serial.NewManager("/dev/ttyUSB0", 10*time.Millisecond, appFactory{
+		open: func(string) (serial.Port, error) {
+			return &scriptedAppPort{
+				device: "/dev/ttyUSB0",
+				reads: []appReadResult{
+					{data: []byte{0x01, 0x02, 0x03}},
+					{err: io.EOF},
+				},
+			}, nil
+		},
+	})
+
+	session, err := manager.Connect()
+	if err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+
+	app := &App{
+		logger:        log.New(io.Discard, "", 0),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222"),
+		serialManager: manager,
+		healthServer:  httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{}),
+	}
+
+	err = app.readLoop(context.Background(), session)
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("expected EOF from readLoop, got %v", err)
+	}
+
+	published := app.natsClient.PublishedMessages()
+	if len(published) != 1 {
+		t.Fatalf("expected 1 rx message, got %d", len(published))
+	}
+
+	if published[0].Subject != nats.SubjectSerialRXRaw {
+		t.Fatalf("unexpected subject: %q", published[0].Subject)
+	}
+
+	var payload nats.SerialRXRaw
+	if err := json.Unmarshal(published[0].Data, &payload); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+
+	if payload.BytesHex != "010203" {
+		t.Fatalf("expected native read boundary bytes, got %q", payload.BytesHex)
+	}
+}
+
+func TestHandleWriteRequestPublishesStaleStreamResult(t *testing.T) {
+	app := &App{
+		cfg: config.Config{
+			SerialWriteTimeout: time.Second,
+		},
+		logger:        log.New(io.Discard, "", 0),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222"),
+		serialManager: serial.NewManager("/dev/ttyUSB0", time.Second, nil),
+		healthServer:  httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{}),
+	}
+
+	err := app.handleWriteRequest(nats.SerialWriteRequest{
+		StreamID:  "stream-1",
+		CommandID: "command-1",
+		BytesHex:  "0102",
+		ByteCount: 2,
+	})
+	if err != nil {
+		t.Fatalf("handleWriteRequest returned error: %v", err)
+	}
+
+	published := app.natsClient.PublishedMessages()
+	if len(published) != 1 {
+		t.Fatalf("expected 1 tx message, got %d", len(published))
+	}
+
+	var payload nats.SerialTXRaw
+	if err := json.Unmarshal(published[0].Data, &payload); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+
+	if payload.WriteResult != string(serial.WriteResultStaleStream) {
+		t.Fatalf("expected stale_stream, got %q", payload.WriteResult)
+	}
+}
+
+func TestHandleWriteRequestRejectsInvalidHex(t *testing.T) {
+	app := &App{
+		cfg: config.Config{
+			SerialWriteTimeout: time.Second,
+		},
+		logger:        log.New(io.Discard, "", 0),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222"),
+		serialManager: serial.NewManager("/dev/ttyUSB0", time.Second, nil),
+		healthServer:  httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{}),
+	}
+
+	err := app.handleWriteRequest(nats.SerialWriteRequest{
+		StreamID:  "stream-1",
+		CommandID: "command-1",
+		BytesHex:  "not-hex",
+	})
+	if err != nil {
+		t.Fatalf("handleWriteRequest returned error: %v", err)
+	}
+
+	published := app.natsClient.PublishedMessages()
+	if len(published) != 1 {
+		t.Fatalf("expected 1 tx message, got %d", len(published))
+	}
+
+	var payload nats.SerialTXRaw
+	if err := json.Unmarshal(published[0].Data, &payload); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+
+	if payload.WriteResult != string(serial.WriteResultRejected) {
+		t.Fatalf("expected rejected, got %q", payload.WriteResult)
+	}
+}
+
 type appFactory struct {
 	open func(device string) (serial.Port, error)
 }
 
 func (f appFactory) Open(device string) (serial.Port, error) {
 	return f.open(device)
+}
+
+type scriptedAppPort struct {
+	device string
+	reads  []appReadResult
+}
+
+type appReadResult struct {
+	data []byte
+	err  error
+}
+
+func (p *scriptedAppPort) Device() string {
+	return p.device
+}
+
+func (p *scriptedAppPort) Read(buf []byte) (int, error) {
+	if len(p.reads) == 0 {
+		return 0, io.EOF
+	}
+
+	result := p.reads[0]
+	p.reads = p.reads[1:]
+	copy(buf, result.data)
+	return len(result.data), result.err
+}
+
+func (p *scriptedAppPort) Write(data []byte) (int, error) {
+	return len(data), nil
+}
+
+func (p *scriptedAppPort) Close() error {
+	return nil
 }
 
 type blockingAppPort struct {
