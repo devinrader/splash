@@ -22,6 +22,7 @@ lib-cov
 # Coverage directory used by tools like istanbul
 coverage
 *.lcov
+*.cover
 
 # nyc test coverage
 .nyc_output
@@ -134,4 +135,3 @@ dist
 .vscode/
 *.old
 splash-relay/ideas.txt
-
