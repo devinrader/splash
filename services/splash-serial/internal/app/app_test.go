@@ -118,6 +118,11 @@ func TestRunSessionLoopRetriesAndUpdatesHealth(t *testing.T) {
 				t.Fatalf("expected disconnected health after cancel, got %q", finalHealth.ConnectionState)
 			}
 
+			metrics := app.healthServer.Metrics()
+			if metrics.ReconnectTotal != 1 {
+				t.Fatalf("expected reconnect count 1, got %d", metrics.ReconnectTotal)
+			}
+
 			published := app.natsClient.PublishedMessages()
 			if len(published) == 0 {
 				t.Fatal("expected published status messages")
@@ -165,6 +170,10 @@ func TestReadLoopPublishesNativeReadBoundary(t *testing.T) {
 	published := app.natsClient.PublishedMessages()
 	if len(published) != 1 {
 		t.Fatalf("expected 1 rx message, got %d", len(published))
+	}
+
+	if app.healthServer.Metrics().BytesReadTotal != 3 {
+		t.Fatalf("expected bytes read metric 3, got %d", app.healthServer.Metrics().BytesReadTotal)
 	}
 
 	if published[0].Subject != nats.SubjectSerialRXRaw {
@@ -215,6 +224,10 @@ func TestHandleWriteRequestPublishesStaleStreamResult(t *testing.T) {
 	if payload.WriteResult != string(serial.WriteResultStaleStream) {
 		t.Fatalf("expected stale_stream, got %q", payload.WriteResult)
 	}
+
+	if app.healthServer.Metrics().WriteFailures[string(serial.WriteResultStaleStream)] != 1 {
+		t.Fatalf("expected stale_stream failure metric 1, got %d", app.healthServer.Metrics().WriteFailures[string(serial.WriteResultStaleStream)])
+	}
 }
 
 func TestHandleWriteRequestRejectsInvalidHex(t *testing.T) {
@@ -249,6 +262,10 @@ func TestHandleWriteRequestRejectsInvalidHex(t *testing.T) {
 
 	if payload.WriteResult != string(serial.WriteResultRejected) {
 		t.Fatalf("expected rejected, got %q", payload.WriteResult)
+	}
+
+	if app.healthServer.Metrics().WriteFailures[string(serial.WriteResultRejected)] != 1 {
+		t.Fatalf("expected rejected failure metric 1, got %d", app.healthServer.Metrics().WriteFailures[string(serial.WriteResultRejected)])
 	}
 }
 

@@ -27,6 +27,14 @@ func TestIntegrationServerServesHealthzAndMetrics(t *testing.T) {
 		NATS:            DependencyUnknown,
 		Configuration:   ConfigurationValid,
 	})
+	server.now = func() time.Time {
+		return time.Unix(300, 0)
+	}
+	server.RecordReconnect()
+	server.AddBytesRead(11)
+	server.ObserveWrite("ok", 4)
+	server.ObserveWrite("timeout", 2)
+	server.SetConnectedStream("connected", time.Unix(295, 0))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -68,7 +76,27 @@ func TestIntegrationServerServesHealthzAndMetrics(t *testing.T) {
 		t.Fatalf("read /metrics: %v", err)
 	}
 
-	if !strings.Contains(string(body), "splash_serial_connection_state") {
+	if !strings.Contains(string(body), "splash_serial_connection_state{state=\"connected\"} 1") {
+		t.Fatalf("expected connected state metric, got %q", string(body))
+	}
+
+	if !strings.Contains(string(body), "splash_serial_reconnect_total 1") {
+		t.Fatalf("expected reconnect metric, got %q", string(body))
+	}
+
+	if !strings.Contains(string(body), "splash_serial_bytes_read_total 11") {
+		t.Fatalf("expected bytes read metric, got %q", string(body))
+	}
+
+	if !strings.Contains(string(body), "splash_serial_bytes_written_total 4") {
+		t.Fatalf("expected bytes written metric, got %q", string(body))
+	}
+
+	if !strings.Contains(string(body), "splash_serial_write_failures_total{write_result=\"timeout\"} 1") {
+		t.Fatalf("expected timeout write failure metric, got %q", string(body))
+	}
+
+	if !strings.Contains(string(body), "splash_serial_stream_age_seconds 5.000000") {
 		t.Fatalf("expected metrics output, got %q", string(body))
 	}
 

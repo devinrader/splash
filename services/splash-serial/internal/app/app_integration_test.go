@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -145,6 +146,12 @@ func TestIntegrationAppPublishesPTYReadAndWriteTraffic(t *testing.T) {
 	}
 
 	assertHealthz(t, httpAddr, status.StreamID)
+	assertMetricsContains(t, httpAddr, []string{
+		"splash_serial_connection_state{state=\"connected\"} 1",
+		"splash_serial_bytes_read_total 3",
+		"splash_serial_bytes_written_total 2",
+		"splash_serial_write_failures_total{write_result=\"rejected\"} 0",
+	})
 
 	cancel()
 
@@ -271,6 +278,11 @@ func TestIntegrationAppRejectsInvalidHexWriteRequest(t *testing.T) {
 	if txPayload.ErrorCode == nil || *txPayload.ErrorCode != "invalid_bytes_hex" {
 		t.Fatalf("expected invalid_bytes_hex error code, got %+v", txPayload.ErrorCode)
 	}
+
+	assertMetricsContains(t, httpAddr, []string{
+		"splash_serial_write_failures_total{write_result=\"rejected\"} 1",
+		"splash_serial_bytes_written_total 0",
+	})
 
 	cancel()
 
@@ -501,6 +513,29 @@ func reserveLoopbackAddress(t *testing.T) string {
 	defer listener.Close()
 
 	return listener.Addr().String()
+}
+
+func assertMetricsContains(t *testing.T, addr string, required []string) {
+	t.Helper()
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get("http://" + addr + "/metrics")
+	if err != nil {
+		t.Fatalf("get /metrics: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read /metrics: %v", err)
+	}
+
+	metrics := string(body)
+	for _, want := range required {
+		if !strings.Contains(metrics, want) {
+			t.Fatalf("expected metrics to contain %q, body=%q", want, metrics)
+		}
+	}
 }
 
 func startTestNATSServer(t *testing.T) (*natsserver.Server, string) {

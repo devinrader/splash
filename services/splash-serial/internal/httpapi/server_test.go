@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHandleHealthzReturnsDegradedState(t *testing.T) {
@@ -70,6 +71,14 @@ func TestHandleMetricsIncludesExpectedMetricNames(t *testing.T) {
 		NATS:            DependencyOK,
 		Configuration:   ConfigurationValid,
 	})
+	server.now = func() time.Time {
+		return time.Unix(200, 0)
+	}
+	server.RecordReconnect()
+	server.AddBytesRead(7)
+	server.ObserveWrite("ok", 5)
+	server.ObserveWrite("rejected", 3)
+	server.SetConnectedStream("write_blocked", time.Unix(197, 0))
 
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	rec := httptest.NewRecorder()
@@ -82,12 +91,13 @@ func TestHandleMetricsIncludesExpectedMetricNames(t *testing.T) {
 
 	body := rec.Body.String()
 	required := []string{
-		"splash_serial_connection_state{state=\"write_blocked\"} 0",
-		"splash_serial_reconnect_total 0",
-		"splash_serial_bytes_read_total 0",
-		"splash_serial_bytes_written_total 0",
-		"splash_serial_write_failures_total{write_result=\"rejected\"} 0",
-		"splash_serial_stream_age_seconds 0",
+		"splash_serial_connection_state{state=\"write_blocked\"} 1",
+		"splash_serial_connection_state{state=\"connected\"} 0",
+		"splash_serial_reconnect_total 1",
+		"splash_serial_bytes_read_total 7",
+		"splash_serial_bytes_written_total 5",
+		"splash_serial_write_failures_total{write_result=\"rejected\"} 1",
+		"splash_serial_stream_age_seconds 3.000000",
 	}
 
 	for _, want := range required {
@@ -119,6 +129,25 @@ func TestUpdateHealthReplacesSnapshot(t *testing.T) {
 
 	if health.StreamID != "stream-2" {
 		t.Fatalf("expected updated stream id, got %q", health.StreamID)
+	}
+}
+
+func TestUpdateHealthClearsStreamAgeWhenStreamIsInactive(t *testing.T) {
+	server := NewServer("127.0.0.1:9108", HealthState{
+		Status:          StatusOK,
+		StreamID:        "stream-1",
+		ConnectionState: "connected",
+	})
+	server.SetConnectedStream("connected", time.Unix(100, 0))
+
+	server.UpdateHealth(HealthState{
+		Status:          StatusDegraded,
+		StreamID:        "",
+		ConnectionState: "disconnected",
+	})
+
+	if !server.Metrics().StreamConnectedAt.IsZero() {
+		t.Fatal("expected stream age source to clear when stream becomes inactive")
 	}
 }
 

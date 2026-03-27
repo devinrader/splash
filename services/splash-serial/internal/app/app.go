@@ -126,7 +126,14 @@ func (a *App) runNATSLoop(ctx context.Context) {
 }
 
 func (a *App) runSessionLoop(ctx context.Context) error {
+	firstAttempt := true
+
 	for {
+		if !firstAttempt {
+			a.healthServer.RecordReconnect()
+		}
+		firstAttempt = false
+
 		if err := a.publishStatus("", serial.StateConnecting, "attempting adapter connection"); err != nil {
 			return fmt.Errorf("publish connecting status: %w", err)
 		}
@@ -148,6 +155,7 @@ func (a *App) runSessionLoop(ctx context.Context) error {
 
 		a.logger.Printf("serial session connected: stream_id=%s device=%s", session.StreamID, session.Device)
 		a.setHealth(httpapi.StatusOK, session.StreamID)
+		a.healthServer.SetConnectedStream(string(serial.StateConnected), session.ConnectedAt)
 		if err := a.publishStatus(session.StreamID, serial.StateConnected, "adapter connected"); err != nil {
 			return fmt.Errorf("publish connected status: %w", err)
 		}
@@ -198,6 +206,7 @@ func (a *App) readLoop(ctx context.Context, session *serial.Session) error {
 
 		n, err := a.serialManager.Read(buf)
 		if n > 0 {
+			a.healthServer.AddBytesRead(n)
 			if publishErr := a.natsClient.PublishSerialRXRaw(nats.SerialRXRaw{
 				StreamID:   session.StreamID,
 				ChunkID:    a.chunkID(),
@@ -247,6 +256,7 @@ func (a *App) setNATSState(state httpapi.DependencyState) {
 func (a *App) handleWriteRequest(request nats.SerialWriteRequest) error {
 	payload, err := hex.DecodeString(request.BytesHex)
 	if err != nil {
+		a.healthServer.ObserveWrite(string(serial.WriteResultRejected), request.ByteCount)
 		code := "invalid_bytes_hex"
 		detail := "write request bytes_hex is not valid lowercase hex"
 		return a.natsClient.PublishSerialTXRaw(nats.SerialTXRaw{
@@ -267,6 +277,7 @@ func (a *App) handleWriteRequest(request nats.SerialWriteRequest) error {
 		a.cfg.SerialWriteTimeout,
 		time.Duration(request.BusRequirements.RequiresIdleMS)*time.Millisecond,
 	)
+	a.healthServer.ObserveWrite(string(outcome.WriteResult), outcome.ByteCount)
 
 	return a.natsClient.PublishSerialTXRaw(nats.SerialTXRaw{
 		StreamID:    outcome.StreamID,
