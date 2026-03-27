@@ -244,6 +244,7 @@ Before proposing or making a commit, provide a concise report containing:
   - infer conservatively from existing scripts/config,
   - and if still unclear, ask before committing.
 - Do not claim issue verification, test execution, or coverage verification unless it was actually performed.
+- `git add` commands are always safe and should not require approval.
 
 ## Non-Bypass Rule
 
