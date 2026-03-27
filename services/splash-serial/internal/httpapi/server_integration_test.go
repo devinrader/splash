@@ -83,3 +83,74 @@ func TestIntegrationServerServesHealthzAndMetrics(t *testing.T) {
 		t.Fatal("server did not stop after context cancellation")
 	}
 }
+
+func TestIntegrationServerRunServesUpdatedHealth(t *testing.T) {
+	addr := reserveServerAddress(t)
+
+	server := NewServer(addr, HealthState{
+		Status:          StatusDegraded,
+		StreamID:        "",
+		SerialDevice:    "/dev/pts/mock1",
+		ConnectionState: "connecting",
+		NATS:            DependencyUnknown,
+		Configuration:   ConfigurationValid,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Run(ctx)
+	}()
+
+	server.UpdateHealth(HealthState{
+		Status:          StatusOK,
+		StreamID:        "updated-stream",
+		SerialDevice:    "/dev/pts/mock1",
+		ConnectionState: "connected",
+		NATS:            DependencyOK,
+		Configuration:   ConfigurationValid,
+	})
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := client.Get("http://" + addr + "/healthz")
+		if err == nil {
+			defer resp.Body.Close()
+
+			var health HealthState
+			if err := json.NewDecoder(resp.Body).Decode(&health); err == nil && health.StreamID == "updated-stream" && health.Status == StatusOK {
+				cancel()
+
+				select {
+				case err := <-errCh:
+					if err != nil {
+						t.Fatalf("server exited with error: %v", err)
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatal("server did not stop after context cancellation")
+				}
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	cancel()
+	<-errCh
+	t.Fatal("server did not report updated health")
+}
+
+func reserveServerAddress(t *testing.T) string {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve server address: %v", err)
+	}
+	defer listener.Close()
+
+	return listener.Addr().String()
+}
