@@ -17,8 +17,7 @@ on:
 jobs:
   unit:
     name: Unit Tests
-    runs-on:
-      - splash-serial-ci
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -40,8 +39,7 @@ jobs:
 
   integration:
     name: Integration Tests
-    runs-on:
-      - splash-serial-ci
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository

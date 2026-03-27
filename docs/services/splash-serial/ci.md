@@ -26,6 +26,18 @@ Reason:
 - makes the workflow intent explicit
 - avoids coupling `splash-serial` CI to a floating `latest` image
 
+## Temporary override
+
+The repository is temporarily using `ubuntu-latest` in
+`.gitea/workflows/splash-serial.yaml` so `splash-serial` CI can run before the
+dedicated runner is provisioned.
+
+This is an explicit temporary override of the preferred runner design.
+
+Track restoration of the dedicated runner path in:
+
+- Gitea issue `#28` `Task: Provision dedicated splash-serial-ci runner`
+
 ## Required runner-image behavior
 
 The runner image used for `splash-serial` CI must support:
@@ -61,14 +73,14 @@ Explicitly not required:
 
 ### `runs-on`
 
-The PTY-backed integration job should explicitly use:
+Preferred end state for the PTY-backed integration job:
 
 ```yaml
 runs-on:
   - splash-serial-ci
 ```
 
-The pure unit job may use either:
+Preferred end state for the pure unit job:
 
 ```yaml
 runs-on:
@@ -76,6 +88,14 @@ runs-on:
 ```
 
 or a more general Ubuntu label if the workflow intentionally separates PTY-dependent and PTY-independent jobs.
+
+Temporary current state while `#28` is open:
+
+```yaml
+runs-on: ubuntu-latest
+```
+
+This fallback is acceptable only until the dedicated runner is available again.
 
 ### Avoid overriding the container image unintentionally
 
