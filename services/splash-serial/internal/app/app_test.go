@@ -137,6 +137,89 @@ func TestRunSessionLoopRetriesAndUpdatesHealth(t *testing.T) {
 	t.Fatal("session loop did not reach connected state")
 }
 
+func TestRunSessionLoopReconnectsAfterReadError(t *testing.T) {
+	retry := make(chan time.Time, 2)
+	attempts := 0
+
+	manager := serial.NewManager("/dev/ttyUSB0", 10*time.Millisecond, appFactory{
+		open: func(string) (serial.Port, error) {
+			attempts++
+			if attempts == 1 {
+				return &scriptedAppPort{
+					device: "/dev/ttyUSB0",
+					reads: []appReadResult{
+						{err: errors.New("adapter failure")},
+					},
+				}, nil
+			}
+			return &blockingAppPort{device: "/dev/ttyUSB0"}, nil
+		},
+	})
+
+	app := &App{
+		logger:        log.New(io.Discard, "", 0),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
+		serialManager: manager,
+		healthServer:  httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{}),
+		after: func(time.Duration) <-chan time.Time {
+			return retry
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.runSessionLoop(ctx)
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		published := app.natsClient.PublishedMessages()
+		for _, message := range published {
+			if message.Subject != nats.SubjectSerialPortStatus {
+				continue
+			}
+			var payload nats.SerialPortStatus
+			if err := json.Unmarshal(message.Data, &payload); err == nil && payload.Status == string(serial.StateError) {
+				retry <- time.Now()
+				goto waitForReconnect
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatal("expected read error status to be published")
+
+waitForReconnect:
+	deadline = time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		health := app.healthServer.Health()
+		if health.StreamID != "" && health.ConnectionState == string(serial.StateConnected) {
+			cancel()
+			if err := <-errCh; err != nil {
+				t.Fatalf("runSessionLoop returned error: %v", err)
+			}
+
+			if attempts != 2 {
+				t.Fatalf("expected second connect attempt after read error, got %d", attempts)
+			}
+
+			metrics := app.healthServer.Metrics()
+			if metrics.ReconnectTotal != 1 {
+				t.Fatalf("expected reconnect count 1, got %d", metrics.ReconnectTotal)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	cancel()
+	<-errCh
+	t.Fatal("session loop did not reconnect after read error")
+}
+
 func TestReadLoopPublishesNativeReadBoundary(t *testing.T) {
 	manager := serial.NewManager("/dev/ttyUSB0", 10*time.Millisecond, appFactory{
 		open: func(string) (serial.Port, error) {

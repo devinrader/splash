@@ -193,21 +193,21 @@ func (a *App) runSessionLoop(ctx context.Context) error {
 		if err := a.readLoop(ctx, session); err != nil {
 			if errors.Is(err, io.EOF) {
 				a.logger.Printf("serial session ended: stream_id=%s device=%s", session.StreamID, session.Device)
-				if disconnectErr := a.serialManager.Disconnect(serial.StateDisconnected); disconnectErr != nil {
-					return fmt.Errorf("disconnect ended serial session: %w", disconnectErr)
-				}
-				a.setHealth(httpapi.StatusDegraded, "")
-				if publishErr := a.publishStatus("", serial.StateDisconnected, "adapter read ended"); publishErr != nil {
-					return fmt.Errorf("publish disconnected status: %w", publishErr)
-				}
-				select {
-				case <-ctx.Done():
+				if stop, handleErr := a.handleDisconnectedSession(ctx, serial.StateDisconnected, "adapter read ended"); handleErr != nil {
+					return handleErr
+				} else if stop {
 					return nil
-				case <-a.after(a.serialManager.ReconnectInterval()):
-					continue
 				}
+				continue
 			}
-			return err
+
+			a.logger.Printf("serial session error: stream_id=%s device=%s err=%v", session.StreamID, session.Device, err)
+			if stop, handleErr := a.handleDisconnectedSession(ctx, serial.StateError, err.Error()); handleErr != nil {
+				return handleErr
+			} else if stop {
+				return nil
+			}
+			continue
 		}
 
 		<-ctx.Done()
@@ -221,6 +221,29 @@ func (a *App) runSessionLoop(ctx context.Context) error {
 			return fmt.Errorf("publish shutdown status: %w", err)
 		}
 		return nil
+	}
+}
+
+func (a *App) handleDisconnectedSession(ctx context.Context, nextState serial.ConnectionState, detail string) (bool, error) {
+	if err := a.serialManager.Disconnect(nextState); err != nil {
+		return false, fmt.Errorf("disconnect serial session: %w", err)
+	}
+
+	if nextState == serial.StateError {
+		a.setHealth(httpapi.StatusError, "")
+	} else {
+		a.setHealth(httpapi.StatusDegraded, "")
+	}
+
+	if err := a.publishStatus("", nextState, detail); err != nil {
+		return false, fmt.Errorf("publish %s status: %w", nextState, err)
+	}
+
+	select {
+	case <-ctx.Done():
+		return true, nil
+	case <-a.after(a.serialManager.ReconnectInterval()):
+		return false, nil
 	}
 }
 
