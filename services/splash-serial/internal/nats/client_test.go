@@ -286,6 +286,66 @@ func TestConnectReturnsDialError(t *testing.T) {
 	}
 }
 
+func TestConnectedAndCloseReflectConnectionState(t *testing.T) {
+	bus := &fakeConn{}
+	client := NewClient("nats://splash-core.local:4222")
+	client.connect = func(string) (conn, error) {
+		return bus, nil
+	}
+
+	if client.Connected() {
+		t.Fatal("expected disconnected client before connect")
+	}
+
+	if err := client.Connect(); err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+
+	if !client.Connected() {
+		t.Fatal("expected connected client after connect")
+	}
+
+	client.Close()
+
+	if client.Connected() {
+		t.Fatal("expected disconnected client after close")
+	}
+
+	if !bus.closed {
+		t.Fatal("expected underlying connection to close")
+	}
+}
+
+func TestConnectReturnsNilWhenAlreadyConnected(t *testing.T) {
+	first := &fakeConn{}
+	second := &fakeConn{}
+	connectCalls := 0
+	client := NewClient("nats://splash-core.local:4222")
+	client.connect = func(string) (conn, error) {
+		connectCalls++
+		if connectCalls == 1 {
+			return first, nil
+		}
+		return second, nil
+	}
+
+	if err := client.Connect(); err != nil {
+		t.Fatalf("first Connect returned error: %v", err)
+	}
+
+	if err := client.Connect(); err != nil {
+		t.Fatalf("second Connect returned error: %v", err)
+	}
+
+	if connectCalls != 1 {
+		t.Fatalf("expected one connect call, got %d", connectCalls)
+	}
+
+	if first.closed {
+		t.Fatal("did not expect active connection to close")
+	}
+}
+
 func mustJSON(t *testing.T, payload any) []byte {
 	t.Helper()
 
@@ -300,6 +360,7 @@ func mustJSON(t *testing.T, payload any) []byte {
 type fakeConn struct {
 	published []PublishedMessage
 	handler   func([]byte)
+	closed    bool
 }
 
 func (c *fakeConn) Publish(subject string, data []byte) error {
@@ -320,7 +381,7 @@ func (c *fakeConn) Subscribe(subject string, handler func([]byte)) (subscription
 	return fakeSubscription{}, nil
 }
 
-func (c *fakeConn) Close() {}
+func (c *fakeConn) Close() { c.closed = true }
 
 func (c *fakeConn) deliver(subject string, data []byte) {
 	if subject == SubjectSerialWriteRequest && c.handler != nil {
