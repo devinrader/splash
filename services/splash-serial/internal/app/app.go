@@ -35,7 +35,7 @@ func New() (*App, error) {
 	}
 
 	logger := log.Default()
-	natsClient := nats.NewClient(cfg.NATSURL)
+	natsClient := nats.NewClient(cfg.NATSURL, cfg.SerialReconnectInterval)
 	serialManager := serial.NewManager(
 		cfg.SerialDevice,
 		cfg.SerialReconnectInterval,
@@ -109,9 +109,10 @@ func (a *App) runNATSLoop(ctx context.Context) {
 	for {
 		if err := a.natsClient.Connect(); err == nil {
 			a.setNATSState(httpapi.DependencyOK)
-			<-ctx.Done()
-			a.natsClient.Close()
-			return
+			if a.watchNATS(ctx) {
+				return
+			}
+			continue
 		} else {
 			a.logger.Printf("nats connect failed for %s: %v", a.natsClient.URL(), err)
 			a.setNATSState(httpapi.DependencyError)
@@ -121,6 +122,35 @@ func (a *App) runNATSLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-a.after(a.serialManager.ReconnectInterval()):
+		}
+	}
+}
+
+func (a *App) watchNATS(ctx context.Context) bool {
+	for {
+		select {
+		case <-ctx.Done():
+			a.natsClient.Close()
+			return true
+		case status := <-a.natsClient.StatusChanges():
+			switch status {
+			case nats.ConnectionStatusConnected:
+				a.logger.Printf("nats connected: %s", a.natsClient.URL())
+				a.setNATSState(httpapi.DependencyOK)
+			case nats.ConnectionStatusDisconnected, nats.ConnectionStatusReconnecting:
+				a.logger.Printf("nats unavailable: %s status=%s", a.natsClient.URL(), status)
+				a.setNATSState(httpapi.DependencyError)
+			case nats.ConnectionStatusClosed:
+				a.logger.Printf("nats connection closed: %s", a.natsClient.URL())
+				a.setNATSState(httpapi.DependencyError)
+				a.natsClient.Close()
+				select {
+				case <-ctx.Done():
+					return true
+				case <-a.after(a.serialManager.ReconnectInterval()):
+					return false
+				}
+			}
 		}
 	}
 }

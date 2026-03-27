@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -45,7 +46,7 @@ func TestIntegrationAppPublishesPTYReadAndWriteTraffic(t *testing.T) {
 			SerialHTTPBind:          httpAddr,
 		},
 		logger:        log.New(io.Discard, "", 0),
-		natsClient:    nats.NewClient("nats://integration.local:4222"),
+		natsClient:    nats.NewClient("nats://integration.local:4222", 10*time.Millisecond),
 		serialManager: serial.NewManager(slave.Name(), 10*time.Millisecond, serial.NewOSFactory()),
 		healthServer: httpapi.NewServer(httpAddr, httpapi.HealthState{
 			Status:          httpapi.StatusDegraded,
@@ -220,7 +221,7 @@ func TestIntegrationAppRejectsInvalidHexWriteRequest(t *testing.T) {
 			SerialHTTPBind:          httpAddr,
 		},
 		logger:        log.New(io.Discard, "", 0),
-		natsClient:    nats.NewClient("nats://integration.local:4222"),
+		natsClient:    nats.NewClient("nats://integration.local:4222", 10*time.Millisecond),
 		serialManager: serial.NewManager(slave.Name(), 10*time.Millisecond, serial.NewOSFactory()),
 		healthServer: httpapi.NewServer(httpAddr, httpapi.HealthState{
 			Status:          httpapi.StatusDegraded,
@@ -307,7 +308,7 @@ func TestIntegrationAppReportsErrorWhenDeviceUnavailable(t *testing.T) {
 			SerialHTTPBind:          httpAddr,
 		},
 		logger:        log.New(io.Discard, "", 0),
-		natsClient:    nats.NewClient("nats://integration.local:4222"),
+		natsClient:    nats.NewClient("nats://integration.local:4222", 10*time.Millisecond),
 		serialManager: serial.NewManager("/tmp/splash-serial-missing-device", 10*time.Millisecond, serial.NewOSFactory()),
 		healthServer: httpapi.NewServer(httpAddr, httpapi.HealthState{
 			Status:          httpapi.StatusDegraded,
@@ -381,7 +382,7 @@ func TestIntegrationAppUsesRealNATSBus(t *testing.T) {
 			SerialHTTPBind:          httpAddr,
 		},
 		logger:        log.New(io.Discard, "", 0),
-		natsClient:    nats.NewClient(url),
+		natsClient:    nats.NewClient(url, 10*time.Millisecond),
 		serialManager: serial.NewManager(slave.Name(), 10*time.Millisecond, serial.NewOSFactory()),
 		healthServer: httpapi.NewServer(httpAddr, httpapi.HealthState{
 			Status:          httpapi.StatusDegraded,
@@ -503,6 +504,92 @@ func TestIntegrationAppUsesRealNATSBus(t *testing.T) {
 	}
 }
 
+func TestIntegrationAppDegradesAndRecoversAcrossNATSRestart(t *testing.T) {
+	natsAddr := reserveLoopbackAddress(t)
+	host, portText, err := net.SplitHostPort(natsAddr)
+	if err != nil {
+		t.Fatalf("split NATS address: %v", err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatalf("parse NATS port: %v", err)
+	}
+
+	server := startTestNATSServerAt(t, host, port)
+
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatalf("open pty: %v", err)
+	}
+	defer master.Close()
+	defer slave.Close()
+
+	setPTYRaw(t, slave.Name())
+
+	httpAddr := reserveLoopbackAddress(t)
+
+	app := &App{
+		cfg: config.Config{
+			SerialDevice:            slave.Name(),
+			SerialReconnectInterval: 10 * time.Millisecond,
+			SerialWriteTimeout:      time.Second,
+			SerialHTTPBind:          httpAddr,
+		},
+		logger:        log.New(io.Discard, "", 0),
+		natsClient:    nats.NewClient(server.ClientURL(), 10*time.Millisecond),
+		serialManager: serial.NewManager(slave.Name(), 10*time.Millisecond, serial.NewOSFactory()),
+		healthServer: httpapi.NewServer(httpAddr, httpapi.HealthState{
+			Status:          httpapi.StatusDegraded,
+			SerialDevice:    slave.Name(),
+			ConnectionState: string(serial.StateDisconnected),
+			NATS:            httpapi.DependencyUnknown,
+			Configuration:   httpapi.ConfigurationValid,
+		}),
+		after:        time.After,
+		serialStatus: httpapi.StatusDegraded,
+		natsState:    httpapi.DependencyUnknown,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Run(ctx)
+	}()
+
+	waitForCondition(t, 3*time.Second, func() bool {
+		health := app.healthServer.Health()
+		return health.StreamID != "" && health.ConnectionState == string(serial.StateConnected) && health.NATS == httpapi.DependencyOK && health.Status == httpapi.StatusOK
+	})
+
+	server.Shutdown()
+
+	waitForCondition(t, 3*time.Second, func() bool {
+		health := app.healthServer.Health()
+		return health.NATS == httpapi.DependencyError && health.Status == httpapi.StatusDegraded
+	})
+
+	server = startTestNATSServerAt(t, host, port)
+	defer server.Shutdown()
+
+	waitForCondition(t, 5*time.Second, func() bool {
+		health := app.healthServer.Health()
+		return health.NATS == httpapi.DependencyOK && health.Status == httpapi.StatusOK
+	})
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("app exited with error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for app shutdown")
+	}
+}
+
 func reserveLoopbackAddress(t *testing.T) string {
 	t.Helper()
 
@@ -559,6 +646,29 @@ func startTestNATSServer(t *testing.T) (*natsserver.Server, string) {
 	}
 
 	return server, server.ClientURL()
+}
+
+func startTestNATSServerAt(t *testing.T, host string, port int) *natsserver.Server {
+	t.Helper()
+
+	opts := &natsserver.Options{
+		Host: host,
+		Port: port,
+	}
+
+	server, err := natsserver.NewServer(opts)
+	if err != nil {
+		t.Fatalf("new fixed-port NATS server: %v", err)
+	}
+
+	go server.Start()
+
+	if !server.ReadyForConnections(5 * time.Second) {
+		server.Shutdown()
+		t.Fatal("timed out waiting for fixed-port NATS server readiness")
+	}
+
+	return server
 }
 
 func setPTYRaw(t *testing.T, path string) {

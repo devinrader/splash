@@ -69,6 +69,17 @@ type PublishedMessage struct {
 	Data    []byte
 }
 
+type ConnectionStatus string
+
+const (
+	ConnectionStatusConnected    ConnectionStatus = "connected"
+	ConnectionStatusDisconnected ConnectionStatus = "disconnected"
+	ConnectionStatusReconnecting ConnectionStatus = "reconnecting"
+	ConnectionStatusClosed       ConnectionStatus = "closed"
+)
+
+var ErrConnectionClosed = errors.New("nats connection closed")
+
 type subscription interface {
 	Unsubscribe() error
 }
@@ -76,6 +87,7 @@ type subscription interface {
 type conn interface {
 	Publish(subject string, data []byte) error
 	Subscribe(subject string, handler func([]byte)) (subscription, error)
+	StatusChanged() <-chan ConnectionStatus
 	Close()
 }
 
@@ -107,21 +119,51 @@ func (c natsConn) Close() {
 	c.conn.Close()
 }
 
+func (c natsConn) StatusChanged() <-chan ConnectionStatus {
+	source := c.conn.StatusChanged(gnats.CONNECTED, gnats.DISCONNECTED, gnats.RECONNECTING, gnats.CLOSED)
+	out := make(chan ConnectionStatus, 10)
+
+	go func() {
+		defer close(out)
+		for status := range source {
+			select {
+			case out <- mapConnectionStatus(status):
+			default:
+			}
+			if status == gnats.CLOSED {
+				return
+			}
+		}
+	}()
+
+	return out
+}
+
 type Client struct {
 	mu            sync.RWMutex
 	url           string
-	connect       func(url string) (conn, error)
+	reconnectWait time.Duration
+	connect       func(url string, reconnectWait time.Duration) (conn, error)
 	conn          conn
+	status        ConnectionStatus
+	statusCh      chan ConnectionStatus
 	waitCh        chan struct{}
 	publish       func(subject string, data []byte) error
 	sent          []PublishedMessage
 	writeRequests chan SerialWriteRequest
 }
 
-func NewClient(url string) *Client {
+func NewClient(url string, reconnectWait time.Duration) *Client {
+	if reconnectWait <= 0 {
+		reconnectWait = 2 * time.Second
+	}
+
 	client := &Client{
 		url:           url,
+		reconnectWait: reconnectWait,
 		connect:       defaultConnect,
+		status:        ConnectionStatusClosed,
+		statusCh:      make(chan ConnectionStatus, 16),
 		waitCh:        make(chan struct{}),
 		writeRequests: make(chan SerialWriteRequest, 16),
 	}
@@ -140,10 +182,11 @@ func (c *Client) Connect() error {
 		return nil
 	}
 	url := c.url
+	reconnectWait := c.reconnectWait
 	connect := c.connect
 	c.mu.RUnlock()
 
-	bus, err := connect(url)
+	bus, err := connect(url, reconnectWait)
 	if err != nil {
 		return err
 	}
@@ -156,7 +199,10 @@ func (c *Client) Connect() error {
 	}
 
 	c.conn = bus
+	c.status = ConnectionStatusConnected
 	close(c.waitCh)
+	c.publishStatus(ConnectionStatusConnected)
+	go c.monitorConnection(bus)
 	return nil
 }
 
@@ -167,6 +213,7 @@ func (c *Client) Close() {
 	if c.conn != nil {
 		c.conn.Close()
 		c.conn = nil
+		c.status = ConnectionStatusClosed
 		c.waitCh = make(chan struct{})
 	}
 }
@@ -174,7 +221,11 @@ func (c *Client) Close() {
 func (c *Client) Connected() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.conn != nil
+	return c.status == ConnectionStatusConnected
+}
+
+func (c *Client) StatusChanges() <-chan ConnectionStatus {
+	return c.statusCh
 }
 
 func (c *Client) PublishSerialRXRaw(payload SerialRXRaw) error {
@@ -224,6 +275,9 @@ func (c *Client) SubscribeSerialWriteRequests(ctx context.Context, handler func(
 		if err == nil || errors.Is(err, context.Canceled) {
 			return nil
 		}
+		if errors.Is(err, ErrConnectionClosed) {
+			continue
+		}
 		return err
 	}
 }
@@ -270,11 +324,20 @@ func (c *Client) subscribeReal(ctx context.Context, bus conn, handler func(Seria
 	}
 	defer sub.Unsubscribe()
 
-	select {
-	case <-ctx.Done():
-		return nil
-	case err := <-errCh:
-		return err
+	statusCh := bus.StatusChanged()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case status, ok := <-statusCh:
+			if !ok || status == ConnectionStatusClosed {
+				c.markConnectionClosed(bus)
+				return ErrConnectionClosed
+			}
+			continue
+		case err := <-errCh:
+			return err
+		}
 	}
 }
 
@@ -310,8 +373,12 @@ func (c *Client) recordPublish(subject string, data []byte) error {
 	return nil
 }
 
-func defaultConnect(url string) (conn, error) {
-	client, err := gnats.Connect(url)
+func defaultConnect(url string, reconnectWait time.Duration) (conn, error) {
+	client, err := gnats.Connect(
+		url,
+		gnats.ReconnectWait(reconnectWait),
+		gnats.MaxReconnects(-1),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -323,4 +390,61 @@ func (c *Client) currentConnection() (conn, <-chan struct{}) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.conn, c.waitCh
+}
+
+func (c *Client) monitorConnection(bus conn) {
+	statusCh := bus.StatusChanged()
+	for status := range statusCh {
+		c.mu.Lock()
+		if c.conn != bus {
+			c.mu.Unlock()
+			return
+		}
+		c.status = status
+		if status == ConnectionStatusClosed {
+			c.conn = nil
+			c.waitCh = make(chan struct{})
+		}
+		c.mu.Unlock()
+		c.publishStatus(status)
+
+		if status == ConnectionStatusClosed {
+			return
+		}
+	}
+}
+
+func (c *Client) markConnectionClosed(bus conn) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn != bus {
+		return
+	}
+
+	c.conn = nil
+	c.status = ConnectionStatusClosed
+	c.waitCh = make(chan struct{})
+}
+
+func (c *Client) publishStatus(status ConnectionStatus) {
+	select {
+	case c.statusCh <- status:
+	default:
+	}
+}
+
+func mapConnectionStatus(status gnats.Status) ConnectionStatus {
+	switch status {
+	case gnats.CONNECTED:
+		return ConnectionStatusConnected
+	case gnats.DISCONNECTED:
+		return ConnectionStatusDisconnected
+	case gnats.RECONNECTING:
+		return ConnectionStatusReconnecting
+	case gnats.CLOSED:
+		return ConnectionStatusClosed
+	default:
+		return ConnectionStatusClosed
+	}
 }

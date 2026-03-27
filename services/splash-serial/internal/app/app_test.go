@@ -51,7 +51,7 @@ func TestNewBuildsApplicationFromEnv(t *testing.T) {
 func TestRunWrapsHealthServerErrors(t *testing.T) {
 	app := &App{
 		logger:        log.New(io.Discard, "", 0),
-		natsClient:    nats.NewClient("nats://splash-core.local:4222"),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
 		serialManager: serial.NewManager("/dev/ttyUSB0", 10, serial.NewUnsupportedFactory()),
 		healthServer:  httpapi.NewServer("bad-bind", httpapi.HealthState{}),
 		after: func(time.Duration) <-chan time.Time {
@@ -86,7 +86,7 @@ func TestRunSessionLoopRetriesAndUpdatesHealth(t *testing.T) {
 
 	app := &App{
 		logger:        log.New(io.Discard, "", 0),
-		natsClient:    nats.NewClient("nats://splash-core.local:4222"),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
 		serialManager: manager,
 		healthServer:  httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{}),
 		after: func(time.Duration) <-chan time.Time {
@@ -157,7 +157,7 @@ func TestReadLoopPublishesNativeReadBoundary(t *testing.T) {
 
 	app := &App{
 		logger:        log.New(io.Discard, "", 0),
-		natsClient:    nats.NewClient("nats://splash-core.local:4222"),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
 		serialManager: manager,
 		healthServer:  httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{}),
 	}
@@ -196,7 +196,7 @@ func TestHandleWriteRequestPublishesStaleStreamResult(t *testing.T) {
 			SerialWriteTimeout: time.Second,
 		},
 		logger:        log.New(io.Discard, "", 0),
-		natsClient:    nats.NewClient("nats://splash-core.local:4222"),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
 		serialManager: serial.NewManager("/dev/ttyUSB0", time.Second, nil),
 		healthServer:  httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{}),
 	}
@@ -236,7 +236,7 @@ func TestHandleWriteRequestRejectsInvalidHex(t *testing.T) {
 			SerialWriteTimeout: time.Second,
 		},
 		logger:        log.New(io.Discard, "", 0),
-		natsClient:    nats.NewClient("nats://splash-core.local:4222"),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
 		serialManager: serial.NewManager("/dev/ttyUSB0", time.Second, nil),
 		healthServer:  httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{}),
 	}
@@ -272,7 +272,7 @@ func TestHandleWriteRequestRejectsInvalidHex(t *testing.T) {
 func TestSetNATSStateMarksHealthySerialSessionDegraded(t *testing.T) {
 	app := &App{
 		logger:        log.New(io.Discard, "", 0),
-		natsClient:    nats.NewClient("nats://splash-core.local:4222"),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
 		serialManager: serial.NewManager("/dev/ttyUSB0", time.Second, serial.NewUnsupportedFactory()),
 		healthServer: httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{
 			Status:          httpapi.StatusOK,
@@ -301,7 +301,7 @@ func TestSetNATSStateMarksHealthySerialSessionDegraded(t *testing.T) {
 func TestSetNATSStateMarksHealthySerialSessionOK(t *testing.T) {
 	app := &App{
 		logger:        log.New(io.Discard, "", 0),
-		natsClient:    nats.NewClient("nats://splash-core.local:4222"),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
 		serialManager: serial.NewManager("/dev/ttyUSB0", time.Second, serial.NewUnsupportedFactory()),
 		healthServer: httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{
 			Status:          httpapi.StatusDegraded,
