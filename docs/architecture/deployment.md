@@ -100,6 +100,7 @@ Splash prefers package-based artifacts across both hosts.
 - Debian registry: host-installed packages such as `splash-serial`
 - Container registry: runtime images for containerized services on `splash-core`
 - Package registry: intermediate application packages, such as Node package artifacts that are later assembled into container images
+- for v1, `splash-serial` Debian packages should publish into the `bookworm` distribution and `main` component of the Gitea Debian registry
 
 ### Naming and ownership
 
