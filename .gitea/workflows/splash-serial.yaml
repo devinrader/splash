@@ -1,0 +1,83 @@
+name: splash-serial CI
+run-name: splash-serial CI
+
+on:
+  push:
+    paths:
+      - "services/splash-serial/**"
+      - "docs/services/splash-serial/**"
+      - ".gitea/workflows/splash-serial.yaml"
+  pull_request:
+    paths:
+      - "services/splash-serial/**"
+      - "docs/services/splash-serial/**"
+      - ".gitea/workflows/splash-serial.yaml"
+  workflow_dispatch:
+
+jobs:
+  unit:
+    name: Unit Tests
+    runs-on:
+      - splash-serial-ci
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/splash-serial/go.mod
+          cache-dependency-path: services/splash-serial/go.mod
+
+      - name: Run unit test suite
+        working-directory: services/splash-serial
+        shell: bash
+        run: |
+          packages=$(go list ./... | grep -v '/cmd/')
+          go test -covermode=atomic -coverprofile=unit.cover $packages
+          go tool cover -func=unit.cover | tee unit-coverage.txt
+
+  integration:
+    name: Integration Tests
+    runs-on:
+      - splash-serial-ci
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/splash-serial/go.mod
+          cache-dependency-path: services/splash-serial/go.mod
+
+      - name: Detect integration tests
+        id: detect
+        working-directory: services/splash-serial
+        shell: bash
+        run: |
+          integration_packages=$(find . -name '*_integration_test.go' -exec dirname {} \; | sort -u)
+          if [ -n "$integration_packages" ]; then
+            echo "has_integration_tests=true" >> "$GITHUB_OUTPUT"
+            printf 'packages<<EOF\n%s\nEOF\n' "$integration_packages" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_integration_tests=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run integration test suite
+        if: steps.detect.outputs.has_integration_tests == 'true'
+        working-directory: services/splash-serial
+        shell: bash
+        run: |
+          packages="${{ steps.detect.outputs.packages }}"
+          go test -tags=integration -run '^TestIntegration' -covermode=atomic -coverprofile=integration.cover $packages
+          go tool cover -func=integration.cover | tee integration-coverage.txt
+
+      - name: Report integration coverage gap
+        if: steps.detect.outputs.has_integration_tests != 'true'
+        run: |
+          echo "No *_integration_test.go files found for services/splash-serial."
+          echo "Integration CI is wired, but independent integration coverage is not yet measurable."
+          echo "Add PTY-backed integration tests to satisfy the serial-service design and coverage policy."

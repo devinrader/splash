@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 )
+
+var listen = net.Listen
 
 type Status string
 
@@ -52,13 +55,18 @@ func NewServer(addr string, health HealthState) *Server {
 }
 
 func (s *Server) Run(ctx context.Context) error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", s.handleHealthz)
-	mux.HandleFunc("/metrics", s.handleMetrics)
+	listener, err := listen("tcp", s.addr)
+	if err != nil {
+		return err
+	}
 
+	return s.serve(ctx, listener)
+}
+
+func (s *Server) serve(ctx context.Context, listener net.Listener) error {
 	server := &http.Server{
-		Addr:              s.addr,
-		Handler:           mux,
+		Addr:              listener.Addr().String(),
+		Handler:           s.handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -69,11 +77,18 @@ func (s *Server) Run(ctx context.Context) error {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
-	err := server.ListenAndServe()
+	err := server.Serve(listener)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
 	return err
+}
+
+func (s *Server) handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", s.handleHealthz)
+	mux.HandleFunc("/metrics", s.handleMetrics)
+	return mux
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
