@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = "remove" ]; then
+  systemctl stop splash-serial.service >/dev/null 2>&1 || true
+  systemctl disable splash-serial.service >/dev/null 2>&1 || true
+fi
+
+exit 0

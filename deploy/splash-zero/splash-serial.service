@@ -1,0 +1,23 @@
+[Unit]
+Description=Splash RS-485 serial transport service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=dialout
+EnvironmentFile=/etc/splash/splash-serial.env
+ExecStart=/usr/bin/splash-serial
+Restart=always
+RestartSec=10
+WorkingDirectory=/var/lib/splash
+StateDirectory=splash
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/splash
+
+[Install]
+WantedBy=multi-user.target

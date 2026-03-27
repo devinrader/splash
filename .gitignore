@@ -88,6 +88,9 @@ web_modules/
 # Next.js build output
 .next
 out
+deploy/splash-zero/out/
+deploy/splash-zero/build/
+deploy/splash-zero/dist/
 
 # Nuxt.js build / generate output
 .nuxt
