@@ -78,6 +78,13 @@ func TestRunIgnoresCleanLoopExitUntilContextCanceled(t *testing.T) {
 		logger:        log.New(io.Discard, "", 0),
 		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
 		serialManager: serial.NewManager("/dev/ttyUSB0", time.Second, serial.NewUnsupportedFactory()),
+		healthServer: httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{
+			Status:          httpapi.StatusDegraded,
+			SerialDevice:    "/dev/ttyUSB0",
+			ConnectionState: string(serial.StateDisconnected),
+			NATS:            httpapi.DependencyUnknown,
+			Configuration:   httpapi.ConfigurationValid,
+		}),
 		runHealth: func(ctx context.Context) error {
 			<-ctx.Done()
 			return nil
@@ -115,6 +122,127 @@ func TestRunIgnoresCleanLoopExitUntilContextCanceled(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for Run to exit after cancellation")
 	}
+}
+
+func TestRunTreatsUnexpectedHealthLoopExitAsFatal(t *testing.T) {
+	app := &App{
+		logger:        log.New(io.Discard, "", 0),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
+		serialManager: serial.NewManager("/dev/ttyUSB0", 10*time.Millisecond, serial.NewUnsupportedFactory()),
+		healthServer: httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{
+			Status:          httpapi.StatusDegraded,
+			SerialDevice:    "/dev/ttyUSB0",
+			ConnectionState: string(serial.StateDisconnected),
+			NATS:            httpapi.DependencyUnknown,
+			Configuration:   httpapi.ConfigurationValid,
+		}),
+		runHealth: func(context.Context) error {
+			return nil
+		},
+		runSession: func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		},
+		runWrite: func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		},
+		runNATS: func(ctx context.Context) {
+			<-ctx.Done()
+		},
+	}
+
+	err := app.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected Run to return fatal health loop error")
+	}
+
+	if !strings.Contains(err.Error(), "health loop failed") || !strings.Contains(err.Error(), "unexpected clean loop exit") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunStaysAliveAcrossSerialReconnectsWithoutNATS(t *testing.T) {
+	retry := make(chan time.Time, 8)
+	attempts := 0
+
+	manager := serial.NewManager("/dev/ttyUSB0", 10*time.Millisecond, appFactory{
+		open: func(string) (serial.Port, error) {
+			attempts++
+			if attempts < 4 {
+				return &scriptedAppPort{
+					device: "/dev/ttyUSB0",
+					reads: []appReadResult{
+						{err: io.EOF},
+					},
+				}, nil
+			}
+			return &blockingAppPort{device: "/dev/ttyUSB0"}, nil
+		},
+	})
+
+	app := &App{
+		logger:        log.New(io.Discard, "", 0),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
+		serialManager: manager,
+		healthServer: httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{
+			Status:          httpapi.StatusDegraded,
+			SerialDevice:    "/dev/ttyUSB0",
+			ConnectionState: string(serial.StateDisconnected),
+			NATS:            httpapi.DependencyUnknown,
+			Configuration:   httpapi.ConfigurationValid,
+		}),
+		after: func(time.Duration) <-chan time.Time {
+			return retry
+		},
+		runHealth: func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		},
+		runNATS: func(ctx context.Context) {
+			<-ctx.Done()
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Run(ctx)
+	}()
+
+	for range 3 {
+		retry <- time.Now()
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-errCh:
+			t.Fatalf("Run returned before cancellation during serial reconnects: %v", err)
+		default:
+		}
+
+		health := app.healthServer.Health()
+		if attempts >= 4 && health.StreamID != "" && health.ConnectionState == string(serial.StateConnected) {
+			cancel()
+			if err := <-errCh; err != nil {
+				t.Fatalf("Run returned error after cancellation: %v", err)
+			}
+			return
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	cancel()
+	select {
+	case <-errCh:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for Run to exit after cancellation")
+	}
+	t.Fatalf("timed out waiting for stable reconnect; attempts=%d health=%+v", attempts, app.healthServer.Health())
 }
 
 func TestRunSessionLoopRetriesAndUpdatesHealth(t *testing.T) {

@@ -32,6 +32,17 @@ type App struct {
 	runNATS       func(context.Context)
 }
 
+type loopResult struct {
+	name string
+	err  error
+}
+
+type supervisedLoop struct {
+	name            string
+	run             func(context.Context) error
+	fatalOnCleanExit bool
+}
+
 func New() (*App, error) {
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
@@ -78,6 +89,10 @@ func (a *App) Run(ctx context.Context) error {
 	a.logger.Printf("configured NATS target %s", a.natsClient.URL())
 	a.logger.Printf("configured reconnect interval %s", a.serialManager.ReconnectInterval())
 
+	if a.after == nil {
+		a.after = time.After
+	}
+
 	runHealth := a.runHealth
 	if runHealth == nil {
 		runHealth = a.healthServer.Run
@@ -95,30 +110,54 @@ func (a *App) Run(ctx context.Context) error {
 		runNATS = a.runNATSLoop
 	}
 
-	errCh := make(chan error, 3)
-	go func() {
-		errCh <- runHealth(ctx)
-	}()
-	go func() {
-		errCh <- runSession(ctx)
-	}()
-	go func() {
-		errCh <- runWrite(ctx)
-	}()
+	errCh := make(chan loopResult, 3)
+	for _, loop := range []supervisedLoop{
+		{name: "health", run: runHealth, fatalOnCleanExit: true},
+		{name: "session", run: runSession, fatalOnCleanExit: false},
+		{name: "write", run: runWrite, fatalOnCleanExit: false},
+	} {
+		go a.superviseLoop(ctx, loop, errCh)
+	}
 	go runNATS(ctx)
 
 	select {
 	case <-ctx.Done():
-		a.logger.Print("shutting down splash-serial")
+		a.logger.Print("shutting down splash-serial: context canceled")
 		return nil
-	case err := <-errCh:
-		if err == nil {
-			<-ctx.Done()
-			a.logger.Print("shutting down splash-serial")
-			return nil
-		}
+	case result := <-errCh:
 		cancel()
-		return err
+		return fmt.Errorf("%s loop failed: %w", result.name, result.err)
+	}
+}
+
+func (a *App) superviseLoop(ctx context.Context, loop supervisedLoop, errCh chan<- loopResult) {
+	for {
+		err := loop.run(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+
+		if err != nil {
+			errCh <- loopResult{name: loop.name, err: err}
+			return
+		}
+
+		if loop.fatalOnCleanExit {
+			errCh <- loopResult{
+				name: loop.name,
+				err:  fmt.Errorf("unexpected clean loop exit"),
+			}
+			return
+		}
+
+		a.logger.Printf("background loop exited cleanly: loop=%s; restarting", loop.name)
+		a.setHealth(httpapi.StatusDegraded, "")
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-a.after(a.serialManager.ReconnectInterval()):
+		}
 	}
 }
 
