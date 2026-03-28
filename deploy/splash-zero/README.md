@@ -85,3 +85,21 @@ sudo apt install splash-serial=0.0.0~main.20260328002517+9d25f97
 
 The live `/etc/splash/splash-serial.env` file remains environment-specific and
 should be managed by Ansible in the intended production workflow.
+
+## Ansible Automation
+
+The first Ansible automation slice lives under `deploy/ansible/`.
+
+It currently covers:
+
+- Gitea Debian registry key and apt source installation
+- managed `/etc/splash/splash-serial.env`
+- `splash-serial` package installation
+- `systemd` enable and start
+
+Example usage:
+
+```bash
+ansible-playbook -i deploy/ansible/inventory/splash-zero.example.ini \
+  deploy/ansible/playbooks/splash-zero.yml
+```

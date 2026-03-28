@@ -80,6 +80,7 @@ flowchart TB
 - `splash-serial` should be installed from an OS package rather than a manually copied binary
 - `splash-serial` exposes a small local HTTP listener for health and Prometheus metrics
 - Repository deployment assets for this host live under `deploy/splash-zero/`, including the Debian-package build inputs for `splash-serial`
+- Ansible automation assets for this host should live under `deploy/ansible/`
 
 ## Artifact and distribution model
 

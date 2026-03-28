@@ -1,0 +1,43 @@
+---
+- name: Ensure apt keyring directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Install Gitea Debian repository key
+  ansible.builtin.get_url:
+    url: "https://{{ splash_gitea_package_host }}/api/packages/{{ splash_gitea_package_owner }}/debian/repository.key"
+    dest: "/etc/apt/keyrings/gitea-{{ splash_gitea_package_owner }}.asc"
+    mode: "0644"
+
+- name: Install Gitea Debian apt source
+  ansible.builtin.template:
+    src: gitea-splash-packages.list.j2
+    dest: "/etc/apt/sources.list.d/gitea-{{ splash_gitea_package_owner }}.list"
+    mode: "0644"
+
+- name: Ensure splash config directory exists
+  ansible.builtin.file:
+    path: /etc/splash
+    state: directory
+    mode: "0755"
+
+- name: Install splash-serial environment file
+  ansible.builtin.template:
+    src: splash-serial.env.j2
+    dest: /etc/splash/splash-serial.env
+    mode: "0644"
+  notify: Restart splash-serial
+
+- name: Install splash-serial package
+  ansible.builtin.apt:
+    name: "{{ splash_serial_package_name ~ ('=' ~ splash_serial_package_version if splash_serial_package_version | length > 0 else '') }}"
+    state: "{{ splash_serial_package_state }}"
+    update_cache: true
+
+- name: Enable and start splash-serial
+  ansible.builtin.systemd:
+    name: "{{ splash_serial_service_name }}"
+    enabled: true
+    state: started

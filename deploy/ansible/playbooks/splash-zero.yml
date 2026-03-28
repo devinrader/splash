@@ -1,0 +1,6 @@
+---
+- name: Configure splash-zero for splash-serial
+  hosts: splash_zero
+  become: true
+  roles:
+    - role: splash_zero_serial

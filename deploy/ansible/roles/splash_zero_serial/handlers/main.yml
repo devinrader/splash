@@ -1,0 +1,5 @@
+---
+- name: Restart splash-serial
+  ansible.builtin.systemd:
+    name: "{{ splash_serial_service_name }}"
+    state: restarted

@@ -1,0 +1,23 @@
+---
+splash_serial_package_name: splash-serial
+splash_serial_package_state: present
+splash_serial_package_version: ""
+splash_serial_service_name: splash-serial
+
+splash_gitea_package_owner: devinrader
+splash_gitea_package_host: gitea.rader.haus
+splash_gitea_package_distribution: bookworm
+splash_gitea_package_component: main
+
+splash_gitea_package_username: ""
+splash_gitea_package_token: ""
+
+splash_serial_env:
+  NATS_URL: nats://splash-core.local:4222
+  SERIAL_DEVICE: /dev/ttyUSB0
+  SERIAL_RECONNECT_INTERVAL_MS: "10000"
+  SERIAL_WRITE_TIMEOUT_MS: "2000"
+  SERIAL_HTTP_BIND: 127.0.0.1:9108
+  SERIAL_DEFAULT_IDLE_MS: "50"
+  LOG_LEVEL: info
+  TZ: America/New_York
