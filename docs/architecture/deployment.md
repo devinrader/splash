@@ -203,6 +203,7 @@ Deployment expectations:
 - `splash-zero` should consume the Debian registry through an apt source entry and the Gitea Debian repository signing key installed under `/etc/apt/keyrings/`
 - manual host setup may use documented apt and curl commands, but environment-specific host configuration should ultimately be managed by Ansible rather than repository shell wrappers
 - Ansible inventory and host variables should keep non-secret defaults in normal group vars and store registry credentials or host-sensitive overrides in Ansible Vault
+- `splash-serial` must be deployable on `splash-zero` before `splash-core` or NATS exists; that fresh-host condition is supported and should result in degraded local health rather than a crash loop
 
 ![Ansible deployment flow](../images/ansible-deployment-flow.png)
 

@@ -26,8 +26,9 @@ Configuration should be validated at startup.
 Invalid configuration should:
 
 - surface clearly in logs
-- degrade local health
+- surface a machine-readable `config_invalid` error code
 - prevent unsafe transport behavior
+- fail startup
 
 Validation rules:
 
@@ -42,6 +43,7 @@ Startup behavior:
 
 - missing required transport configuration should fail startup rather than start in a partially configured state
 - invalid optional logging or formatting configuration may degrade startup behavior, but must not silently alter transport safety
+- invalid configuration is a fatal startup condition because it is not recoverable without configuration change and service restart
 
 Examples:
 

@@ -31,6 +31,16 @@ Transport-facing dependencies:
 - publishes `serial.tx.raw` for `splash-protocol`
 - publishes `serial.port.status` for `splash-protocol` and broader platform observability
 
+## Transport lifecycle expectations
+
+Transport loops are expected to remain long-lived.
+
+Rules:
+
+- a serial disconnect, EOF, or NATS outage must not terminate the daemon
+- transport loops should transition the service into degraded state and continue retry behavior
+- an unexpected clean transport-loop exit should be treated as an internal error and surfaced through local observability
+
 ## Read path
 
 ### Native read boundaries
@@ -125,3 +135,18 @@ Ordering guarantees:
 `splash-serial` consumes:
 
 - `serial.write.request`
+
+## `serial.port.status` detail guidance
+
+`serial.port.status.detail` should carry concise operational detail for transport transitions.
+
+Examples:
+
+- `adapter connected`
+- `adapter read ended`
+- `serial_read_eof`
+- `serial_open_failed`
+- `nats_dns_failed`
+- `unexpected_loop_exit`
+
+Machine-readable error codes belong in local health, logs, and metrics; `detail` is the short transport-facing explanation.

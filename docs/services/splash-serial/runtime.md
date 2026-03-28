@@ -14,6 +14,96 @@ It should:
 - connect to NATS on `splash-core`
 - own a single active serial port session in v1
 
+## Runtime state machine
+
+`splash-serial` should follow an explicit runtime state model.
+
+Primary startup and runtime phases:
+
+- `booting`
+- `config_invalid`
+- `starting_http`
+- `starting_serial`
+- `serial_degraded`
+- `nats_degraded`
+- `running_degraded`
+- `running_ok`
+- `fatal`
+- `shutting_down`
+
+State meanings:
+
+- `booting`: process has started but has not yet completed configuration validation
+- `config_invalid`: required configuration is missing or invalid; process must exit and rely on service restart only after configuration is corrected
+- `starting_http`: configuration is valid and the local health and metrics listener is being established
+- `starting_serial`: HTTP listener is available and the service is attempting to establish a serial session
+- `serial_degraded`: serial hardware is unavailable or unstable, but the process remains alive and retries in the background
+- `nats_degraded`: NATS is unavailable or misconfigured, but the process remains alive and retries in the background
+- `running_degraded`: at least one recoverable dependency is degraded, but the daemon is still serving local health and metrics
+- `running_ok`: local HTTP is available, serial is connected, and NATS is connected
+- `fatal`: the process has encountered an unrecoverable startup failure and should exit
+- `shutting_down`: explicit service termination after signal or unrecoverable failure handling
+
+## Fatal vs degraded failures
+
+`splash-serial` must distinguish between unrecoverable startup failures and recoverable dependency failures.
+
+Fatal failures:
+
+- invalid configuration
+- HTTP bind failure for `SERIAL_HTTP_BIND`
+- internal invariant failures that leave the service unable to provide safe transport behavior or local observability
+
+Degraded but non-fatal failures:
+
+- serial adapter missing at startup
+- serial adapter permission or open failures
+- serial adapter EOF or disconnect after a successful connect
+- repeated serial reconnect flapping
+- NATS DNS failures
+- NATS TCP connection failures
+- NATS authentication or protocol failures
+- NATS disconnect after initial connect
+
+Rule:
+
+- only fatal failures may terminate the process automatically
+- degraded failures must keep the process alive, keep `/healthz` and `/metrics` reachable, and continue retry behavior in the background
+
+## Startup failure policy
+
+Startup should proceed in this order:
+
+1. validate configuration
+2. establish the local HTTP listener
+3. begin serial and NATS background loops
+4. transition into `running_ok` or `running_degraded` depending on dependency availability
+
+Startup outcomes:
+
+- configuration invalid:
+  - phase becomes `config_invalid`
+  - health listener is not started
+  - process exits
+- HTTP bind failure:
+  - phase becomes `fatal`
+  - process exits
+- serial unavailable at startup:
+  - phase becomes `serial_degraded`
+  - process stays alive
+  - health and metrics stay available
+  - serial reconnect attempts continue in the background
+- NATS unavailable at startup:
+  - phase becomes `nats_degraded`
+  - process stays alive
+  - health and metrics stay available
+  - NATS reconnect attempts continue in the background
+- both serial and NATS unavailable:
+  - phase becomes `running_degraded`
+  - process stays alive
+  - local observability stays available
+  - both reconnect loops continue independently
+
 ## Runtime dependencies
 
 The runtime model assumes:
@@ -78,6 +168,78 @@ When the adapter or port becomes unavailable:
 - `serial.port.status` should reflect the degraded state
 - reconnect attempts should continue on the configured interval
 - a successful reconnect must create a new `stream_id`
+
+Repeated serial reconnect flapping should remain a degraded state rather than automatically escalating to fatal process exit.
+
+## Unexpected loop exits
+
+The daemon is expected to run multiple long-lived background loops for:
+
+- local HTTP serving
+- serial session lifecycle
+- write-request handling
+- NATS connection lifecycle
+
+Rules:
+
+- no background loop should return cleanly during normal operation except during explicit shutdown
+- an unexpected clean loop exit must be treated as an internal error condition, logged explicitly, and surfaced through degraded health
+- an unexpected clean loop exit must not by itself terminate the process unless it removes the local HTTP health and metrics surface or otherwise breaks a fatal invariant
+- recoverable loops should be restarted or transitioned into background retry behavior instead of allowing the process to end silently
+
+## Serial failure handling
+
+Serial failure handling must distinguish between startup failure, runtime disconnect, and transient instability.
+
+Serial startup failures:
+
+- missing device
+- permission denied
+- open failure
+
+Required behavior:
+
+- classify as degraded
+- publish `serial.port.status`
+- expose machine-readable error information in local health
+- retry on the configured reconnect interval
+
+Runtime serial failures:
+
+- `io.EOF`
+- explicit port close
+- read failure
+- adapter unplug or reset
+
+Required behavior:
+
+- terminate the active session
+- publish a transport-visible disconnect or error state
+- clear the prior active `stream_id`
+- retry on the configured reconnect interval
+- create a new `stream_id` after a successful reconnect
+
+`io.EOF` should be treated as a degraded transport disconnect, not as a fatal process condition.
+
+## NATS failure handling
+
+All NATS startup and runtime failures should remain degraded rather than fatal in v1.
+
+Examples:
+
+- DNS lookup failure
+- TCP connect failure
+- authentication failure
+- runtime disconnect or reconnecting state
+
+Required behavior:
+
+- keep the local HTTP surface alive
+- keep serial lifecycle behavior active
+- expose a degraded NATS dependency state through health and metrics
+- continue reconnect attempts in the background
+
+NATS authentication or configuration failures should still remain degraded in v1, even though operator intervention may be required to recover.
 
 ## Responsibility boundary
 

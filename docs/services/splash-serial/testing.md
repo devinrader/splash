@@ -118,6 +118,10 @@ Integration coverage should include:
 - `serial.tx.raw` result publication
 - local `GET /healthz` and `GET /metrics` availability
 - PTY-backed or loopback-backed serial emulation
+- degraded startup with NATS unavailable
+- degraded startup with serial hardware unavailable
+- repeated serial EOF or disconnect handling without process exit
+- unexpected loop-exit diagnostics
 
 Integration tests should also be mandatory in CI.
 
@@ -204,6 +208,9 @@ When PTY-backed CI tests fail, logs should capture at least:
 - transport state transitions
 - `stream_id` values across reconnect tests
 - published `serial.tx.raw.write_result` values
+- startup phase and degraded dependency state
+- machine-readable error codes for serial and NATS failures
+- shutdown reason or unexpected loop-exit reason when the process exits
 
 ## Hardware-in-the-loop tests
 
