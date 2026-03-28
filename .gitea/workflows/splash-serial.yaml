@@ -151,12 +151,12 @@ jobs:
 
       - name: Publish Debian package to Gitea
         env:
-          GITEA_PACKAGE_USERNAME: ${{ secrets.GITEA_PACKAGE_USERNAME }}
-          GITEA_PACKAGE_TOKEN: ${{ secrets.GITEA_PACKAGE_TOKEN }}
+          DEB_PACKAGE_USERNAME: ${{ secrets.DEB_PACKAGE_USERNAME }}
+          DEB_PACKAGE_TOKEN: ${{ secrets.DEB_PACKAGE_TOKEN }}
         shell: bash
         run: |
-          if [[ -z "${GITEA_PACKAGE_USERNAME}" || -z "${GITEA_PACKAGE_TOKEN}" ]]; then
-            echo "Missing GITEA_PACKAGE_USERNAME or GITEA_PACKAGE_TOKEN secret."
+          if [[ -z "${DEB_PACKAGE_USERNAME}" || -z "${DEB_PACKAGE_TOKEN}" ]]; then
+            echo "Missing DEB_PACKAGE_USERNAME or DEB_PACKAGE_TOKEN secret."
             exit 1
           fi
 
@@ -164,7 +164,7 @@ jobs:
           upload_url="${{ github.server_url }}/api/packages/${PACKAGE_OWNER}/debian/pool/${PACKAGE_DISTRIBUTION}/${PACKAGE_COMPONENT}/upload"
 
           curl --fail --silent --show-error \
-            --user "${GITEA_PACKAGE_USERNAME}:${GITEA_PACKAGE_TOKEN}" \
+            --user "${DEB_PACKAGE_USERNAME}:${DEB_PACKAGE_TOKEN}" \
             --upload-file "${package_path}" \
             "${upload_url}"
 
