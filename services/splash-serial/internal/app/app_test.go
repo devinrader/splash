@@ -70,6 +70,53 @@ func TestRunWrapsHealthServerErrors(t *testing.T) {
 	}
 }
 
+func TestRunIgnoresCleanLoopExitUntilContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	app := &App{
+		logger:        log.New(io.Discard, "", 0),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
+		serialManager: serial.NewManager("/dev/ttyUSB0", time.Second, serial.NewUnsupportedFactory()),
+		runHealth: func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		},
+		runSession: func(context.Context) error {
+			return nil
+		},
+		runWrite: func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		},
+		runNATS: func(ctx context.Context) {
+			<-ctx.Done()
+		},
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Run(ctx)
+	}()
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("Run returned before context cancellation: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Run returned error after cancellation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for Run to exit after cancellation")
+	}
+}
+
 func TestRunSessionLoopRetriesAndUpdatesHealth(t *testing.T) {
 	retry := make(chan time.Time, 1)
 	attempts := 0

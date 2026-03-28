@@ -26,6 +26,10 @@ type App struct {
 	healthMu      sync.RWMutex
 	serialStatus  httpapi.Status
 	natsState     httpapi.DependencyState
+	runHealth     func(context.Context) error
+	runSession    func(context.Context) error
+	runWrite      func(context.Context) error
+	runNATS       func(context.Context)
 }
 
 func New() (*App, error) {
@@ -74,28 +78,47 @@ func (a *App) Run(ctx context.Context) error {
 	a.logger.Printf("configured NATS target %s", a.natsClient.URL())
 	a.logger.Printf("configured reconnect interval %s", a.serialManager.ReconnectInterval())
 
-	errCh := make(chan error, 2)
+	runHealth := a.runHealth
+	if runHealth == nil {
+		runHealth = a.healthServer.Run
+	}
+	runSession := a.runSession
+	if runSession == nil {
+		runSession = a.runSessionLoop
+	}
+	runWrite := a.runWrite
+	if runWrite == nil {
+		runWrite = a.runWriteLoop
+	}
+	runNATS := a.runNATS
+	if runNATS == nil {
+		runNATS = a.runNATSLoop
+	}
+
+	errCh := make(chan error, 3)
 	go func() {
-		errCh <- a.healthServer.Run(ctx)
+		errCh <- runHealth(ctx)
 	}()
 	go func() {
-		errCh <- a.runSessionLoop(ctx)
+		errCh <- runSession(ctx)
 	}()
 	go func() {
-		errCh <- a.runWriteLoop(ctx)
+		errCh <- runWrite(ctx)
 	}()
-	go a.runNATSLoop(ctx)
+	go runNATS(ctx)
 
 	select {
 	case <-ctx.Done():
 		a.logger.Print("shutting down splash-serial")
 		return nil
 	case err := <-errCh:
-		if err != nil {
-			cancel()
-			return err
+		if err == nil {
+			<-ctx.Done()
+			a.logger.Print("shutting down splash-serial")
+			return nil
 		}
-		return nil
+		cancel()
+		return err
 	}
 }
 
