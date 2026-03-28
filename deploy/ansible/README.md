@@ -28,6 +28,7 @@ Variable model:
 - keep registry credentials and any other sensitive overrides in
   `group_vars/splash_zero/vault.yml`
 - encrypt `vault.yml` with Ansible Vault in real use
+- keep `splash_serial_package_arch` aligned with the published package architecture; for the current `splash-serial` Debian package this should stay `armhf` even when the target host runs an `arm64` userspace
 
 Typical local preparation:
 
@@ -42,6 +43,8 @@ ansible-vault encrypt deploy/ansible/group_vars/splash_zero/vault.yml
 Example usage:
 
 ```bash
-ansible-playbook -i deploy/ansible/inventory/splash-zero.example.ini \
+ANSIBLE_CONFIG=deploy/ansible/ansible.cfg \
+ANSIBLE_LOCAL_TEMP=/tmp/ansible-local \
+ansible-playbook -i deploy/ansible/inventory/splash-zero.ini \
   deploy/ansible/playbooks/splash-zero.yml
 ```

@@ -91,6 +91,9 @@ out
 deploy/splash-zero/out/
 deploy/splash-zero/build/
 deploy/splash-zero/dist/
+deploy/ansible/group_vars/splash_zero/main.yml
+deploy/ansible/group_vars/splash_zero/vault.yml
+deploy/ansible/inventory/splash-zero.ini
 
 # Nuxt.js build / generate output
 .nuxt

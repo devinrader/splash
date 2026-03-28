@@ -61,6 +61,7 @@ flowchart TB
 - Native service installed from an OS package and managed by `systemd`
 - mDNS hostname: `splash-zero.local`
 - Connects to NATS at `nats://splash-core.local:4222`
+- The target host may run either an `armv7` or `arm64` Debian-family userspace, but `splash-serial` v1 packages are published as `armhf`
 
 ## Compose and host layout
 
@@ -209,6 +210,7 @@ Caption: Provisioning and deployment automation flow managed by Ansible across `
 ## Deployment notes
 
 - `splash-serial` package builds still require `GOOS=linux GOARCH=arm GOARM=7`
+- when `splash-zero` runs a 64-bit userspace, package installation should request `splash-serial:armhf` explicitly
 - the serial-service container is intentionally avoided on Pi Zero due to resource overhead
 - `splash-protocol` is expected to run on `splash-core`, where protocol plugins and Protocol Explorer support can be managed without hardware coupling
 - TypeScript services on `splash-core` may run in containers with the Node.js runtime, but should still be released through a package-first artifact flow
