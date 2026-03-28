@@ -1,5 +1,5 @@
 ---
-splash_serial_package_state: present
+splash_serial_package_state: latest
 splash_serial_package_arch: armhf
 # splash_serial_package_version: "0.0.0~main.20260328002517+9d25f97"
 

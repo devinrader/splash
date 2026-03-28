@@ -197,6 +197,7 @@ Deployment expectations:
 
 - Ansible installs published artifacts from the appropriate Gitea registry
 - `splash-zero` installs Debian packages from the Gitea Debian registry
+- `splash-zero` should follow the latest published `splash-serial` package by default, unless an explicit version pin is provided for controlled rollout or rollback
 - `splash-core` deploys published OCI images assembled from versioned package-backed builds
 - registry publishing credentials should be provided through Gitea Actions secrets using dedicated automation credentials rather than personal interactive credentials
 - `splash-zero` should consume the Debian registry through an apt source entry and the Gitea Debian repository signing key installed under `/etc/apt/keyrings/`

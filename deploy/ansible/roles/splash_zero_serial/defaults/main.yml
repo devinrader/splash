@@ -1,7 +1,7 @@
 ---
 splash_serial_package_name: splash-serial
 splash_serial_package_arch: armhf
-splash_serial_package_state: present
+splash_serial_package_state: latest
 splash_serial_package_version: ""
 splash_serial_service_name: splash-serial
 

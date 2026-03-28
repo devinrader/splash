@@ -29,6 +29,7 @@ Variable model:
   `group_vars/splash_zero/vault.yml`
 - encrypt `vault.yml` with Ansible Vault in real use
 - keep `splash_serial_package_arch` aligned with the published package architecture; for the current `splash-serial` Debian package this should stay `armhf` even when the target host runs an `arm64` userspace
+- by default the role tracks the latest published `splash-serial` package; set `splash_serial_package_version` when you want a pinned rollout instead
 
 Typical local preparation:
 
