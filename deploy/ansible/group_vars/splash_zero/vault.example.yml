@@ -1,0 +1,5 @@
+---
+# Encrypt this file with Ansible Vault in real use.
+
+splash_gitea_package_username: ""
+splash_gitea_package_token: ""

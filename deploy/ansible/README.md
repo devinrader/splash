@@ -14,11 +14,30 @@ Layout:
 
 - `inventory/`
   Example inventory files.
+- `group_vars/`
+  Example host-group variables and vault placeholders.
 - `playbooks/`
   Entry-point playbooks.
 - `roles/splash_zero_serial/`
   Tasks, defaults, and templates for installing `splash-serial` on
   `splash-zero`.
+
+Variable model:
+
+- put non-secret host defaults in `group_vars/splash_zero/*.yml`
+- keep registry credentials and any other sensitive overrides in
+  `group_vars/splash_zero/vault.yml`
+- encrypt `vault.yml` with Ansible Vault in real use
+
+Typical local preparation:
+
+```bash
+cp deploy/ansible/group_vars/splash_zero/main.example.yml \
+  deploy/ansible/group_vars/splash_zero/main.yml
+cp deploy/ansible/group_vars/splash_zero/vault.example.yml \
+  deploy/ansible/group_vars/splash_zero/vault.yml
+ansible-vault encrypt deploy/ansible/group_vars/splash_zero/vault.yml
+```
 
 Example usage:
 

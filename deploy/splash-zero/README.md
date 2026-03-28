@@ -103,3 +103,7 @@ Example usage:
 ansible-playbook -i deploy/ansible/inventory/splash-zero.example.ini \
   deploy/ansible/playbooks/splash-zero.yml
 ```
+
+Host-specific values should come from `deploy/ansible/group_vars/splash_zero/`,
+with non-secret settings in `main.yml` and sensitive registry credentials in an
+Ansible Vault-encrypted `vault.yml`.
