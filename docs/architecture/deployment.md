@@ -197,6 +197,8 @@ Deployment expectations:
 - `splash-zero` installs Debian packages from the Gitea Debian registry
 - `splash-core` deploys published OCI images assembled from versioned package-backed builds
 - registry publishing credentials should be provided through Gitea Actions secrets using dedicated automation credentials rather than personal interactive credentials
+- `splash-zero` should consume the Debian registry through an apt source entry and the Gitea Debian repository signing key installed under `/etc/apt/keyrings/`
+- manual host setup may use documented apt and curl commands, but environment-specific host configuration should ultimately be managed by Ansible rather than repository shell wrappers
 
 ![Ansible deployment flow](../images/ansible-deployment-flow.png)
 

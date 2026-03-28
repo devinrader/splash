@@ -1,0 +1,1 @@
+deb [signed-by=/etc/apt/keyrings/gitea-devinrader.asc] https://gitea.rader.haus/api/packages/devinrader/debian bookworm main
