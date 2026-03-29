@@ -3,7 +3,8 @@ package serial
 import (
 	"fmt"
 	"io"
-	"os"
+
+	serialport "go.bug.st/serial"
 )
 
 type ConnectionState string
@@ -36,28 +37,47 @@ func (UnsupportedFactory) Open(device string) (Port, error) {
 }
 
 type OSFactory struct {
-	openFile func(name string, flag int, perm os.FileMode) (*os.File, error)
+	openPort func(name string, mode *serialport.Mode) (serialport.Port, error)
+	mode     *serialport.Mode
 }
 
 func NewOSFactory() OSFactory {
-	return OSFactory{openFile: os.OpenFile}
+	return OSFactory{
+		openPort: serialport.Open,
+		mode: &serialport.Mode{
+			BaudRate: 9600,
+			DataBits: 8,
+			Parity:   serialport.NoParity,
+			StopBits: serialport.OneStopBit,
+		},
+	}
 }
 
 func (f OSFactory) Open(device string) (Port, error) {
-	file, err := f.openFile(device, os.O_RDWR, 0)
+	openPort := f.openPort
+	if openPort == nil {
+		openPort = serialport.Open
+	}
+
+	mode := f.mode
+	if mode == nil {
+		mode = NewOSFactory().mode
+	}
+
+	port, err := openPort(device, mode)
 	if err != nil {
 		return nil, err
 	}
 
 	return &FilePort{
 		device: device,
-		file:   file,
+		port:   port,
 	}, nil
 }
 
 type FilePort struct {
 	device string
-	file   *os.File
+	port   serialport.Port
 }
 
 func (p *FilePort) Device() string {
@@ -65,15 +85,15 @@ func (p *FilePort) Device() string {
 }
 
 func (p *FilePort) Read(data []byte) (int, error) {
-	return p.file.Read(data)
+	return p.port.Read(data)
 }
 
 func (p *FilePort) Write(data []byte) (int, error) {
-	return p.file.Write(data)
+	return p.port.Write(data)
 }
 
 func (p *FilePort) Close() error {
-	return p.file.Close()
+	return p.port.Close()
 }
 
 type MemoryPort struct {

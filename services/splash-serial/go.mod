@@ -6,10 +6,12 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/nats-io/nats-server/v2 v2.12.1
 	github.com/nats-io/nats.go v1.46.1
+	go.bug.st/serial v1.6.4
 )
 
 require (
 	github.com/antithesishq/antithesis-sdk-go v0.4.3-default-no-op // indirect
+	github.com/creack/goselect v0.1.2 // indirect
 	github.com/google/go-tpm v0.9.6 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/minio/highwayhash v1.0.3 // indirect

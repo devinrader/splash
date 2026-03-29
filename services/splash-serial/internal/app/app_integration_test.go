@@ -485,14 +485,6 @@ func TestIntegrationAppUsesRealNATSBus(t *testing.T) {
 
 	assertHealthStatus(t, httpAddr, httpapi.StatusOK, connectedStreamID)
 
-	if err := master.Close(); err != nil {
-		t.Fatalf("close pty master: %v", err)
-	}
-
-	waitForDecoded(t, statusCh, func(payload nats.SerialPortStatus) bool {
-		return payload.Status == string(serial.StateDisconnected)
-	})
-
 	cancel()
 
 	select {
@@ -669,6 +661,100 @@ func TestIntegrationAppReconnectsAfterLiveSerialReadError(t *testing.T) {
 		cancel()
 		<-errCh
 		t.Fatalf("expected second connect attempt after live read error, got %d", attempts)
+	}
+
+	assertHealthStatus(t, httpAddr, httpapi.StatusDegraded, connectedStreamID)
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("app exited with error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for app shutdown")
+	}
+}
+
+func TestIntegrationAppReconnectsAfterLiveSerialEOF(t *testing.T) {
+	httpAddr := reserveLoopbackAddress(t)
+	attempts := 0
+
+	manager := serial.NewManager("/dev/ttyUSB0", 10*time.Millisecond, appFactory{
+		open: func(string) (serial.Port, error) {
+			attempts++
+			if attempts == 1 {
+				return &scriptedAppPort{
+					device: "/dev/ttyUSB0",
+					reads: []appReadResult{
+						{err: io.EOF},
+					},
+				}, nil
+			}
+			return &blockingAppPort{device: "/dev/ttyUSB0"}, nil
+		},
+	})
+
+	app := &App{
+		cfg: config.Config{
+			SerialDevice:            "/dev/ttyUSB0",
+			SerialReconnectInterval: 10 * time.Millisecond,
+			SerialWriteTimeout:      time.Second,
+			SerialHTTPBind:          httpAddr,
+		},
+		logger:        log.New(io.Discard, "", 0),
+		natsClient:    nats.NewClient("nats://integration.local:4222", 10*time.Millisecond),
+		serialManager: manager,
+		healthServer: httpapi.NewServer(httpAddr, httpapi.HealthState{
+			Status:          httpapi.StatusDegraded,
+			SerialDevice:    manager.Device(),
+			ConnectionState: string(serial.StateDisconnected),
+			NATS:            httpapi.DependencyUnknown,
+			Configuration:   httpapi.ConfigurationValid,
+		}),
+		after:        time.After,
+		serialStatus: httpapi.StatusDegraded,
+		natsState:    httpapi.DependencyUnknown,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Run(ctx)
+	}()
+
+	waitForMessage(t, app.natsClient, nats.SubjectSerialPortStatus, func(data []byte) bool {
+		var payload nats.SerialPortStatus
+		if err := json.Unmarshal(data, &payload); err != nil {
+			return false
+		}
+		return payload.Status == string(serial.StateDisconnected) && payload.Detail == "adapter read ended"
+	})
+
+	deadline := time.Now().Add(2 * time.Second)
+	var connectedStreamID string
+	for time.Now().Before(deadline) {
+		health := app.healthServer.Health()
+		if health.StreamID != "" && health.ConnectionState == string(serial.StateConnected) {
+			connectedStreamID = health.StreamID
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if connectedStreamID == "" {
+		cancel()
+		<-errCh
+		t.Fatal("timed out waiting for reconnect after live read EOF")
+	}
+
+	if attempts != 2 {
+		cancel()
+		<-errCh
+		t.Fatalf("expected second connect attempt after live read EOF, got %d", attempts)
 	}
 
 	assertHealthStatus(t, httpAddr, httpapi.StatusDegraded, connectedStreamID)

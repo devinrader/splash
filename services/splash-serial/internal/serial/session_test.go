@@ -4,9 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"testing"
 	"time"
+
+	serialport "go.bug.st/serial"
 )
 
 func TestManagerConnectCreatesConnectedSession(t *testing.T) {
@@ -267,39 +268,34 @@ func TestUnsupportedFactoryAndMemoryPortBehavior(t *testing.T) {
 }
 
 func TestOSFactoryOpenReturnsFileBackedPort(t *testing.T) {
-	tmpFile, err := os.CreateTemp(t.TempDir(), "serial-port-*")
-	if err != nil {
-		t.Fatalf("CreateTemp returned error: %v", err)
-	}
-	tmpPath := tmpFile.Name()
-	if err := tmpFile.Close(); err != nil {
-		t.Fatalf("Close returned error: %v", err)
+	factory := NewOSFactory()
+	factory.openPort = func(name string, mode *serialport.Mode) (serialport.Port, error) {
+		if name != "/dev/ttyUSB0" {
+			t.Fatalf("unexpected device %q", name)
+		}
+		if mode == nil {
+			t.Fatal("expected serial mode")
+		}
+		if mode.BaudRate != 9600 || mode.DataBits != 8 || mode.Parity != serialport.NoParity || mode.StopBits != serialport.OneStopBit {
+			t.Fatalf("unexpected serial mode: %+v", mode)
+		}
+		return &fakeSerialPort{}, nil
 	}
 
-	factory := NewOSFactory()
-	port, err := factory.Open(tmpPath)
+	port, err := factory.Open("/dev/ttyUSB0")
 	if err != nil {
 		t.Fatalf("Open returned error: %v", err)
 	}
 	defer port.Close()
 
-	if port.Device() != tmpPath {
+	if port.Device() != "/dev/ttyUSB0" {
 		t.Fatalf("unexpected device: %q", port.Device())
-	}
-
-	written, err := port.Write([]byte("abc"))
-	if err != nil {
-		t.Fatalf("Write returned error: %v", err)
-	}
-
-	if written != 3 {
-		t.Fatalf("expected 3 bytes written, got %d", written)
 	}
 }
 
 func TestOSFactoryOpenPropagatesErrors(t *testing.T) {
 	factory := OSFactory{
-		openFile: func(string, int, os.FileMode) (*os.File, error) {
+		openPort: func(string, *serialport.Mode) (serialport.Port, error) {
 			return nil, errors.New("open failed")
 		},
 	}
@@ -353,5 +349,55 @@ func (p *scriptedPort) Write(data []byte) (int, error) {
 }
 
 func (p *scriptedPort) Close() error {
+	return nil
+}
+
+type fakeSerialPort struct{}
+
+func (p *fakeSerialPort) SetMode(*serialport.Mode) error {
+	return nil
+}
+
+func (p *fakeSerialPort) Read([]byte) (int, error) {
+	return 0, io.EOF
+}
+
+func (p *fakeSerialPort) Write(data []byte) (int, error) {
+	return len(data), nil
+}
+
+func (p *fakeSerialPort) Drain() error {
+	return nil
+}
+
+func (p *fakeSerialPort) ResetInputBuffer() error {
+	return nil
+}
+
+func (p *fakeSerialPort) ResetOutputBuffer() error {
+	return nil
+}
+
+func (p *fakeSerialPort) SetDTR(bool) error {
+	return nil
+}
+
+func (p *fakeSerialPort) SetRTS(bool) error {
+	return nil
+}
+
+func (p *fakeSerialPort) GetModemStatusBits() (*serialport.ModemStatusBits, error) {
+	return &serialport.ModemStatusBits{}, nil
+}
+
+func (p *fakeSerialPort) SetReadTimeout(time.Duration) error {
+	return nil
+}
+
+func (p *fakeSerialPort) Close() error {
+	return nil
+}
+
+func (p *fakeSerialPort) Break(time.Duration) error {
 	return nil
 }
