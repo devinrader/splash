@@ -159,15 +159,16 @@ Caption: Diagram showing the decoder plug-in approach used by the protocol servi
 ### Protocol service flow
 
 1. `splash-serial` reads raw RS-485 bytes and publishes them to NATS
-2. `splash-protocol` reconstructs frames from the raw stream
-3. `splash-protocol` validates checksums and framing
-4. `splash-protocol` decodes frames into normalized events
-5. `splash-protocol` publishes both protocol-level and normalized event subjects
-6. `splash-api` and `splash-scheduler` consume normalized events only
-7. `splash-api` publishes normalized command intent for approved actions
-8. `splash-protocol` encodes command intent into raw bytes
-9. `splash-protocol` publishes `serial.write.request`
-10. `splash-serial` validates the active stream, enforces idle timing, and transmits the encoded bytes to the bus
+2. `splash-protocol` discovers the locally available protocol plugins and selects the pool's active plugin from provider-backed pool configuration
+3. `splash-protocol` reconstructs frames from the raw stream
+4. `splash-protocol` validates checksums and framing
+5. `splash-protocol` decodes frames into normalized events
+6. `splash-protocol` publishes both protocol-level and normalized event subjects
+7. `splash-api` and `splash-scheduler` consume normalized events only
+8. `splash-api` publishes normalized command intent for approved actions
+9. `splash-protocol` encodes command intent into raw bytes
+10. `splash-protocol` publishes `serial.write.request`
+11. `splash-serial` validates the active stream, enforces idle timing, and transmits the encoded bytes to the bus
 
 ```mermaid
 sequenceDiagram
@@ -243,6 +244,14 @@ The authoritative normalized application-level contract above the protocol layer
 - `splash-protocol` owns correlation between `protocol.command.intent`, `protocol.command.encoded`, `serial.tx.raw`, and the resulting decoded response frames
 - `splash-serial` does not decide whether a command succeeded; it only reports transport-level write status
 - `splash-serial` must reject stale write requests whose `stream_id` no longer matches the active port session
+
+### Plugin availability and selection
+
+- locally available protocol plugins are a `splash-protocol` runtime concern
+- `splash-protocol` should discover available plugins from the local packaged plugin set or plugin directory at startup
+- `pool_settings.protocol_plugin` selects one active plugin for the pool from that discovered set
+- `pool_settings.protocol_config` supplies pool-specific plugin options
+- a pool selecting a plugin that is not locally available is a degraded runtime condition, not a fatal startup condition
 
 ### Transport write contract
 

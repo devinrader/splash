@@ -116,6 +116,8 @@ Rules:
 
 - the registry is process-local
 - multiple plugin libraries may be present and loaded at startup
+- registry population should come from local discovery of packaged plugins or a
+  known plugin directory
 - one pool resolves to one active live plugin at a time in v1
 - no plugin competition for the same live stream in normal operation
 - Protocol Explorer may invoke any loaded plugin for offline or diagnostic flows

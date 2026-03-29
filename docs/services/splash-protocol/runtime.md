@@ -13,7 +13,8 @@ It should:
 - expose local `GET /healthz` and `GET /metrics`
 - maintain per-stream frame-assembly state
 - maintain command-correlation state for active commands
-- load a process-local registry of protocol plugins at startup
+- discover a process-local registry of protocol plugins at startup from the
+  local packaged plugin set or plugin directory
 
 ## Runtime state machine
 
@@ -101,7 +102,7 @@ Startup outcomes:
   - phase becomes `config_degraded`
   - process stays alive
   - decode and command flow may remain degraded until configuration becomes available
-- active plugin unknown or plugin config invalid:
+- active plugin unknown among discovered plugins or plugin config invalid:
   - phase becomes `config_degraded`
   - process stays alive
   - Protocol Explorer diagnostics may still use loaded plugins, but live decode and command encode for the pool remain blocked
@@ -167,17 +168,22 @@ defines a stricter command family expectation.
 
 ## Configuration-provider boundary
 
-`splash-protocol` should not hard-code PostgreSQL as its only configuration source.
+`splash-protocol` should not hard-code PostgreSQL as its only configuration
+source for pool selection or plugin configuration.
 
 Design requirement:
 
-- plugin selection and plugin config should be obtained through a configuration-provider abstraction
+- locally available plugins should be discovered by the service from the local
+  packaged plugin set or plugin directory
+- pool-level active plugin selection and plugin config should be obtained
+  through a configuration-provider abstraction
 - the provider may read from PostgreSQL in normal operation
 - the runtime should support degraded startup when PostgreSQL is unavailable
 
 ASSUMPTION: the first implementation will keep the provider abstraction explicit
-while leaving the concrete degraded-mode bootstrap source open until deployment
-details are finalized.
+while leaving the concrete degraded-mode fallback for pool-selected
+`protocol_plugin` and `protocol_config` open until deployment details are
+finalized.
 
 ## Loop expectations
 

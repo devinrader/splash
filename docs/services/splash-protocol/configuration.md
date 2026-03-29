@@ -7,9 +7,12 @@
 `splash-protocol` should load service-level runtime configuration from its
 runtime environment.
 
-Plugin selection and plugin-specific options should be obtained through a
-configuration-provider abstraction rather than being treated as static service
-env alone.
+Plugin availability should be discovered locally from the packaged plugin set
+or plugin directory.
+
+Pool-selected plugin identity and plugin-specific options should be obtained
+through a configuration-provider abstraction rather than being treated as
+static service env alone.
 
 ## Expected service-level environment variables
 
@@ -22,7 +25,23 @@ env alone.
 | `TZ` | Local timezone for logs and operations context |
 
 Optional future bootstrap variables may exist for degraded startup support, but
-the concrete fallback source is intentionally left open in this design pass.
+the concrete fallback source for pool-selected plugin identity and
+`protocol_config` is intentionally left open in this design pass.
+
+## Local plugin discovery expectations
+
+Available plugins are a local runtime concern, not a pool-settings concern.
+
+Rules:
+
+- `splash-protocol` should discover locally installed or packaged plugins at
+  startup
+- discovery may use a known plugin directory, built-in packaged modules, or
+  both
+- discovered plugin ids define the set of valid active plugin choices for the
+  pool
+- missing plugin implementations degrade live decode and command handling
+  instead of crashing the service
 
 ## Configuration-provider expectations
 
@@ -34,6 +53,8 @@ The provider must supply:
 Provider rules:
 
 - normal operation may read from PostgreSQL-backed configuration
+- provider-backed plugin selection must resolve only against locally discovered
+  plugin ids
 - runtime should not hard-fail solely because the backing database is
   temporarily unavailable
 - stale or unavailable provider data must degrade decode or command behavior
@@ -63,6 +84,8 @@ Examples of fatal static config:
 Examples of degraded provider config:
 
 - unknown `protocol_plugin`
+- `protocol_plugin` selected by the pool but not present in the local
+  discovered plugin set
 - malformed `protocol_config` for the selected plugin
 - provider unavailable at startup
 

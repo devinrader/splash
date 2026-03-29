@@ -37,9 +37,24 @@ Multiple plugins may be loaded into the process registry.
 Rules:
 
 - multiple plugins may exist in-process at the same time
+- registry population should come from local discovery of the packaged plugin
+  set or plugin directory
 - one pool resolves to exactly one active plugin for live traffic
 - plugins must not compete to decode the same live stream in normal operation
 - plugin switching must be explicit through configuration, not live auto-detection
+
+## Discovery model
+
+Plugin availability and pool selection are separate concerns.
+
+Rules:
+
+- plugin availability should be determined locally at service startup
+- local discovery may use built-in packaged plugins, a known plugin directory,
+  or both
+- pool configuration should only select from discovered plugin ids
+- a pool selecting a plugin that is not locally available is a degraded runtime
+  condition, not a fatal startup condition
 
 ## Plugin identity
 
