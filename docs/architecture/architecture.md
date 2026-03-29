@@ -251,7 +251,7 @@ The authoritative normalized application-level contract above the protocol layer
 - `splash-protocol` should discover available plugins from the local packaged plugin set or plugin directory at startup
 - `pool_settings.protocol_plugin` selects one active plugin for the pool from that discovered set
 - `pool_settings.protocol_config` supplies pool-specific plugin options
-- a pool selecting a plugin that is not locally available is a degraded runtime condition, not a fatal startup condition
+- a pool selecting a plugin that is not locally available is a fatal runtime condition because the deployment cannot satisfy the configured protocol
 
 ### Transport write contract
 
@@ -275,7 +275,7 @@ The authoritative normalized application-level contract above the protocol layer
 
 ### Plugin loading model
 
-- protocol plugins are loaded by `splash-protocol` from configuration at startup
+- protocol plugins are discovered locally by `splash-protocol` at startup, while pool configuration selects the active plugin
 - a pool resolves to exactly one active protocol plugin at a time in v1
 - the plugin registry is process-local to `splash-protocol`
 - Protocol Explorer decode, simulate, and diff operations must use the same loaded plugin implementation as live traffic processing

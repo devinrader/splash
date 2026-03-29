@@ -40,8 +40,8 @@ Rules:
   both
 - discovered plugin ids define the set of valid active plugin choices for the
   pool
-- missing plugin implementations degrade live decode and command handling
-  instead of crashing the service
+- a selected plugin missing from the discovered local plugin set is a fatal
+  deployment or configuration error
 
 ## Configuration-provider expectations
 
@@ -56,9 +56,10 @@ Provider rules:
 - provider-backed plugin selection must resolve only against locally discovered
   plugin ids
 - runtime should not hard-fail solely because the backing database is
-  temporarily unavailable
+  temporarily unavailable when a valid selected plugin and config can still be
+  resolved
 - stale or unavailable provider data must degrade decode or command behavior
-  rather than crashing the service
+  rather than crashing the service only when a valid fallback selection exists
 
 ## Validation expectations
 
@@ -73,7 +74,11 @@ Validation rules:
 Validation outcomes:
 
 - invalid static service configuration is fatal
-- invalid provider-backed plugin selection or plugin config is degraded, not fatal
+- provider-backed plugin selection that does not resolve to a locally
+  discovered plugin is fatal
+- invalid plugin config for the selected plugin is fatal
+- provider outage is degraded only when a valid selected plugin and config can
+  still be resolved
 
 Examples of fatal static config:
 
@@ -83,11 +88,16 @@ Examples of fatal static config:
 
 Examples of degraded provider config:
 
+- provider unavailable at startup
+  with a valid fallback selection and config available
+
+Examples of fatal provider or selection config:
+
 - unknown `protocol_plugin`
 - `protocol_plugin` selected by the pool but not present in the local
   discovered plugin set
 - malformed `protocol_config` for the selected plugin
-- provider unavailable at startup
+- provider unavailable at startup with no valid fallback selection and config
 
 ## Example
 

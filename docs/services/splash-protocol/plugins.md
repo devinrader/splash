@@ -53,8 +53,8 @@ Rules:
 - local discovery may use built-in packaged plugins, a known plugin directory,
   or both
 - pool configuration should only select from discovered plugin ids
-- a pool selecting a plugin that is not locally available is a degraded runtime
-  condition, not a fatal startup condition
+- a pool selecting a plugin that is not locally available is a fatal runtime
+  condition because the deployment cannot satisfy the configured protocol
 
 ## Plugin identity
 

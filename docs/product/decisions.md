@@ -44,6 +44,7 @@
 
 - `ProtocolDecoder` is loaded by `splash-protocol`, not by `splash-serial`.
 - `splash-protocol` should discover locally available protocol plugins from the packaged plugin set or plugin directory, while pool configuration selects one active plugin and supplies pool-specific plugin config.
+- a pool selecting a plugin that is not locally available is an unrecoverable deployment or configuration error and should be treated as fatal.
 - `WeatherProvider` is the abstraction boundary for external weather APIs.
 - `SensorProvider` is the abstraction boundary for future chemistry hardware.
 - Protocol Explorer should reuse the same decode/encode engine used in production command and frame handling.

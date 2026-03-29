@@ -57,6 +57,9 @@ Fatal failures:
 - invalid static service configuration
 - HTTP bind failure
 - plugin registry construction failure caused by invalid built-in code invariants
+- selected `protocol_plugin` not present in the locally discovered plugin set
+- selected `protocol_config` invalid in a way that prevents safe decode or
+  encode and cannot be corrected without a configuration change or restart
 - internal invariant failure that leaves safe decode or command behavior impossible
 
 Degraded but non-fatal failures:
@@ -65,7 +68,6 @@ Degraded but non-fatal failures:
 - configuration-provider unavailable
 - PostgreSQL unavailable
 - active plugin selection unavailable
-- active plugin configuration invalid
 - serial stream unavailable or stale
 - command correlation timeout
 - unsupported or malformed protocol frames in live traffic
@@ -101,11 +103,19 @@ Startup outcomes:
 - configuration provider unavailable:
   - phase becomes `config_degraded`
   - process stays alive
-  - decode and command flow may remain degraded until configuration becomes available
-- active plugin unknown among discovered plugins or plugin config invalid:
+  - decode and command flow may remain degraded until configuration becomes
+    available, unless a valid fallback for the pool-selected plugin and config
+    can be resolved
+- active plugin selection unavailable and no valid fallback exists:
   - phase becomes `config_degraded`
   - process stays alive
-  - Protocol Explorer diagnostics may still use loaded plugins, but live decode and command encode for the pool remain blocked
+  - live decode and command encode remain blocked until valid selection becomes available
+- active plugin unknown among discovered plugins:
+  - phase becomes `fatal`
+  - process exits because the deployment cannot satisfy the configured pool protocol
+- active plugin config invalid:
+  - phase becomes `fatal`
+  - process exits because safe decode and command behavior cannot proceed from the configured state
 
 ## Pool and plugin model
 
@@ -179,6 +189,8 @@ Design requirement:
   through a configuration-provider abstraction
 - the provider may read from PostgreSQL in normal operation
 - the runtime should support degraded startup when PostgreSQL is unavailable
+- degraded startup only applies when the service can still resolve a valid
+  pool-selected plugin and config from the provider or an approved fallback
 
 ASSUMPTION: the first implementation will keep the provider abstraction explicit
 while leaving the concrete degraded-mode fallback for pool-selected
