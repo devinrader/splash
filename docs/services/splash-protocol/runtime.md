@@ -103,10 +103,9 @@ Startup outcomes:
 - configuration provider unavailable:
   - phase becomes `config_degraded`
   - process stays alive
-  - decode and command flow may remain degraded until configuration becomes
-    available, unless a valid fallback for the pool-selected plugin and config
-    can be resolved
-- active plugin selection unavailable and no valid fallback exists:
+  - live decode and command encode remain blocked until configuration becomes
+    available from the provider
+- active plugin selection unavailable:
   - phase becomes `config_degraded`
   - process stays alive
   - live decode and command encode remain blocked until valid selection becomes available
@@ -189,13 +188,9 @@ Design requirement:
   through a configuration-provider abstraction
 - the provider may read from PostgreSQL in normal operation
 - the runtime should support degraded startup when PostgreSQL is unavailable
-- degraded startup only applies when the service can still resolve a valid
-  pool-selected plugin and config from the provider or an approved fallback
-
-ASSUMPTION: the first implementation will keep the provider abstraction explicit
-while leaving the concrete degraded-mode fallback for pool-selected
-`protocol_plugin` and `protocol_config` open until deployment details are
-finalized.
+- degraded startup means the service stays alive while decode and command flow
+  remain blocked until the provider can return a valid pool-selected plugin and
+  config
 
 ## Loop expectations
 

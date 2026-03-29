@@ -8,7 +8,6 @@
 - QUESTION: Should controller type be auto-detected from bus framing, or remain an explicit configuration choice in v1?
 - QUESTION: What is the exact production path and timeline for Hayward support?
 - QUESTION: What is the exact production path and timeline for Jandy support?
-- QUESTION: What concrete degraded-startup fallback source should `splash-protocol` use for pool-selected `protocol_plugin` and `protocol_config` when the normal configuration provider or PostgreSQL is unavailable, assuming the selected plugin is locally installed and valid?
 
 ## API and schema completeness
 

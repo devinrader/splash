@@ -24,9 +24,11 @@ static service env alone.
 | `LOG_LEVEL` | Runtime log verbosity |
 | `TZ` | Local timezone for logs and operations context |
 
-Optional future bootstrap variables may exist for degraded startup support, but
-the concrete fallback source for pool-selected plugin identity and
-`protocol_config` is intentionally left open in this design pass.
+No fallback configuration source is required for provider outage in v1.
+
+When the provider is unavailable, `splash-protocol` should remain alive in a
+degraded state and wait for the provider to return valid pool-selected
+`protocol_plugin` and `protocol_config`.
 
 ## Local plugin discovery expectations
 
@@ -56,10 +58,9 @@ Provider rules:
 - provider-backed plugin selection must resolve only against locally discovered
   plugin ids
 - runtime should not hard-fail solely because the backing database is
-  temporarily unavailable when a valid selected plugin and config can still be
-  resolved
+  temporarily unavailable
 - stale or unavailable provider data must degrade decode or command behavior
-  rather than crashing the service only when a valid fallback selection exists
+  rather than crashing the service
 
 ## Validation expectations
 
@@ -77,8 +78,8 @@ Validation outcomes:
 - provider-backed plugin selection that does not resolve to a locally
   discovered plugin is fatal
 - invalid plugin config for the selected plugin is fatal
-- provider outage is degraded only when a valid selected plugin and config can
-  still be resolved
+- provider outage is degraded and blocks decode and command behavior until the
+  provider returns valid selection and config
 
 Examples of fatal static config:
 
@@ -89,7 +90,7 @@ Examples of fatal static config:
 Examples of degraded provider config:
 
 - provider unavailable at startup
-  with a valid fallback selection and config available
+  while the service waits for valid provider-backed selection and config
 
 Examples of fatal provider or selection config:
 
@@ -97,7 +98,6 @@ Examples of fatal provider or selection config:
 - `protocol_plugin` selected by the pool but not present in the local
   discovered plugin set
 - malformed `protocol_config` for the selected plugin
-- provider unavailable at startup with no valid fallback selection and config
 
 ## Example
 
