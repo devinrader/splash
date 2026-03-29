@@ -108,7 +108,8 @@ Startup outcomes:
 - active plugin selection unavailable:
   - phase becomes `config_degraded`
   - process stays alive
-  - live decode and command encode remain blocked until valid selection becomes available
+  - live decode and command encode remain blocked until valid selection becomes
+    available from the provider
 - active plugin unknown among discovered plugins:
   - phase becomes `fatal`
   - process exits because the deployment cannot satisfy the configured pool protocol
