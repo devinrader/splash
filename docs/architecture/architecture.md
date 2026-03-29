@@ -294,21 +294,22 @@ flowchart TD
 
 ### Plugin configuration source
 
-- `splash-protocol` loads pool-level plugin selection from `pool_settings.protocol_plugin`
-- plugin-specific runtime options are loaded from `pool_settings.protocol_config`
+- `splash-protocol` obtains pool-level plugin selection and plugin config through a configuration-provider boundary
+- in normal operation the provider may source values from `pool_settings.protocol_plugin` and `pool_settings.protocol_config`
 - the active pool configuration is cached in memory by `splash-protocol` and refreshed on settings changes or startup
 
 ### Plugin resolution rules
 
-1. Read `pool_settings.protocol_plugin`
+1. Obtain the active plugin selection through the configuration-provider boundary
 2. Resolve it against the local plugin registry
-3. Load plugin-specific options from `pool_settings.protocol_config`
+3. Load plugin-specific options from the provider-backed protocol config
 4. Reject startup or command processing if the configured plugin is unknown or invalid
 
 ### Invalid configuration behavior
 
 - if `protocol_plugin` is missing or unknown, `splash-protocol` must emit a degraded health state
 - if `protocol_config` is invalid for the selected plugin, command encoding must be blocked and a clear configuration error surfaced
+- temporary configuration-provider unavailability should degrade the service rather than terminate it
 - raw transport can continue even when protocol decode is degraded, but normalized event publication must pause for the affected pool until configuration is fixed
 
 ### Example plugin configuration

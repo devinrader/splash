@@ -28,7 +28,8 @@ The documentation is grouped by role so related material stays together:
 5. Read [Interface Design](./interfaces/api-design.md) and the linked contract documents for REST, SSE, NATS, and normalized contracts.
 6. Read [Splash NATS Service](./services/splash-nats/README.md) for the event-backbone service design and durability rules.
 7. Read [Splash Serial Service](./services/splash-serial/README.md) for the transport-service design that sits under the protocol layer.
-8. Read [Workflows](./workflows/workflows.md) for end-to-end behavior across onboarding, automation, SLAM, and degraded states.
+8. Read [Splash Protocol Service](./services/splash-protocol/README.md) for the decode, normalize, and command-correlation layer that sits above transport.
+9. Read [Workflows](./workflows/workflows.md) for end-to-end behavior across onboarding, automation, SLAM, and degraded states.
 
 ## Document index
 
@@ -61,6 +62,8 @@ The documentation is grouped by role so related material stays together:
   PostgreSQL entities, InfluxDB measurements, chemistry thresholds, and persistence rules.
 - [Equipment Protocol Reference](./architecture/equipment-protocols.md)
   Pool-equipment communication protocols, vendor comparisons, frame characteristics, and reverse-engineering status.
+- [Protocol Libraries](./architecture/protocol-libraries.md)
+  Library-layer boundaries between the `splash-protocol` service, protocol core logic, and vendor-specific plugins.
 
 ### Interfaces
 
@@ -81,6 +84,8 @@ The documentation is grouped by role so related material stays together:
   Service-specific design index for the platform message backbone on `splash-core`.
 - [Splash Serial Service](./services/splash-serial/README.md)
   Service-specific design index for the RS-485 transport daemon on `splash-zero`.
+- [Splash Protocol Service](./services/splash-protocol/README.md)
+  Service-specific design index for the protocol decode, normalize, and command service on `splash-core`.
 
 ### Workflows
 

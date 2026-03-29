@@ -23,6 +23,8 @@ This document captures testing, observability, and operational guidance that sup
 - the most valuable first alert is RS-485 frame rate dropping to zero
 - `splash-serial` should expose Prometheus metrics for connection state, reconnect count, bytes read, bytes written, write failures, and current stream age
 - `splash-serial` should expose `GET /healthz` and `GET /metrics` over its local HTTP listener
+- `splash-protocol` should expose `GET /healthz` and `GET /metrics` over its local HTTP listener
+- `splash-protocol` should expose metrics for frame decode success or failure, normalized event publication, command-result status, and command-correlation timeouts
 
 ## Backup and recovery
 
