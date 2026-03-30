@@ -160,3 +160,30 @@ test("command coordinator fails on transport error", async () => {
     .map((entry) => entry.payload.status);
   assert.ok(results.includes("failed"));
 });
+
+test("command coordinator accepts live raw chunks as active stream evidence", async () => {
+  const session = new FakeSession();
+  const coordinator = new CommandCoordinator(noopLogger, 100);
+  coordinator.setActiveSelection(selection, pentairEasyTouchPlugin);
+  coordinator.attach(session);
+
+  await session.emit("serial.rx.raw", {
+    serial_instance_id: "serial-instance-1",
+    stream_id: "stream-1",
+    chunk_id: "chunk-1",
+    port: "/dev/ttyUSB0",
+    received_at: "2026-03-30T00:00:00Z",
+    bytes_hex: "ff00ffa5",
+    byte_count: 4
+  });
+  await session.emit("protocol.command.intent", commandIntent({ command_id: "command-from-rx" }));
+
+  const results = session.published
+    .filter((entry) => entry.subject === "command.result.command-from-rx")
+    .map((entry) => entry.payload.status);
+  const writes = session.published.filter((entry) => entry.subject === "serial.write.request");
+
+  assert.ok(results.includes("accepted"));
+  assert.ok(!results.includes("failed"));
+  assert.equal(writes.length, 3);
+});

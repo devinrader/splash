@@ -46,6 +46,7 @@ export class CommandCoordinator {
     this.onStreamIdChange?.(null);
     session.subscribe("protocol.command.intent", (payload) => this.handleIntent(payload));
     session.subscribe("serial.port.status", (payload) => this.handlePortStatus(payload));
+    session.subscribe("serial.rx.raw", (payload) => this.handleRawChunk(payload));
     session.subscribe("serial.tx.raw", (payload) => this.handleTransportResult(payload));
     session.subscribe("equipment.state.pump", (payload) => this.handlePumpState(payload));
   }
@@ -125,8 +126,20 @@ export class CommandCoordinator {
   }
 
   private async handlePortStatus(payload: Record<string, unknown>): Promise<void> {
-    const previousStreamId = this.streamId;
+    await this.updateStreamId(typeof payload.stream_id === "string" ? payload.stream_id : null);
+  }
+
+  private async handleRawChunk(payload: Record<string, unknown>): Promise<void> {
     const streamId = typeof payload.stream_id === "string" ? payload.stream_id : null;
+    if (!streamId) {
+      return;
+    }
+
+    await this.updateStreamId(streamId);
+  }
+
+  private async updateStreamId(streamId: string | null): Promise<void> {
+    const previousStreamId = this.streamId;
     if (this.streamId === streamId) {
       return;
     }
