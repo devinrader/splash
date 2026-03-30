@@ -221,51 +221,39 @@ Pentair EasyTouch and IntelliTouch are the primary v1 protocol targets. Communit
 - the source material references a 50 ms idle requirement before writing
 - some pump-control flows require panel-control toggling before direct pump commands are accepted
 
-### Initial direct pump control assumption
+### Initial pump-speed control assumption
 
-The first Splash command implementation may support Pentair direct pump
-`set_speed` before broader controller-managed write coverage exists.
+The first Splash command implementation should prefer Pentair
+controller-mediated pump-circuit speed control rather than direct IntelliFlo
+RPM writes.
 
 Initial assumption set:
 
-- target direct IntelliFlo pump address such as `0x60`
-- enable remote control before the RPM write
-- send the direct RPM write
-- disable remote control after the RPM write
-- require at least 50 ms bus idle before each write
+- the target pump is assigned to one or more EasyTouch-managed circuits
+- Splash changes the configured RPM for the relevant pump circuit rather than
+  writing a direct standalone pump RPM
+- the controller remains the authority that keeps the pump at the requested
+  speed once the circuit is active
+- required Pentair controller write frames and follow-up response frames must be
+  captured and documented before the first live implementation is considered
+  complete
 
-ASSUMPTION: the initial direct RPM write uses the currently documented Pentair
-pump Program 1 RPM path while additional captures are gathered to confirm the
-best long-term normalized `set_speed` mapping for EasyTouch-controlled systems.
+This keeps milestone 1 aligned with the actual controller-managed operating mode
+instead of competing with EasyTouch over direct pump ownership.
 
-### EasyTouch ownership and direct RPM commands
+### Deferred direct-pump and no-controller scenarios
 
-When an IntelliFlo pump remains under active EasyTouch schedule or circuit
-control, a direct RS-485 RPM command may not persist even if the transport write
-succeeds.
+Later work should still explore:
 
-If the goal is to set RPM directly and have it stick, the currently understood
-operating models are:
+- pumps with no controller-managed circuits assigned
+- pumps physically present on RS-485 but not connected through an EasyTouch
+  controller path
+- standalone or no-controller deployments where Splash must own direct pump
+  control without controller mediation
 
-- Option 1: disable EasyTouch pump control
-  - unassign the pump from controller circuits, disable relevant EasyTouch
-    schedules, or otherwise stop the controller from reasserting pump state
-  - this is the clearest way for direct Splash-issued RPM commands to persist
-- Option 2: override continuously
-  - repeatedly send the desired RPM every few seconds
-  - this can compete with EasyTouch, but it is operationally messy and should
-    be treated as a fallback rather than the preferred design
-- Option 3: use EasyTouch properly
-  - change the controller-managed circuit speed and activate the circuit
-  - this is the cleanest controller-cooperative path, but it requires broader
-    EasyTouch command support than the first direct-pump milestone slice
-- Option 4: physically isolate the pump
-  - disconnect the pump RS-485 link from EasyTouch and attach only the Splash
-    controller path
-  - this gives Splash full control but changes the physical control topology
-
-These options should inform future command design. A transport-level successful
-write does not guarantee that EasyTouch will leave the requested RPM in effect.
+Those scenarios are real, but they should not drive the first milestone command
+path while the controller-managed circuit model remains the cleanest and most
+supported EasyTouch integration surface.
 
 ### Normalized mapping targets
 

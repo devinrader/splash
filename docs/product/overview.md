@@ -34,7 +34,7 @@ The initial implementation of Splash is a narrow end-to-end vertical slice:
 - read and display current water temperature
 - read and display current salt level
 - read and display current pump RPM
-- change pump speed from the browser
+- change pump-circuit RPM from the browser
 
 This first slice exists to validate the minimum useful closed loop from live
 RS-485 traffic through protocol decode, persistence, API delivery, browser
@@ -103,7 +103,7 @@ The application uses a persistent left sidebar on desktop and a collapsed or bot
 
 - Initial implementation milestone completed:
   - browser UI shows current air temp, water temp, salt level, and pump RPM
-  - browser UI can change pump RPM
+- browser UI can change pump-circuit RPM
   - the end-to-end read and write path is proven on real equipment
 - Working RS-485 connection that can read status from and send commands to at
   least one connected pool-equipment target
@@ -111,7 +111,7 @@ The application uses a persistent left sidebar on desktop and a collapsed or bot
 
 ### Build phases
 
-1. Initial implementation slice: Raspberry Pi hosts, RS-485 communication, protocol decode, minimal API and frontend, persistence or logging for live temperatures, salt, and pump RPM, plus browser pump-speed control
+1. Initial implementation slice: Raspberry Pi hosts, RS-485 communication, protocol decode, minimal API and frontend, persistence or logging for live temperatures, salt, and pump RPM, plus browser pump-circuit RPM control
 2. Core platform expansion: chemistry screen, equipment screen, dashboard, notification delivery, and broader normalized equipment coverage
 3. Remaining v1 features: maintenance reminders, seasonal checklists, task list, predictive rules, cover tracking, SLAM workflow, Protocol Explorer, and rainfall tracking
 4. Future roadmap: dosing recommendations, usage-based maintenance, autonomous automation, predictive fault detection, energy optimization, dark mode, and virtual or mock pool simulation for hardware-free testing and demos

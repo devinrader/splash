@@ -16,7 +16,7 @@ Initial milestone goals:
 - show current water temperature in the browser
 - show current salt level in the browser
 - show current pump RPM in the browser
-- allow the operator to change pump speed from the browser
+- allow the operator to change pump-circuit RPM from the browser
 - persist or log enough state and command history to verify the read and write
   path end to end
 
@@ -57,8 +57,9 @@ below. It is the first implementation target that validates:
 - Support inventory records for pump, filter, heater, lights, cleaner, and chlorinator
 - Show live equipment state through SSE
 - Expose command controls with loading state until `command.result`
-- The first browser control surface must expose pump RPM readout and pump speed
-  control before broader equipment-control coverage is considered complete
+- The first browser control surface must expose pump RPM readout and
+  controller-managed pump-circuit RPM control before broader equipment-control
+  coverage is considered complete
 - Splash should ultimately own normal pool-equipment scheduling so the operator
   does not need to rely on EasyTouch scheduling for day-to-day pump-speed and
   related equipment schedule changes

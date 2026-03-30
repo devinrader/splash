@@ -24,27 +24,27 @@ It must:
 
 The first live command supported by `splash-protocol` is:
 
-- Pentair direct pump `set_speed`
+- Pentair controller-managed pump-circuit `set_speed`
 
 Initial scope rules:
 
 - target equipment type: `pump`
 - protocol plugin: `pentair_easytouch`
-- target bus address: direct IntelliFlo pump range such as `0x60`
+- target path: controller-managed EasyTouch pump circuit
 - command family: normalized `set_speed`
 
-ASSUMPTION: the initial `set_speed` implementation targets the direct Pentair
-pump RS-485 path and uses the currently documented remote-control plus direct
-RPM-write sequence rather than broader EasyTouch controller-mediated equipment
-write flows.
+ASSUMPTION: the initial `set_speed` implementation targets the EasyTouch
+controller-mediated circuit-speed path rather than direct IntelliFlo pump
+remote-control writes.
 
-## Initial Pentair direct pump write sequence
+## Initial Pentair controller-mediated write sequence
 
 For the first supported live `set_speed` path, `splash-protocol` should:
 
-1. enable remote control on the target pump
-2. send the direct RPM write for the supported Pentair pump command path
-3. disable remote control on the target pump
+1. resolve the controller-managed circuit that owns the target pump speed
+2. encode the Pentair controller write needed to update that circuit speed
+3. if required, issue or correlate the circuit activation flow that causes the
+   controller to apply the new speed
 
 Rules:
 
@@ -53,48 +53,26 @@ Rules:
 - `protocol.command.encoded` and `serial.write.request` may emit one message per
   encoded transport write while still representing one normalized command
 - the plugin should attach `bus_requirements.requires_idle_ms = 50`
-- unsupported Pentair write families remain out of scope for this first slice
+- unsupported Pentair direct-pump and non-controller write families remain out
+  of scope for this first slice
 
-ASSUMPTION: the initial direct RPM write uses the currently documented Pentair
-pump command path for Program 1 RPM while we validate additional captures for
-manual or controller-mediated speed control behavior.
+ASSUMPTION: the initial live implementation depends on captured EasyTouch
+circuit-speed command and confirmation frames rather than the earlier direct
+IntelliFlo Program 1 RPM inference.
 
-## EasyTouch interaction for direct pump control
+## Deferred direct-pump scenarios
 
-The initial direct IntelliFlo `set_speed` slice must be documented as a
-best-effort direct pump command path, not as a guarantee that the requested RPM
-will remain in effect while EasyTouch still owns pump scheduling or circuit
-activation.
+The following scenarios are explicitly deferred beyond the first controller-
+managed milestone slice:
 
-If the operator goal is "set RPM directly and have it stick," the currently
-documented options are:
+1. pumps with no EasyTouch-managed circuits assigned
+2. pumps not connected through an EasyTouch controller path
+3. standalone or no-controller deployments where Splash must issue direct pump
+   writes and keep the requested RPM in effect itself
 
-1. disable EasyTouch pump control
-   - remove the pump from controller-managed circuits or disable the relevant
-     EasyTouch schedules
-   - direct Splash-issued RPM commands are most likely to persist in this mode
-2. override continuously
-   - re-send the requested RPM every few seconds
-   - this can work by competing with EasyTouch, but it is operationally messy
-     and should not be treated as the preferred steady-state design
-3. use EasyTouch properly
-   - change the controller-managed circuit speed and activate the circuit that
-     owns the pump
-   - this is the cleanest supported long-term model and requires broader
-     controller-mediated write support than the initial direct-pump slice
-4. physically isolate the pump
-   - disconnect the pump RS-485 link from EasyTouch and connect only the
-     Splash-controlled bus path
-   - this gives Splash full control but changes the physical deployment
-
-Rules:
-
-- a successful `serial.tx.raw` result means bytes reached the bus, not that the
-  controller will keep the pump at the requested RPM
-- a direct-pump `completed` result should rely on observed follow-up pump state,
-  not on transport success alone
-- future controller-mediated pump control should be preferred over perpetual
-  direct-RPM competition with EasyTouch
+Those scenarios require separate frame capture, protocol design, and operator
+workflow decisions. They should not weaken the initial controller-managed
+command model.
 
 ## Result stages
 
@@ -118,12 +96,12 @@ Expected stage meanings:
 - `timed_out`: no matching response or confirmation was observed before timeout
 - `failed`: plugin validation failed, encode failed, stream went stale, or transport returned a non-`ok` terminal result
 
-For the initial direct pump `set_speed` path:
+For the initial controller-managed pump-circuit `set_speed` path:
 
-- `transmitted` means all required writes in the remote-enable, speed-write,
-  and remote-disable sequence were acknowledged by `serial.tx.raw` with
-  `write_result = ok`
-- `completed` means a later pump-status observation confirms the requested RPM
+- `transmitted` means all required controller write frames for the command were
+  acknowledged by `serial.tx.raw` with `write_result = ok`
+- `completed` means later controller and pump-status observations confirm that
+  the requested circuit speed is in effect
 
 ## Correlation ownership
 

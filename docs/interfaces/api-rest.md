@@ -84,7 +84,7 @@
 - Error and degraded-state UX should derive from SSE connection state and API responses rather than dedicated polling endpoints
 - The initial implementation should expose enough latest-state and control
   surface to support a browser view of air temperature, water temperature, salt
-  level, and pump RPM plus a pump-speed control action
+  level, and pump RPM plus a controller-managed pump-circuit RPM control action
 
 ## Example payloads
 

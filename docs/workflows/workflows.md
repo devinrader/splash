@@ -47,20 +47,21 @@ perform one real equipment write safely.
 
 ### Write path
 
-1. the user changes pump speed from the browser
-2. the API validates the normalized `set_speed` command against the target pump
+1. the user changes pump-circuit RPM from the browser
+2. the API validates the normalized `set_speed` command against the target
+   controller-managed pump circuit
 3. `splash-api` publishes `protocol.command.intent`
-4. `splash-protocol` encodes the direct Pentair pump command and publishes
-   `serial.write.request`
+4. `splash-protocol` encodes the Pentair controller-mediated circuit-speed
+   command path and publishes `serial.write.request`
 5. `splash-serial` writes the bytes to the bus and reports `serial.tx.raw`
-6. `splash-protocol` correlates the write and resulting pump-status frames
+6. `splash-protocol` correlates the write and resulting controller and
+   pump-status frames
 7. the browser shows pending, transmitted, and completed or failed command
    state
 
-NOTE: while EasyTouch still owns pump schedules or circuit activation, a direct
-IntelliFlo RPM write may be acknowledged on the bus and still be overridden by
-the controller. The initial browser control slice therefore proves the command
-path, but not yet full controller-cooperative ownership of pump speed.
+NOTE: milestone 1 should prefer controller-cooperative EasyTouch circuit-speed
+control rather than direct IntelliFlo RPM writes. Direct pump-only control and
+no-controller scenarios remain later follow-up work.
 
 ### Initial implementation success criteria
 
@@ -68,7 +69,7 @@ path, but not yet full controller-cooperative ownership of pump speed.
 - the browser shows current water temperature
 - the browser shows current salt level
 - the browser shows current pump RPM
-- the browser can change pump RPM through the documented command flow
+- the browser can change pump-circuit RPM through the documented command flow
 - the system logs or persists enough state to verify the read path and the
   resulting control action
 
