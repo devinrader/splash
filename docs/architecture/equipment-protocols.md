@@ -267,9 +267,20 @@ Observed nuance:
   may also involve action identifiers such as `0xe1` and `0x21`, which must be
   validated independently from the observed `0x9b` traffic
 
-ASSUMPTION: until the action semantics are fully mapped, observed `0x9b` frames
-should be treated as controller-configuration-plane interaction traffic with
-diagnostic value but no normalized state meaning.
+Current working model for `0x9b`:
+
+- `0x9b` is likely an extended pump-configuration command rather than part of
+  the normal live control loop
+- it likely writes or updates the pump-configuration block stored inside the
+  EasyTouch controller
+- that controller-side configuration likely maps controller circuits to pump
+  speeds or flow targets
+- this fits EasyTouch behavior where circuit-to-speed assignments are stored in
+  the controller and later translated by the controller into pump commands
+
+ASSUMPTION: until the `0x9b` payload is mapped precisely, observed `0x9b`
+frames should be treated as controller-configuration-plane interaction traffic
+with diagnostic value but no normalized state meaning.
 
 ### Payload definition status
 
