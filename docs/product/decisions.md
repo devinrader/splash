@@ -57,6 +57,10 @@
 - The initial `splash-frontend` milestone may be a single-page dashboard that
   consumes `GET /equipment`, `GET /health`, and `GET /events` before the full
   long-term navigation tree is implemented.
+- Milestone-1 development may run `splash-frontend`, `splash-api`,
+  `splash-protocol`, and NATS on a developer machine while keeping
+  `splash-serial` deployed on the hardware host that owns the live RS-485
+  adapter.
 - Protocol plugin identity should be organized around protocol family and variant, not vendor name alone, when a vendor exposes multiple distinct integration surfaces.
 - Protocol plugins should resolve one capability profile per equipment instance in v1.
 - Capability profiles should be defined in code and docs, not primarily authored as relational records.

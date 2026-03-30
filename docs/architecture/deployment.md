@@ -55,6 +55,22 @@ flowchart TB
 - mDNS hostname: `splash-core.local`
 - Exposes NATS across the LAN
 
+### Developer-local milestone topology
+
+For milestone-1 implementation work, the preferred developer bring-up may run
+`splash-frontend`, `splash-api`, `splash-protocol`, and NATS on the developer
+machine while leaving `splash-serial` on the hardware host that owns the live
+RS-485 adapter.
+
+Rules:
+
+- local developer NATS must be reachable by the host-side `splash-serial`
+- local developer runs are valid for milestone-1 browser, API, and protocol
+  validation
+- `splash-serial` remains host-deployed because the local development machine is
+  not assumed to have the required FTDI or RS-485 TTY hardware
+- this topology is a development workflow, not the long-term production runtime
+
 ### `splash-zero`
 
 - Raspberry Pi Zero 2W, arm32/armv7
@@ -82,6 +98,8 @@ flowchart TB
 - `splash-serial` exposes a small local HTTP listener for health and Prometheus metrics
 - Repository deployment assets for this host live under `deploy/splash-zero/`, including the Debian-package build inputs for `splash-serial`
 - Ansible automation assets for this host should live under `deploy/ansible/`
+- milestone-1 developer bring-up may temporarily point `NATS_URL` at a
+  developer machine instead of `splash-core.local`
 
 ## Artifact and distribution model
 
