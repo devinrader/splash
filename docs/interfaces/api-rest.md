@@ -85,6 +85,9 @@
 - The initial implementation should expose enough latest-state and control
   surface to support a browser view of air temperature, water temperature, salt
   level, and pump RPM plus a controller-managed pump-circuit RPM control action
+- the first Protocol Explorer implementation slice may expose `/protocol/frames`
+  before broader protocol decode, annotation, and simulator endpoints are fully
+  implemented
 
 ## Example payloads
 

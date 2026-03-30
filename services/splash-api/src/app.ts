@@ -20,6 +20,7 @@ export class App {
   private readonly bridge = new EquipmentBridge();
   private readonly projection = new LatestStateProjection();
   private readonly events = new EventBroker();
+  private readonly protocolFrames = new EventBroker();
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
 
@@ -83,6 +84,7 @@ export class App {
         getEquipment: () => this.getEquipment(),
         getHealth: () => this.getHealth(),
         getEventBroker: () => this.events,
+        getProtocolFrameBroker: () => this.protocolFrames,
         publishPumpSpeedCommand: async ({ equipmentId, rpm }) => {
           const session = this.currentSession;
           if (!session) {
@@ -119,6 +121,12 @@ export class App {
         this.projection.updateCommandResult(commandId, payload);
       }
       this.events.publish("command.result", payload);
+    });
+    session.subscribe("protocol.frame.raw", async (payload) => {
+      this.protocolFrames.publish("protocol.frame.raw", payload);
+    });
+    session.subscribe("protocol.frame.decoded", async (payload) => {
+      this.protocolFrames.publish("protocol.frame.decoded", payload);
     });
 
     await waitForAbort(signal);

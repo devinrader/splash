@@ -193,6 +193,13 @@ Caption: Guided SLAM workflow for raising FC to SLAM level, maintaining it, and 
 - filter, pause, and export
 - optionally surface transport chunk boundaries for advanced debugging, but frame-level data remains the primary view
 
+Initial implementation note:
+
+- the first Protocol Explorer slice may begin with a live frame stream only
+  through `/protocol/frames`
+- decode, annotation, diff, and simulator tooling may follow after the live
+  stream is available for protocol discovery
+
 ### Decoder
 
 - paste hex frame

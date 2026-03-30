@@ -10,6 +10,7 @@ export interface HttpHandlers {
   getEquipment(): Array<Record<string, unknown>>;
   getHealth(): Record<string, unknown>;
   getEventBroker(): EventBroker;
+  getProtocolFrameBroker(): EventBroker;
   publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }): Promise<{ commandId: string }>;
 }
 
@@ -55,7 +56,11 @@ export class LocalHttpServer implements HttpServer {
     }
 
     if (req.method === "GET" && req.url === "/events") {
-      return this.handleEvents(res);
+      return this.handleEvents(res, this.handlers.getEventBroker());
+    }
+
+    if (req.method === "GET" && req.url === "/protocol/frames") {
+      return this.handleEvents(res, this.handlers.getProtocolFrameBroker());
     }
 
     const controlMatch = req.url?.match(/^\/equipment\/([^/]+)\/control$/);
@@ -79,7 +84,7 @@ export class LocalHttpServer implements HttpServer {
     res.end();
   }
 
-  private handleEvents(res: ServerResponse): void {
+  private handleEvents(res: ServerResponse, broker: EventBroker): void {
     res.writeHead(200, {
       "content-type": "text/event-stream",
       "cache-control": "no-cache",
@@ -87,7 +92,7 @@ export class LocalHttpServer implements HttpServer {
     });
 
     const clientId = randomUUID();
-    const unsubscribe = this.handlers.getEventBroker().addClient({
+    const unsubscribe = broker.addClient({
       send(event, payload) {
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(payload)}\n\n`);
