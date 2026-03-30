@@ -9,8 +9,12 @@ export class ProtocolRuntime {
   private readonly assembler = new StreamFrameAssembler();
   private activePlugin: ProtocolPlugin | null = null;
   private activePoolId: string | null = null;
+  private activeStreamId: string | null = null;
 
-  constructor(private readonly logger: Logger) {}
+  constructor(
+    private readonly logger: Logger,
+    private readonly onStreamIdChange?: (streamId: string | null) => void
+  ) {}
 
   setActiveSelection(poolId: string, plugin: ProtocolPlugin): void {
     this.activePoolId = poolId;
@@ -41,6 +45,11 @@ export class ProtocolRuntime {
       }
 
       try {
+        if (chunk.streamId !== this.activeStreamId) {
+          this.activeStreamId = chunk.streamId;
+          this.onStreamIdChange?.(chunk.streamId);
+        }
+
         const frames = this.assembler.ingest(chunk);
         if (frames.length === 0) {
           return;

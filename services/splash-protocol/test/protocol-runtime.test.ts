@@ -78,6 +78,28 @@ test("protocol runtime publishes decoded and normalized output for live serial c
   assert.equal(session.published[2].subject, "equipment.state.controller");
 });
 
+test("protocol runtime reports the active stream id from live serial chunks", async () => {
+  const session = new FakeSession();
+  let activeStreamId: string | null = null;
+  const runtime = new ProtocolRuntime(logger, (streamId) => {
+    activeStreamId = streamId;
+  });
+  runtime.setActiveSelection("pool-1", pentairEasyTouchPlugin);
+  runtime.attach(session);
+
+  await session.emit("serial.rx.raw", {
+    serial_instance_id: "serial-1",
+    stream_id: "stream-1",
+    chunk_id: "chunk-1",
+    port: "/dev/ttyUSB0",
+    received_at: "2026-03-30T00:00:00Z",
+    bytes_hex: buildFrameHex(),
+    byte_count: 16
+  });
+
+  assert.equal(activeStreamId, "stream-1");
+});
+
 test("protocol runtime ignores live chunks when no active plugin is configured", async () => {
   const session = new FakeSession();
   const runtime = new ProtocolRuntime(logger);

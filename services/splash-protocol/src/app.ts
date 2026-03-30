@@ -40,7 +40,9 @@ export class App {
     this.commands = new CommandCoordinator(this.logger, this.config.commandTimeoutMs, (streamId) => {
       this.snapshot.streamId = streamId;
     });
-    this.protocolRuntime = new ProtocolRuntime(this.logger);
+    this.protocolRuntime = new ProtocolRuntime(this.logger, (streamId) => {
+      this.snapshot.streamId = streamId;
+    });
     this.nats = new NatsSupervisor(this.config.natsUrl, this.logger, async (session, signal) =>
       this.runNatsSession(session, signal)
     );
