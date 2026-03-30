@@ -88,6 +88,8 @@ The documentation is grouped by role so related material stays together:
   Service-specific design index for the protocol decode, normalize, and command service on `splash-core`.
 - [Splash API Service](./services/splash-api/README.md)
   Service-specific design index for the browser-facing REST and SSE service on `splash-core`.
+- [Splash Frontend Service](./services/splash-frontend/README.md)
+  Service-specific design index for the React web UI on `splash-core`.
 
 ### Workflows
 

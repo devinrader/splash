@@ -54,6 +54,9 @@
 - The initial `splash-api` milestone may use a minimal local equipment catalog
   bridge to preserve `/equipment/:id/control` without blocking on the full
   PostgreSQL-backed equipment repository implementation.
+- The initial `splash-frontend` milestone may be a single-page dashboard that
+  consumes `GET /equipment`, `GET /health`, and `GET /events` before the full
+  long-term navigation tree is implemented.
 - Protocol plugin identity should be organized around protocol family and variant, not vendor name alone, when a vendor exposes multiple distinct integration surfaces.
 - Protocol plugins should resolve one capability profile per equipment instance in v1.
 - Capability profiles should be defined in code and docs, not primarily authored as relational records.

@@ -1,0 +1,274 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, test, vi, assert } from "vitest";
+import App from "../src/App";
+import { useFrontendStore } from "../src/store";
+
+class FakeEventSource {
+  static instances: FakeEventSource[] = [];
+
+  onerror: (() => void) | null = null;
+  private readonly listeners = new Map<string, Array<(event: MessageEvent<string>) => void>>();
+
+  constructor(readonly url: string) {
+    FakeEventSource.instances.push(this);
+  }
+
+  addEventListener(type: string, handler: (event: MessageEvent<string>) => void): void {
+    const handlers = this.listeners.get(type) ?? [];
+    handlers.push(handler);
+    this.listeners.set(type, handlers);
+  }
+
+  emit(type: string, payload: Record<string, unknown>): void {
+    const event = { data: JSON.stringify(payload) } as MessageEvent<string>;
+    for (const handler of this.listeners.get(type) ?? []) {
+      handler(event);
+    }
+  }
+
+  close(): void {}
+}
+
+beforeEach(() => {
+  useFrontendStore.setState({
+    equipment: {},
+    healthStatus: "unknown",
+    sseStatus: "connecting",
+    errorMessage: null,
+    command: {
+      commandId: null,
+      requestedRpm: null,
+      status: null,
+      detail: null,
+      errorCode: null
+    }
+  });
+
+  FakeEventSource.instances = [];
+  vi.stubGlobal("EventSource", FakeEventSource);
+});
+
+test("renders milestone equipment values from the API snapshot", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                air_temp_f: 71,
+                water_temp_f: 79
+              }
+            },
+            {
+              id: "pump-main",
+              equipment_type: "pump",
+              display_name: "Main Pump",
+              protocol_name: "pentair_easytouch",
+              bus_address: "0x60",
+              latest_state: {
+                rpm: 2750,
+                running: true
+              }
+            },
+            {
+              id: "chlorinator-main",
+              equipment_type: "chlorinator",
+              display_name: "Main Chlorinator",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                salt_ppm: 3200
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      return response({
+        status: "ok",
+        data: {
+          dependencies: {
+            nats: "ok"
+          }
+        },
+        error: null
+      });
+    })
+  );
+
+  render(<App />);
+
+  await waitFor(() => {
+    assert.ok(screen.getAllByText("71 °F").length > 0);
+    assert.ok(screen.getAllByText("79 °F").length > 0);
+    assert.ok(screen.getAllByText("3200 ppm").length > 0);
+    assert.ok(screen.getAllByText("2750 RPM").length > 0);
+  });
+});
+
+test("merges SSE updates into the equipment cards", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                air_temp_f: 70,
+                water_temp_f: 78
+              }
+            },
+            {
+              id: "pump-main",
+              equipment_type: "pump",
+              display_name: "Main Pump",
+              protocol_name: "pentair_easytouch",
+              bus_address: "0x60",
+              latest_state: {
+                rpm: 2600,
+                running: true
+              }
+            },
+            {
+              id: "chlorinator-main",
+              equipment_type: "chlorinator",
+              display_name: "Main Chlorinator",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                salt_ppm: 3000
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      return response({
+        status: "ok",
+        error: null
+      });
+    })
+  );
+
+  render(<App />);
+  await waitFor(() => assert.ok(FakeEventSource.instances.length === 1));
+
+  const source = FakeEventSource.instances[0];
+  source.emit("pump.state", {
+    rpm: 2900,
+    running: true
+  });
+  source.emit("equipment.state", {
+    salt_ppm: 3450
+  });
+
+  await waitFor(() => {
+    assert.ok(screen.getAllByText("2900 RPM").length > 0);
+    assert.ok(screen.getAllByText("3450 ppm").length > 0);
+  });
+});
+
+test("submits pump speed control and resolves the pending command from SSE", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (input.endsWith("/equipment") && (!init || !init.method)) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                air_temp_f: 70,
+                water_temp_f: 78
+              }
+            },
+            {
+              id: "pump-main",
+              equipment_type: "pump",
+              display_name: "Main Pump",
+              protocol_name: "pentair_easytouch",
+              bus_address: "0x60",
+              latest_state: {
+                rpm: 2600,
+                running: true
+              }
+            },
+            {
+              id: "chlorinator-main",
+              equipment_type: "chlorinator",
+              display_name: "Main Chlorinator",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                salt_ppm: 3000
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/health")) {
+        return response({
+          status: "ok",
+          error: null
+        });
+      }
+
+      if (input.includes("/equipment/pump-main/control")) {
+        return response({
+          data: {
+            command_id: "command-1",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      throw new Error(`Unhandled fetch call for ${input}`);
+    })
+  );
+
+  render(<App />);
+  await waitFor(() => assert.ok(FakeEventSource.instances.length === 1));
+
+  fireEvent.change(screen.getByLabelText("Requested RPM"), { target: { value: "2800" } });
+  fireEvent.click(screen.getByRole("button", { name: "Set pump speed" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByRole("button", { name: "Waiting for command result..." }));
+  });
+
+  FakeEventSource.instances[0].emit("command.result", {
+    command_id: "command-1",
+    status: "completed",
+    detail: "Observed pump state matched the requested RPM."
+  });
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Command completed"));
+    assert.ok(screen.getByText("Observed pump state matched the requested RPM."));
+    assert.ok(screen.getByRole("button", { name: "Set pump speed" }));
+  });
+});
+
+function response(payload: unknown): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => payload
+  } as Response;
+}
