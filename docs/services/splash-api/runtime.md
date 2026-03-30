@@ -51,6 +51,10 @@ Rules:
 ASSUMPTION: the initial bridge will define one pump entry for the direct Pentair
 IntelliFlo target used by the milestone-1 `set_speed` path.
 
+ASSUMPTION: the first slice may also use a static configured `pool_id` for
+command publication and latest-state projection until the repository-backed pool
+model exists.
+
 ## Degraded behavior
 
 The service should stay alive but degrade when:

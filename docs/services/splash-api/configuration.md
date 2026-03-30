@@ -8,6 +8,7 @@ The initial `splash-api` slice should support:
 
 | Variable | Purpose |
 | --- | --- |
+| `API_POOL_ID` | Single-pool identifier used by the initial API slice |
 | `NATS_URL` | NATS connection target |
 | `API_HTTP_BIND` | Local HTTP bind address |
 | `LOG_LEVEL` | Structured log verbosity |
@@ -28,3 +29,7 @@ Required bridge fields:
 ASSUMPTION: the first implementation may hard-code or use a simple local config
 for one direct pump target while the full repository-backed equipment catalog is
 still pending.
+
+ASSUMPTION: the first implementation may use a static `API_POOL_ID` because the
+full repository-backed pool model is not yet required for the initial browser
+milestone.
