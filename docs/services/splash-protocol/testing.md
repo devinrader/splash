@@ -108,7 +108,7 @@ CI should not require:
 When CI tests fail, logs should capture at least:
 
 - active plugin identity
-- `pool_id` and `stream_id`
+- `serial_instance_id`, `pool_id` when known, and `stream_id`
 - frame ids or fixture identifiers where relevant
 - command ids for command-flow failures
 - machine-readable error codes for decode and command failures

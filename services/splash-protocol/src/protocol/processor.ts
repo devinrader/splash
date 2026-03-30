@@ -14,6 +14,7 @@ export interface MessagePublisher {
 
 export class ProtocolProcessor {
   constructor(
+    private readonly poolId: string,
     private readonly plugin: ProtocolPlugin,
     private readonly publisher: MessagePublisher
   ) {}
@@ -22,7 +23,7 @@ export class ProtocolProcessor {
     for (const frame of frames) {
       const frameId = randomUUID();
       await this.publisher.publish("protocol.frame.raw", {
-        pool_id: chunk.poolId,
+        pool_id: this.poolId,
         stream_id: chunk.streamId,
         frame_id: frameId,
         source_chunk_ids: frame.sourceChunkIds,
@@ -37,7 +38,7 @@ export class ProtocolProcessor {
         occurredAt: frame.capturedAt
       });
       await this.publisher.publish("protocol.frame.decoded", {
-        pool_id: chunk.poolId,
+        pool_id: this.poolId,
         stream_id: chunk.streamId,
         frame_id: frameId,
         protocol_name: decoded.protocolName,
@@ -53,7 +54,7 @@ export class ProtocolProcessor {
 
       for (const event of decoded.normalizedEvents ?? []) {
         await this.publisher.publish(event.subject, {
-          pool_id: chunk.poolId,
+          pool_id: this.poolId,
           ...event.payload
         });
       }

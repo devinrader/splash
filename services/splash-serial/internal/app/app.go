@@ -12,24 +12,26 @@ import (
 
 	"gitea.rader.haus/devinrader/splash/services/splash-serial/internal/config"
 	"gitea.rader.haus/devinrader/splash/services/splash-serial/internal/httpapi"
+	"gitea.rader.haus/devinrader/splash/services/splash-serial/internal/identity"
 	"gitea.rader.haus/devinrader/splash/services/splash-serial/internal/nats"
 	"gitea.rader.haus/devinrader/splash/services/splash-serial/internal/serial"
 )
 
 type App struct {
-	cfg           config.Config
-	logger        *log.Logger
-	natsClient    *nats.Client
-	serialManager *serial.Manager
-	healthServer  *httpapi.Server
-	after         func(time.Duration) <-chan time.Time
-	healthMu      sync.RWMutex
-	serialStatus  httpapi.Status
-	natsState     httpapi.DependencyState
-	runHealth     func(context.Context) error
-	runSession    func(context.Context) error
-	runWrite      func(context.Context) error
-	runNATS       func(context.Context)
+	cfg              config.Config
+	serialInstanceID string
+	logger           *log.Logger
+	natsClient       *nats.Client
+	serialManager    *serial.Manager
+	healthServer     *httpapi.Server
+	after            func(time.Duration) <-chan time.Time
+	healthMu         sync.RWMutex
+	serialStatus     httpapi.Status
+	natsState        httpapi.DependencyState
+	runHealth        func(context.Context) error
+	runSession       func(context.Context) error
+	runWrite         func(context.Context) error
+	runNATS          func(context.Context)
 }
 
 type loopResult struct {
@@ -38,13 +40,18 @@ type loopResult struct {
 }
 
 type supervisedLoop struct {
-	name            string
-	run             func(context.Context) error
+	name             string
+	run              func(context.Context) error
 	fatalOnCleanExit bool
 }
 
 func New() (*App, error) {
 	cfg, err := config.LoadFromEnv()
+	if err != nil {
+		return nil, err
+	}
+
+	serialInstanceID, err := identity.LoadOrCreate(cfg.SerialInstanceIDFile)
 	if err != nil {
 		return nil, err
 	}
@@ -69,14 +76,15 @@ func New() (*App, error) {
 	server := httpapi.NewServer(cfg.SerialHTTPBind, healthState)
 
 	return &App{
-		cfg:           cfg,
-		logger:        logger,
-		natsClient:    natsClient,
-		serialManager: serialManager,
-		healthServer:  server,
-		after:         time.After,
-		serialStatus:  httpapi.StatusDegraded,
-		natsState:     httpapi.DependencyUnknown,
+		cfg:              cfg,
+		serialInstanceID: serialInstanceID,
+		logger:           logger,
+		natsClient:       natsClient,
+		serialManager:    serialManager,
+		healthServer:     server,
+		after:            time.After,
+		serialStatus:     httpapi.StatusDegraded,
+		natsState:        httpapi.DependencyUnknown,
 	}, nil
 }
 
@@ -88,6 +96,7 @@ func (a *App) Run(ctx context.Context) error {
 	a.logger.Printf("configured serial device %s", a.serialManager.Device())
 	a.logger.Printf("configured NATS target %s", a.natsClient.URL())
 	a.logger.Printf("configured reconnect interval %s", a.serialManager.ReconnectInterval())
+	a.logger.Printf("configured serial instance id %s", a.serialInstanceID)
 
 	if a.after == nil {
 		a.after = time.After
@@ -323,12 +332,13 @@ func (a *App) readLoop(ctx context.Context, session *serial.Session) error {
 		if n > 0 {
 			a.healthServer.AddBytesRead(n)
 			if publishErr := a.natsClient.PublishSerialRXRaw(nats.SerialRXRaw{
-				StreamID:   session.StreamID,
-				ChunkID:    a.chunkID(),
-				Port:       session.Device,
-				ReceivedAt: time.Now().UTC(),
-				BytesHex:   hex.EncodeToString(buf[:n]),
-				ByteCount:  n,
+				SerialInstanceID: a.serialInstanceID,
+				StreamID:         session.StreamID,
+				ChunkID:          a.chunkID(),
+				Port:             session.Device,
+				ReceivedAt:       time.Now().UTC(),
+				BytesHex:         hex.EncodeToString(buf[:n]),
+				ByteCount:        n,
 			}); publishErr != nil {
 				return fmt.Errorf("publish serial rx: %w", publishErr)
 			}
@@ -375,14 +385,15 @@ func (a *App) handleWriteRequest(request nats.SerialWriteRequest) error {
 		code := "invalid_bytes_hex"
 		detail := "write request bytes_hex is not valid lowercase hex"
 		return a.natsClient.PublishSerialTXRaw(nats.SerialTXRaw{
-			StreamID:    request.StreamID,
-			CommandID:   request.CommandID,
-			WrittenAt:   time.Now().UTC(),
-			BytesHex:    request.BytesHex,
-			ByteCount:   request.ByteCount,
-			WriteResult: string(serial.WriteResultRejected),
-			ErrorCode:   &code,
-			Detail:      &detail,
+			SerialInstanceID: a.serialInstanceID,
+			StreamID:         request.StreamID,
+			CommandID:        request.CommandID,
+			WrittenAt:        time.Now().UTC(),
+			BytesHex:         request.BytesHex,
+			ByteCount:        request.ByteCount,
+			WriteResult:      string(serial.WriteResultRejected),
+			ErrorCode:        &code,
+			Detail:           &detail,
 		})
 	}
 
@@ -395,24 +406,26 @@ func (a *App) handleWriteRequest(request nats.SerialWriteRequest) error {
 	a.healthServer.ObserveWrite(string(outcome.WriteResult), outcome.ByteCount)
 
 	return a.natsClient.PublishSerialTXRaw(nats.SerialTXRaw{
-		StreamID:    outcome.StreamID,
-		CommandID:   request.CommandID,
-		WrittenAt:   time.Now().UTC(),
-		BytesHex:    request.BytesHex,
-		ByteCount:   outcome.ByteCount,
-		WriteResult: string(outcome.WriteResult),
-		ErrorCode:   outcome.ErrorCode,
-		Detail:      outcome.Detail,
+		SerialInstanceID: a.serialInstanceID,
+		StreamID:         outcome.StreamID,
+		CommandID:        request.CommandID,
+		WrittenAt:        time.Now().UTC(),
+		BytesHex:         request.BytesHex,
+		ByteCount:        outcome.ByteCount,
+		WriteResult:      string(outcome.WriteResult),
+		ErrorCode:        outcome.ErrorCode,
+		Detail:           outcome.Detail,
 	})
 }
 
 func (a *App) publishStatus(streamID string, state serial.ConnectionState, detail string) error {
 	return a.natsClient.PublishSerialPortStatus(nats.SerialPortStatus{
-		StreamID:   streamID,
-		Status:     string(state),
-		Port:       a.serialManager.Device(),
-		ReportedAt: time.Now().UTC(),
-		Detail:     detail,
+		SerialInstanceID: a.serialInstanceID,
+		StreamID:         streamID,
+		Status:           string(state),
+		Port:             a.serialManager.Device(),
+		ReportedAt:       time.Now().UTC(),
+		Detail:           detail,
 	})
 }
 

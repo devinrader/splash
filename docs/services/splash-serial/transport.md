@@ -31,6 +31,14 @@ Transport-facing dependencies:
 - publishes `serial.tx.raw` for `splash-protocol`
 - publishes `serial.port.status` for `splash-protocol` and broader platform observability
 
+Transport identity rules:
+
+- `splash-serial` must include `serial_instance_id` on every published raw
+  transport subject
+- raw transport subjects must not require `pool_id`
+- pool binding belongs above the transport layer because the serial wire format
+  does not expose a Splash pool identifier
+
 ## Transport lifecycle expectations
 
 Transport loops are expected to remain long-lived.

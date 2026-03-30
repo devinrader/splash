@@ -35,12 +35,13 @@ func TestPublishSerialRXRawRecordsMessage(t *testing.T) {
 	client := NewClient("nats://splash-core.local:4222", time.Second)
 
 	err := client.PublishSerialRXRaw(SerialRXRaw{
-		StreamID:   "stream-1",
-		ChunkID:    "chunk-1",
-		Port:       "/dev/ttyUSB0",
-		ReceivedAt: time.Unix(1700000000, 0).UTC(),
-		BytesHex:   "0102",
-		ByteCount:  2,
+		SerialInstanceID: "serial-1",
+		StreamID:         "stream-1",
+		ChunkID:          "chunk-1",
+		Port:             "/dev/ttyUSB0",
+		ReceivedAt:       time.Unix(1700000000, 0).UTC(),
+		BytesHex:         "0102",
+		ByteCount:        2,
 	})
 	if err != nil {
 		t.Fatalf("PublishSerialRXRaw returned error: %v", err)
@@ -63,17 +64,22 @@ func TestPublishSerialRXRawRecordsMessage(t *testing.T) {
 	if payload.BytesHex != "0102" {
 		t.Fatalf("unexpected payload bytes: %q", payload.BytesHex)
 	}
+
+	if payload.SerialInstanceID != "serial-1" {
+		t.Fatalf("unexpected serial instance id: %q", payload.SerialInstanceID)
+	}
 }
 
 func TestPublishSerialPortStatusRecordsMessage(t *testing.T) {
 	client := NewClient("nats://splash-core.local:4222", time.Second)
 
 	err := client.PublishSerialPortStatus(SerialPortStatus{
-		StreamID:   "stream-1",
-		Status:     "connected",
-		Port:       "/dev/ttyUSB0",
-		ReportedAt: time.Unix(1700000000, 0).UTC(),
-		Detail:     "adapter detected",
+		SerialInstanceID: "serial-1",
+		StreamID:         "stream-1",
+		Status:           "connected",
+		Port:             "/dev/ttyUSB0",
+		ReportedAt:       time.Unix(1700000000, 0).UTC(),
+		Detail:           "adapter detected",
 	})
 	if err != nil {
 		t.Fatalf("PublishSerialPortStatus returned error: %v", err)
@@ -93,12 +99,13 @@ func TestPublishSerialTXRawRecordsMessage(t *testing.T) {
 	client := NewClient("nats://splash-core.local:4222", time.Second)
 
 	err := client.PublishSerialTXRaw(SerialTXRaw{
-		StreamID:    "stream-1",
-		CommandID:   "command-1",
-		WrittenAt:   time.Unix(1700000000, 0).UTC(),
-		BytesHex:    "aabb",
-		ByteCount:   2,
-		WriteResult: "ok",
+		SerialInstanceID: "serial-1",
+		StreamID:         "stream-1",
+		CommandID:        "command-1",
+		WrittenAt:        time.Unix(1700000000, 0).UTC(),
+		BytesHex:         "aabb",
+		ByteCount:        2,
+		WriteResult:      "ok",
 	})
 	if err != nil {
 		t.Fatalf("PublishSerialTXRaw returned error: %v", err)
@@ -178,12 +185,13 @@ func TestPublishSerialRXRawPublishesToRealConnectionWhenConnected(t *testing.T) 
 	}
 
 	err := client.PublishSerialRXRaw(SerialRXRaw{
-		StreamID:   "stream-1",
-		ChunkID:    "chunk-1",
-		Port:       "/dev/ttyUSB0",
-		ReceivedAt: time.Unix(1700000000, 0).UTC(),
-		BytesHex:   "0102",
-		ByteCount:  2,
+		SerialInstanceID: "serial-1",
+		StreamID:         "stream-1",
+		ChunkID:          "chunk-1",
+		Port:             "/dev/ttyUSB0",
+		ReceivedAt:       time.Unix(1700000000, 0).UTC(),
+		BytesHex:         "0102",
+		ByteCount:        2,
 	})
 	if err != nil {
 		t.Fatalf("PublishSerialRXRaw returned error: %v", err)

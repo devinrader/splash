@@ -158,7 +158,7 @@ Caption: Diagram showing the decoder plug-in approach used by the protocol servi
 
 ### Protocol service flow
 
-1. `splash-serial` reads raw RS-485 bytes and publishes them to NATS
+1. `splash-serial` reads raw RS-485 bytes and publishes them to NATS together with a durable `serial_instance_id`
 2. `splash-protocol` discovers the locally available protocol plugins and selects the pool's active plugin from provider-backed pool configuration
 3. `splash-protocol` reconstructs frames from the raw stream
 4. `splash-protocol` validates checksums and framing
@@ -215,6 +215,17 @@ The rest of the system should depend on layer 3 whenever possible.
 - Raw transport data: byte chunks and serial-port status emitted by `splash-serial`
 - Protocol-decoded frames: vendor-specific structured output emitted by `splash-protocol`
 - Normalized domain events: platform-level equipment, chemistry, and command state used by API, scheduler, UI, and automation
+
+### Transport identity boundary
+
+The Pentair RS-485 wire format does not expose a Splash `pool_id`.
+
+Rules:
+
+- `splash-serial` should generate and persist its own durable `serial_instance_id` on first startup
+- raw transport subjects should carry `serial_instance_id`, not a transport-discovered `pool_id`
+- `splash-core` services may later bind one `serial_instance_id` to a controller domain or Splash pool record
+- `splash-protocol` should attach `pool_id` only after a higher-level selection or binding step has resolved which pool the active stream belongs to
 
 ### Ownership
 

@@ -36,10 +36,10 @@ function buildFrame(): Uint8Array {
 
 test("processor publishes protocol.frame.raw, protocol.frame.decoded, and normalized events", async () => {
   const publisher = new InMemoryPublisher();
-  const processor = new ProtocolProcessor(pentairEasyTouchPlugin, publisher);
+  const processor = new ProtocolProcessor("pool-1", pentairEasyTouchPlugin, publisher);
 
   const chunk: RawSerialChunk = {
-    poolId: "pool-1",
+    serialInstanceId: "serial-1",
     streamId: "stream-1",
     chunkId: "chunk-1",
     port: "/dev/ttyUSB0",
@@ -50,7 +50,7 @@ test("processor publishes protocol.frame.raw, protocol.frame.decoded, and normal
 
   const frames: AssembledFrame[] = [
     {
-      poolId: "pool-1",
+      serialInstanceId: "serial-1",
       streamId: "stream-1",
       frameBytes: buildFrame(),
       sourceChunkIds: ["chunk-1"],

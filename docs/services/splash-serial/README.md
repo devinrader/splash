@@ -40,6 +40,7 @@ This service design complements, but does not replace:
 - consume `serial.write.request` and perform actual writes
 - publish write results as `serial.tx.raw`
 - publish transport status through `serial.port.status`
+- generate and persist a durable `serial_instance_id`
 - enforce write serialization and bus-idle timing
 - expose local `GET /healthz` and `GET /metrics`
 - support a fully automated no-hardware test path for CI
@@ -65,6 +66,10 @@ This service design complements, but does not replace:
 - `serial.port.status`
 - `GET /healthz`
 - `GET /metrics`
+
+The raw transport subjects must carry `serial_instance_id` because the serial
+edge owns transport identity. `pool_id` remains a higher-layer domain concern
+resolved on `splash-core`.
 
 ### Explicit non-dependencies
 

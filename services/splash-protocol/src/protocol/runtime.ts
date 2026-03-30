@@ -8,20 +8,23 @@ import { ProtocolDecodeError } from "./types.js";
 export class ProtocolRuntime {
   private readonly assembler = new StreamFrameAssembler();
   private activePlugin: ProtocolPlugin | null = null;
+  private activePoolId: string | null = null;
 
   constructor(private readonly logger: Logger) {}
 
-  setActivePlugin(plugin: ProtocolPlugin): void {
+  setActiveSelection(poolId: string, plugin: ProtocolPlugin): void {
+    this.activePoolId = poolId;
     this.activePlugin = plugin;
   }
 
   clearActivePlugin(): void {
+    this.activePoolId = null;
     this.activePlugin = null;
   }
 
   attach(session: MessagingSession): void {
     session.subscribe("serial.rx.raw", async (payload) => {
-      if (!this.activePlugin) {
+      if (!this.activePlugin || !this.activePoolId) {
         return;
       }
 
@@ -43,13 +46,14 @@ export class ProtocolRuntime {
           return;
         }
 
-        const processor = new ProtocolProcessor(this.activePlugin, session);
+        const processor = new ProtocolProcessor(this.activePoolId, this.activePlugin, session);
         await processor.processChunk(chunk, frames);
       } catch (error) {
         const decodeError = normalizeDecodeError(error);
         this.logger.warn("protocol.decode.failed", "Failed to process live protocol chunk.", {
           error_code: decodeError.errorCode,
           detail: decodeError.message,
+          serial_instance_id: chunk.serialInstanceId,
           stream_id: chunk.streamId,
           chunk_id: chunk.chunkId
         });
@@ -60,7 +64,7 @@ export class ProtocolRuntime {
 
 function parseChunk(payload: Record<string, unknown>): RawSerialChunk {
   return {
-    poolId: readRequiredString(payload, "pool_id"),
+    serialInstanceId: readRequiredString(payload, "serial_instance_id"),
     streamId: readRequiredString(payload, "stream_id"),
     chunkId: readRequiredString(payload, "chunk_id"),
     port: readRequiredString(payload, "port"),

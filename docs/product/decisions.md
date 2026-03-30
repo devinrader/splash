@@ -51,6 +51,9 @@
 - `splash-protocol` owns frame reconstruction buffers and command-response correlation.
 - `splash-api` and `splash-scheduler` must operate on normalized events and command intents, not raw vendor packets.
 - Normalized equipment events and command types are the primary contract above the protocol layer.
+- `splash-serial` should generate and persist a durable `serial_instance_id`
+  for raw transport identity, while `splash-core` owns any later binding of
+  that edge identity to a controller domain or Splash pool.
 - The initial `splash-api` milestone may use a minimal local equipment catalog
   bridge to preserve `/equipment/:id/control` without blocking on the full
   PostgreSQL-backed equipment repository implementation.

@@ -36,7 +36,7 @@ All payloads are JSON unless otherwise noted. Binary fields are represented as l
 
 ```json
 {
-  "pool_id": "uuid",
+  "serial_instance_id": "uuid",
   "stream_id": "uuid",
   "chunk_id": "uuid",
   "port": "/dev/ttyUSB0",
@@ -48,17 +48,22 @@ All payloads are JSON unless otherwise noted. Binary fields are represented as l
 
 Rules:
 
+- `serial_instance_id` is the durable identity of the publishing `splash-serial`
+  instance and is generated and persisted locally by that service
 - `stream_id` changes when the port reconnects
 - ordering is preserved only within a single `stream_id`
 - chunks preserve native serial read boundaries rather than frame boundaries
 - consumers must not assume one `serial.rx.raw` message equals one frame
 - chunk size and timing are implementation-dependent and may vary by adapter, kernel, and runtime conditions
+- raw transport messages must not require `pool_id`; the RS-485 bus does not
+  provide a Splash pool identifier and pool binding belongs above the transport
+  layer
 
 ### `serial.tx.raw`
 
 ```json
 {
-  "pool_id": "uuid",
+  "serial_instance_id": "uuid",
   "stream_id": "uuid",
   "command_id": "uuid",
   "written_at": "2026-03-26T20:00:01Z",
@@ -92,7 +97,7 @@ Rules:
 
 ```json
 {
-  "pool_id": "uuid",
+  "serial_instance_id": "uuid",
   "stream_id": "uuid",
   "status": "connected",
   "port": "/dev/ttyUSB0",
@@ -215,6 +220,16 @@ Rules:
 - `splash-serial` must reject the write if the provided `stream_id` does not match the currently active port session
 - `bus_requirements.requires_idle_ms` is a minimum transport requirement that `splash-serial` must enforce before transmitting
 - if a write is rejected or fails, `splash-serial` should publish a corresponding `serial.tx.raw` record with a non-`ok` `write_result`
+
+## Identity ownership rules
+
+- `splash-serial` owns the durable `serial_instance_id` carried on raw transport
+  subjects
+- `splash-protocol` and higher-domain services own `pool_id`
+- `pool_id` remains required on protocol, normalized, and API-facing subjects
+- a future `splash-core` binding workflow may map one `serial_instance_id` to a
+  controller domain or pool, but that mapping is not implied by the raw RS-485
+  wire format itself
 
 ### `command.result.{command_id}`
 

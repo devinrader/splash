@@ -22,7 +22,7 @@ function buildPentairFrameHex(actionCode: number, payload: number[]): string {
 
 function chunk(bytesHex: string, overrides: Partial<RawSerialChunk> = {}): RawSerialChunk {
   return {
-    poolId: "pool-1",
+    serialInstanceId: "serial-1",
     streamId: "stream-1",
     chunkId: "chunk-1",
     port: "/dev/ttyUSB0",

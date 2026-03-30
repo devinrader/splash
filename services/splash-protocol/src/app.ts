@@ -111,7 +111,7 @@ export class App {
     }
 
     this.commands.setActiveSelection(result.selection, plugin);
-    this.protocolRuntime.setActivePlugin(plugin);
+    this.protocolRuntime.setActiveSelection(result.selection.poolId, plugin);
     this.snapshot.poolId = result.selection.poolId;
     this.snapshot.activePlugin = result.selection.protocolPlugin;
     this.snapshot.configuration = "valid";

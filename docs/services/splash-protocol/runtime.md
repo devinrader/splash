@@ -146,12 +146,21 @@ Rules:
 - command correlation state targeting the old stream must be marked stale or failed
 - live decode must not combine bytes from different streams
 
+Transport identity rules:
+
+- raw transport subjects should be keyed by `serial_instance_id` and `stream_id`
+- `pool_id` is not required on raw `serial.*` subjects
+- milestone-1 may process a single active `serial_instance_id` through the
+  env-backed provider path
+- a later binding workflow may associate `serial_instance_id` with a pool or
+  controller domain before decode and command flow proceed
+
 ## Decode flow
 
 Live decode flow:
 
 1. consume `serial.rx.raw`
-2. route the chunk to the active plugin runtime for the pool and stream
+2. route the chunk to the active plugin runtime for the selected pool and stream
 3. reconstruct frames from native transport chunk boundaries
 4. validate framing and checksum rules
 5. publish `protocol.frame.raw`

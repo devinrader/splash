@@ -80,6 +80,10 @@ This service design complements, but does not replace:
 - `serial.port.status` from `splash-serial`
 - `protocol.command.intent` from `splash-api`
 
+Raw transport subjects are keyed by `serial_instance_id` and `stream_id`.
+`splash-protocol` is responsible for attaching `pool_id` only after it has an
+active pool selection or future controller-domain binding.
+
 ### Provided interfaces
 
 - `protocol.frame.raw`

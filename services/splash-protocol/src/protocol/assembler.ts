@@ -3,7 +3,7 @@ import { ProtocolDecodeError } from "./types.js";
 const PENTAIR_DELIMITER = Uint8Array.from([0xff, 0x00, 0xff, 0xa5]);
 
 export interface RawSerialChunk {
-  poolId: string;
+  serialInstanceId: string;
   streamId: string;
   chunkId: string;
   port: string;
@@ -13,7 +13,7 @@ export interface RawSerialChunk {
 }
 
 export interface AssembledFrame {
-  poolId: string;
+  serialInstanceId: string;
   streamId: string;
   frameBytes: Uint8Array;
   sourceChunkIds: string[];
@@ -60,7 +60,7 @@ export class StreamFrameAssembler {
 
       const frameBytes = this.buffer.slice(0, expectedLength) as Uint8Array;
       frames.push({
-        poolId: chunk.poolId,
+        serialInstanceId: chunk.serialInstanceId,
         streamId: chunk.streamId,
         frameBytes,
         sourceChunkIds: [...this.chunkIds],

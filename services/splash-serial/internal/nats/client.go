@@ -23,25 +23,25 @@ type BusRequirements struct {
 }
 
 type SerialRXRaw struct {
-	PoolID     string    `json:"pool_id"`
-	StreamID   string    `json:"stream_id"`
-	ChunkID    string    `json:"chunk_id"`
-	Port       string    `json:"port"`
-	ReceivedAt time.Time `json:"received_at"`
-	BytesHex   string    `json:"bytes_hex"`
-	ByteCount  int       `json:"byte_count"`
+	SerialInstanceID string    `json:"serial_instance_id"`
+	StreamID         string    `json:"stream_id"`
+	ChunkID          string    `json:"chunk_id"`
+	Port             string    `json:"port"`
+	ReceivedAt       time.Time `json:"received_at"`
+	BytesHex         string    `json:"bytes_hex"`
+	ByteCount        int       `json:"byte_count"`
 }
 
 type SerialTXRaw struct {
-	PoolID      string    `json:"pool_id"`
-	StreamID    string    `json:"stream_id"`
-	CommandID   string    `json:"command_id"`
-	WrittenAt   time.Time `json:"written_at"`
-	BytesHex    string    `json:"bytes_hex"`
-	ByteCount   int       `json:"byte_count"`
-	WriteResult string    `json:"write_result"`
-	ErrorCode   *string   `json:"error_code"`
-	Detail      *string   `json:"detail"`
+	SerialInstanceID string    `json:"serial_instance_id"`
+	StreamID         string    `json:"stream_id"`
+	CommandID        string    `json:"command_id"`
+	WrittenAt        time.Time `json:"written_at"`
+	BytesHex         string    `json:"bytes_hex"`
+	ByteCount        int       `json:"byte_count"`
+	WriteResult      string    `json:"write_result"`
+	ErrorCode        *string   `json:"error_code"`
+	Detail           *string   `json:"detail"`
 }
 
 type SerialWriteRequest struct {
@@ -56,12 +56,12 @@ type SerialWriteRequest struct {
 }
 
 type SerialPortStatus struct {
-	PoolID     string    `json:"pool_id"`
-	StreamID   string    `json:"stream_id"`
-	Status     string    `json:"status"`
-	Port       string    `json:"port"`
-	ReportedAt time.Time `json:"reported_at"`
-	Detail     string    `json:"detail,omitempty"`
+	SerialInstanceID string    `json:"serial_instance_id"`
+	StreamID         string    `json:"stream_id"`
+	Status           string    `json:"status"`
+	Port             string    `json:"port"`
+	ReportedAt       time.Time `json:"reported_at"`
+	Detail           string    `json:"detail,omitempty"`
 }
 
 type PublishedMessage struct {

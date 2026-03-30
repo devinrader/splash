@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ func TestNewBuildsApplicationFromEnv(t *testing.T) {
 	t.Setenv("SERIAL_WRITE_TIMEOUT_MS", "2000")
 	t.Setenv("SERIAL_HTTP_BIND", "127.0.0.1:9108")
 	t.Setenv("SERIAL_DEFAULT_IDLE_MS", "50")
+	t.Setenv("SERIAL_INSTANCE_ID_FILE", filepath.Join(t.TempDir(), "instance-id"))
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("TZ", "America/New_York")
 
@@ -45,6 +47,10 @@ func TestNewBuildsApplicationFromEnv(t *testing.T) {
 
 	if app.logger == nil {
 		t.Fatal("expected logger to be initialized")
+	}
+
+	if app.serialInstanceID == "" {
+		t.Fatal("expected serial instance id to be initialized")
 	}
 }
 

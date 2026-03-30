@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -185,6 +186,7 @@ func TestIntegrationNewLoadsConfiguredPTYDevice(t *testing.T) {
 	t.Setenv("SERIAL_WRITE_TIMEOUT_MS", "1000")
 	t.Setenv("SERIAL_HTTP_BIND", httpAddr)
 	t.Setenv("SERIAL_DEFAULT_IDLE_MS", "50")
+	t.Setenv("SERIAL_INSTANCE_ID_FILE", filepath.Join(t.TempDir(), "instance-id"))
 	t.Setenv("LOG_LEVEL", "info")
 	t.Setenv("TZ", "America/New_York")
 

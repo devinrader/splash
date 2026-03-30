@@ -16,8 +16,12 @@
 | `SERIAL_WRITE_TIMEOUT_MS` | Maximum duration for one write attempt |
 | `SERIAL_HTTP_BIND` | Bind address for local health and metrics listener |
 | `SERIAL_DEFAULT_IDLE_MS` | Fallback bus-idle minimum when no stricter per-write value is supplied |
+| `SERIAL_INSTANCE_ID_FILE` | Optional path to the persisted durable `serial_instance_id` file |
 | `LOG_LEVEL` | Runtime log verbosity |
 | `TZ` | Local timezone for logs and operations context |
+
+`SERIAL_INSTANCE_ID_FILE` should default to a service-owned writable path such
+as `/var/lib/splash/splash-serial/instance-id` when not explicitly configured.
 
 ## Validation expectations
 
@@ -38,6 +42,10 @@ Validation rules:
 - `SERIAL_WRITE_TIMEOUT_MS` is required and must be greater than `0`
 - `SERIAL_HTTP_BIND` is required and must parse as a valid host:port bind target
 - `SERIAL_DEFAULT_IDLE_MS` is required and must be greater than or equal to `0`
+- `SERIAL_INSTANCE_ID_FILE` may be omitted only when the implementation default
+  path is available and writable
+- the resolved instance-id path must be readable after first initialization and
+  writable when the durable identity file does not yet exist
 
 Startup behavior:
 
@@ -61,6 +69,7 @@ SERIAL_RECONNECT_INTERVAL_MS=10000
 SERIAL_WRITE_TIMEOUT_MS=2000
 SERIAL_HTTP_BIND=127.0.0.1:9108
 SERIAL_DEFAULT_IDLE_MS=50
+SERIAL_INSTANCE_ID_FILE=/var/lib/splash/splash-serial/instance-id
 LOG_LEVEL=info
 TZ=America/New_York
 ```

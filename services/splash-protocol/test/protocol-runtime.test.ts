@@ -59,11 +59,11 @@ const logger = {
 test("protocol runtime publishes decoded and normalized output for live serial chunks", async () => {
   const session = new FakeSession();
   const runtime = new ProtocolRuntime(logger);
-  runtime.setActivePlugin(pentairEasyTouchPlugin);
+  runtime.setActiveSelection("pool-1", pentairEasyTouchPlugin);
   runtime.attach(session);
 
   await session.emit("serial.rx.raw", {
-    pool_id: "pool-1",
+    serial_instance_id: "serial-1",
     stream_id: "stream-1",
     chunk_id: "chunk-1",
     port: "/dev/ttyUSB0",
@@ -84,7 +84,7 @@ test("protocol runtime ignores live chunks when no active plugin is configured",
   runtime.attach(session);
 
   await session.emit("serial.rx.raw", {
-    pool_id: "pool-1",
+    serial_instance_id: "serial-1",
     stream_id: "stream-1",
     chunk_id: "chunk-1",
     port: "/dev/ttyUSB0",
@@ -100,11 +100,11 @@ test("protocol runtime logs invalid chunk payloads instead of throwing", async (
   logRecords.length = 0;
   const session = new FakeSession();
   const runtime = new ProtocolRuntime(logger);
-  runtime.setActivePlugin(pentairEasyTouchPlugin);
+  runtime.setActiveSelection("pool-1", pentairEasyTouchPlugin);
   runtime.attach(session);
 
   await session.emit("serial.rx.raw", {
-    pool_id: "pool-1",
+    serial_instance_id: "serial-1",
     stream_id: "stream-1",
     chunk_id: "chunk-1",
     port: "/dev/ttyUSB0",

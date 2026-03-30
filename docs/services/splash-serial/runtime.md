@@ -13,6 +13,8 @@ It should:
 - load runtime configuration from `/etc/splash/splash-serial.env`
 - connect to NATS on `splash-core`
 - own a single active serial port session in v1
+- maintain a durable `serial_instance_id` that survives restarts on the same
+  host installation
 
 ## Runtime state machine
 
@@ -131,11 +133,29 @@ A port session is the active runtime binding between `splash-serial` and the con
 
 Each active session has:
 
+- one durable `serial_instance_id`
 - one `stream_id`
 - one configured serial device path
 - one connection state
 - one read loop
 - one serialized write path
+
+## `serial_instance_id`
+
+`serial_instance_id` is the durable identity of one installed `splash-serial`
+instance.
+
+Rules:
+
+- it is generated locally by `splash-serial` on first successful startup
+- it must be persisted to local disk and reused across restarts
+- it must be published on `serial.rx.raw`, `serial.tx.raw`, and
+  `serial.port.status`
+- failure to read or persist the configured durable identity store is a fatal
+  startup condition because the service cannot safely maintain transport
+  identity across restarts
+- `serial_instance_id` is not a `pool_id` and must not be inferred from the
+  RS-485 wire protocol
 
 ## `stream_id`
 

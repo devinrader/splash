@@ -10,6 +10,7 @@ import (
 )
 
 const defaultLogLevel = "info"
+const defaultSerialInstanceIDFile = "/var/lib/splash/splash-serial/instance-id"
 
 type Config struct {
 	NATSURL                 string
@@ -18,21 +19,27 @@ type Config struct {
 	SerialWriteTimeout      time.Duration
 	SerialHTTPBind          string
 	SerialDefaultIdle       time.Duration
+	SerialInstanceIDFile    string
 	LogLevel                string
 	Timezone                string
 }
 
 func LoadFromEnv() (Config, error) {
 	cfg := Config{
-		NATSURL:        strings.TrimSpace(os.Getenv("NATS_URL")),
-		SerialDevice:   strings.TrimSpace(os.Getenv("SERIAL_DEVICE")),
-		SerialHTTPBind: strings.TrimSpace(os.Getenv("SERIAL_HTTP_BIND")),
-		LogLevel:       strings.TrimSpace(os.Getenv("LOG_LEVEL")),
-		Timezone:       strings.TrimSpace(os.Getenv("TZ")),
+		NATSURL:              strings.TrimSpace(os.Getenv("NATS_URL")),
+		SerialDevice:         strings.TrimSpace(os.Getenv("SERIAL_DEVICE")),
+		SerialHTTPBind:       strings.TrimSpace(os.Getenv("SERIAL_HTTP_BIND")),
+		SerialInstanceIDFile: strings.TrimSpace(os.Getenv("SERIAL_INSTANCE_ID_FILE")),
+		LogLevel:             strings.TrimSpace(os.Getenv("LOG_LEVEL")),
+		Timezone:             strings.TrimSpace(os.Getenv("TZ")),
 	}
 
 	if cfg.LogLevel == "" {
 		cfg.LogLevel = defaultLogLevel
+	}
+
+	if cfg.SerialInstanceIDFile == "" {
+		cfg.SerialInstanceIDFile = defaultSerialInstanceIDFile
 	}
 
 	var err error
@@ -91,6 +98,10 @@ func validate(cfg Config) error {
 
 	if cfg.SerialHTTPBind == "" {
 		return fmt.Errorf("SERIAL_HTTP_BIND is required")
+	}
+
+	if cfg.SerialInstanceIDFile == "" {
+		return fmt.Errorf("SERIAL_INSTANCE_ID_FILE resolved to an empty path")
 	}
 
 	if _, err := net.ResolveTCPAddr("tcp", cfg.SerialHTTPBind); err != nil {

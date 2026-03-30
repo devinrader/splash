@@ -109,6 +109,7 @@ Required base fields:
 - `event`
 - `message`
 - `startup_phase`
+- `serial_instance_id` when known
 - `pool_id` when known
 - `active_plugin` when known
 - `stream_id` when relevant

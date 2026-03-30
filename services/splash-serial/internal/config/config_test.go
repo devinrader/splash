@@ -12,6 +12,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("SERIAL_WRITE_TIMEOUT_MS", "2000")
 	t.Setenv("SERIAL_HTTP_BIND", "127.0.0.1:9108")
 	t.Setenv("SERIAL_DEFAULT_IDLE_MS", "50")
+	t.Setenv("SERIAL_INSTANCE_ID_FILE", "/tmp/splash-serial-instance-id")
 	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("TZ", "America/New_York")
 
@@ -39,6 +40,10 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.LogLevel != "info" {
 		t.Fatalf("unexpected LogLevel: %q", cfg.LogLevel)
 	}
+
+	if cfg.SerialInstanceIDFile != "/tmp/splash-serial-instance-id" {
+		t.Fatalf("unexpected SerialInstanceIDFile: %q", cfg.SerialInstanceIDFile)
+	}
 }
 
 func TestLoadFromEnvRequiresValidBind(t *testing.T) {
@@ -48,6 +53,7 @@ func TestLoadFromEnvRequiresValidBind(t *testing.T) {
 	t.Setenv("SERIAL_WRITE_TIMEOUT_MS", "2000")
 	t.Setenv("SERIAL_HTTP_BIND", "not-a-bind")
 	t.Setenv("SERIAL_DEFAULT_IDLE_MS", "50")
+	t.Setenv("SERIAL_INSTANCE_ID_FILE", "/tmp/splash-serial-instance-id")
 
 	_, err := LoadFromEnv()
 	if err == nil {
@@ -61,6 +67,7 @@ func TestLoadFromEnvRequiresNATSURL(t *testing.T) {
 	t.Setenv("SERIAL_WRITE_TIMEOUT_MS", "2000")
 	t.Setenv("SERIAL_HTTP_BIND", "127.0.0.1:9108")
 	t.Setenv("SERIAL_DEFAULT_IDLE_MS", "50")
+	t.Setenv("SERIAL_INSTANCE_ID_FILE", "/tmp/splash-serial-instance-id")
 
 	_, err := LoadFromEnv()
 	if err == nil {
@@ -75,6 +82,7 @@ func TestLoadFromEnvRejectsZeroReconnectInterval(t *testing.T) {
 	t.Setenv("SERIAL_WRITE_TIMEOUT_MS", "2000")
 	t.Setenv("SERIAL_HTTP_BIND", "127.0.0.1:9108")
 	t.Setenv("SERIAL_DEFAULT_IDLE_MS", "50")
+	t.Setenv("SERIAL_INSTANCE_ID_FILE", "/tmp/splash-serial-instance-id")
 
 	_, err := LoadFromEnv()
 	if err == nil {
@@ -89,6 +97,7 @@ func TestLoadFromEnvAllowsZeroDefaultIdle(t *testing.T) {
 	t.Setenv("SERIAL_WRITE_TIMEOUT_MS", "2000")
 	t.Setenv("SERIAL_HTTP_BIND", "127.0.0.1:9108")
 	t.Setenv("SERIAL_DEFAULT_IDLE_MS", "0")
+	t.Setenv("SERIAL_INSTANCE_ID_FILE", "/tmp/splash-serial-instance-id")
 
 	cfg, err := LoadFromEnv()
 	if err != nil {
@@ -97,5 +106,23 @@ func TestLoadFromEnvAllowsZeroDefaultIdle(t *testing.T) {
 
 	if cfg.SerialDefaultIdle != 0 {
 		t.Fatalf("expected zero default idle, got %v", cfg.SerialDefaultIdle)
+	}
+}
+
+func TestLoadFromEnvDefaultsInstanceIDPath(t *testing.T) {
+	t.Setenv("NATS_URL", "nats://splash-core.local:4222")
+	t.Setenv("SERIAL_DEVICE", "/dev/ttyUSB0")
+	t.Setenv("SERIAL_RECONNECT_INTERVAL_MS", "10000")
+	t.Setenv("SERIAL_WRITE_TIMEOUT_MS", "2000")
+	t.Setenv("SERIAL_HTTP_BIND", "127.0.0.1:9108")
+	t.Setenv("SERIAL_DEFAULT_IDLE_MS", "50")
+
+	cfg, err := LoadFromEnv()
+	if err != nil {
+		t.Fatalf("LoadFromEnv returned error: %v", err)
+	}
+
+	if cfg.SerialInstanceIDFile != defaultSerialInstanceIDFile {
+		t.Fatalf("expected default instance id path %q, got %q", defaultSerialInstanceIDFile, cfg.SerialInstanceIDFile)
 	}
 }
