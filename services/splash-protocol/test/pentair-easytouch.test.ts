@@ -142,6 +142,23 @@ test("decodePentairFrame derives controller mode hints from trusted circuit bits
   assert.deepEqual(auxOnly.fields.active_circuit_keys, ["aux2"]);
 });
 
+test("decodePentairFrame classifies observed 0x9b traffic as controller remote interaction", () => {
+  const payload = [
+    0x01, 0x80, 0x00, 0x02, 0x00, 0x06, 0x03, 0x0b, 0x04, 0x0c, 0x0d, 0x0d,
+    0x09, 0x80, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x84, 0xe2,
+    0x7a, 0x24, 0x6c, 0x00, 0x00, 0x00, 0xe8, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  ];
+  const decoded = decodePentairFrame(buildPentairFrameWithAddresses(0x10, 0x21, 0x9b, payload));
+
+  assert.equal(decoded.messageType, "controller_remote_interaction");
+  assert.equal(decoded.fields.payload_length, 46);
+  assert.equal(decoded.fields.source_role, "remote");
+  assert.equal(decoded.fields.destination_role, "controller");
+  assert.equal(decoded.fields.source_is_remote, true);
+  assert.equal(decoded.fields.destination_is_controller, true);
+});
+
 test("pentairEasyTouchPlugin encodes the initial direct pump set_speed sequence", () => {
   const encoded = pentairEasyTouchPlugin.encodeCommand(
     {

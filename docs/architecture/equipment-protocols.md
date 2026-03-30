@@ -257,9 +257,19 @@ Current working assumptions:
 - individual pages or blocks must therefore be requested and correlated
   separately
 
-ASSUMPTION: action `0x9b` is a likely part of this paginated Remote Layout
-exchange and should be treated as configuration-plane traffic until its fields
-are mapped more precisely.
+Observed nuance:
+
+- live frames with action `0x9b` have been observed from source address `0x21`
+  to destination address `0x10`
+- this should currently be treated as a remote-to-controller interaction, not
+  as proof that `0x9b` is itself the canonical Remote Layout response action
+- separate protocol notes indicate a Remote Layout request or response exchange
+  may also involve action identifiers such as `0xe1` and `0x21`, which must be
+  validated independently from the observed `0x9b` traffic
+
+ASSUMPTION: until the action semantics are fully mapped, observed `0x9b` frames
+should be treated as controller-configuration-plane interaction traffic with
+diagnostic value but no normalized state meaning.
 
 ### Payload definition status
 

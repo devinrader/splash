@@ -73,16 +73,31 @@ function decodeMessageType(actionCode: number): string {
       return "pump_status";
     case 0x19:
       return "chlorinator_status";
+    case 0x9b:
+      return "controller_remote_interaction";
     default:
       return "unknown";
   }
+}
+
+function describeAddressRole(address: number): "controller" | "remote" | "pump" | "other" {
+  if (address >= 0x10 && address <= 0x1f) {
+    return "controller";
+  }
+  if (address >= 0x20 && address <= 0x2f) {
+    return "remote";
+  }
+  if (address >= 0x60 && address <= 0x6f) {
+    return "pump";
+  }
+  return "other";
 }
 
 function decodeUnknownFields(payload: Uint8Array): string[] {
   return [...payload].map((value, index) => `payload[${index}]=0x${value.toString(16).padStart(2, "0")}`);
 }
 
-function decodeFields(actionCode: number, payload: Uint8Array): Record<string, unknown> {
+function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: number, destinationAddress: number): Record<string, unknown> {
   const payloadHex = bytesToHex(payload);
 
   switch (actionCode) {
@@ -122,6 +137,15 @@ function decodeFields(actionCode: number, payload: Uint8Array): Record<string, u
         salt_lo: payload[1] ?? null,
         output_percent: payload[2] ?? null,
         status_byte: payload[3] ?? null
+      };
+    case 0x9b:
+      return {
+        payload_hex: payloadHex,
+        payload_length: payload.length,
+        source_role: describeAddressRole(sourceAddress),
+        destination_role: describeAddressRole(destinationAddress),
+        source_is_remote: describeAddressRole(sourceAddress) === "remote",
+        destination_is_controller: describeAddressRole(destinationAddress) === "controller"
       };
     default:
       return {
@@ -253,7 +277,7 @@ export function decodePentairFrame(
     sourceAddress: `0x${frame[6].toString(16).padStart(2, "0")}`,
     destinationAddress: `0x${frame[5].toString(16).padStart(2, "0")}`,
     checksumStatus: "valid",
-    fields: decodeFields(actionCode, payload),
+    fields: decodeFields(actionCode, payload, frame[6], frame[5]),
     unknownFields: decodeUnknownFields(payload),
     normalizedEvents: decodeNormalizedEvents(
       actionCode,
