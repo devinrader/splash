@@ -242,6 +242,25 @@ Pentair EasyTouch and IntelliTouch are the primary v1 protocol targets. Communit
 - `0x19`: chlorinator broadcast
 - additional action codes are known but not all are fully mapped
 
+### Remote Layout exchange
+
+Pentair remotes such as ScreenLogic also use a Remote Layout exchange that
+appears to expose controller configuration rather than live equipment state.
+
+Current working assumptions:
+
+- Remote Layout is likely the better source for circuit inventory than `0x02`
+  status alone
+- it may carry circuit ids, circuit names, and some function or type hints
+- it appears to be paginated rather than emitted as one full configuration
+  message
+- individual pages or blocks must therefore be requested and correlated
+  separately
+
+ASSUMPTION: action `0x9b` is a likely part of this paginated Remote Layout
+exchange and should be treated as configuration-plane traffic until its fields
+are mapped more precisely.
+
 ### Payload definition status
 
 - `0x02` is partially well understood and is the primary state source for Splash
