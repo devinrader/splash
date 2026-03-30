@@ -318,6 +318,18 @@ Initial codes should include:
 - `nats_closed`
 - `unexpected_loop_exit`
 
+## Deferred enhancement: active NATS endpoint visibility
+
+If ordered NATS failover is added later, observability should expand to show:
+
+- the currently selected active NATS endpoint
+- the configured endpoint priority order
+- the endpoint chosen during the most recent reconnect attempt
+- whether the current session was established through failover rather than the
+  first-priority endpoint
+
+That observability is deferred with the failover feature itself.
+
 These codes are intended for operational diagnosis and should remain stable once implemented.
 
 ## Relationship to NATS status

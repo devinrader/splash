@@ -23,6 +23,25 @@
 `SERIAL_INSTANCE_ID_FILE` should default to a service-owned writable path such
 as `/var/lib/splash/splash-serial/instance-id` when not explicitly configured.
 
+## Deferred enhancement: ordered NATS failover
+
+V1 uses a single required `NATS_URL`.
+
+Future enhancement direction:
+
+- `splash-serial` may later support an ordered `NATS_URLS` list
+- endpoints would be attempted in priority order until one connects
+- once connected, the service should stay on the current healthy endpoint and
+  must not automatically fail back to a higher-priority endpoint while the
+  current connection remains healthy
+- the ordered list would be re-evaluated only after disconnect or reconnect
+
+This behavior is intentionally deferred because it changes:
+
+- transport configuration shape
+- runtime failover semantics
+- health, metrics, and logging expectations for the active NATS endpoint
+
 ## Validation expectations
 
 Configuration should be validated at startup.

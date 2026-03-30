@@ -127,6 +127,21 @@ ASSUMPTION: in v1, background NATS reconnect attempts may reuse the existing
 `SERIAL_RECONNECT_INTERVAL_MS` timing until a dedicated NATS reconnect setting
 is added to the design
 
+## Deferred enhancement: sticky prioritized NATS endpoints
+
+Future enhancement direction:
+
+- `splash-serial` may later accept a prioritized list of NATS endpoints instead
+  of one `NATS_URL`
+- the service would attempt those endpoints in order until one connects
+- after a successful connection, the service should stay on the currently
+  connected endpoint while it remains healthy
+- the service should not automatically fail back to a higher-priority endpoint
+  during a healthy active connection
+- endpoint selection should be reconsidered only after disconnect or reconnect
+
+This is deferred enhancement work rather than current behavior.
+
 ## Session model
 
 A port session is the active runtime binding between `splash-serial` and the configured serial adapter.
