@@ -174,6 +174,8 @@ Allowed `status` values:
 {
   "pool_id": "uuid",
   "command_id": "uuid",
+  "write_index": 1,
+  "write_count": 3,
   "encoded_at": "2026-03-26T20:00:03Z",
   "protocol_name": "pentair_easytouch",
   "bytes_hex": "ff00ffa5...",
@@ -191,6 +193,8 @@ Allowed `status` values:
   "pool_id": "uuid",
   "stream_id": "uuid",
   "command_id": "uuid",
+  "write_index": 1,
+  "write_count": 3,
   "requested_at": "2026-03-26T20:00:03Z",
   "protocol_name": "pentair_easytouch",
   "bytes_hex": "ff00ffa5...",
@@ -205,6 +209,9 @@ Rules:
 
 - `serial.write.request` is the transport-facing outbound write contract consumed by `splash-serial`
 - `splash-protocol` is the only service that should publish this subject in v1
+- a normalized command may expand into multiple `protocol.command.encoded` and
+  `serial.write.request` messages when the plugin requires a short write
+  sequence, such as remote-enable, command write, and remote-disable
 - `splash-serial` must reject the write if the provided `stream_id` does not match the currently active port session
 - `bus_requirements.requires_idle_ms` is a minimum transport requirement that `splash-serial` must enforce before transmitting
 - if a write is rejected or fails, `splash-serial` should publish a corresponding `serial.tx.raw` record with a non-`ok` `write_result`

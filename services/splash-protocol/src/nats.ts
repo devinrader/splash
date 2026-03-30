@@ -1,5 +1,6 @@
-import { connect, type NatsConnection } from "nats";
+import { JSONCodec, connect, type NatsConnection } from "nats";
 import type { Logger } from "./logger.js";
+import type { MessagePayload, MessagingSession } from "./messaging.js";
 
 export interface NatsConnectionState {
   status: "ok" | "error";
@@ -12,7 +13,8 @@ export class NatsSupervisor {
 
   constructor(
     private readonly natsUrl: string,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly onConnected?: (session: MessagingSession, signal: AbortSignal) => Promise<void>
   ) {}
 
   snapshot(): NatsConnectionState {
@@ -34,7 +36,9 @@ export class NatsSupervisor {
         this.logger.info("nats.connect.succeeded", "Connected to NATS.", {
           nats_url: this.natsUrl
         });
-        await this.connection.closed();
+        const session = createNatsSession(this.connection);
+        const connectedTask = this.onConnected?.(session, signal) ?? Promise.resolve();
+        await Promise.race([this.connection.closed(), connectedTask]);
       } catch (error) {
         this.state = { status: "error", errorCode: "nats_connect_failed" };
         this.logger.warn("nats.connect.failed", "NATS connection failed.", {
@@ -51,6 +55,24 @@ export class NatsSupervisor {
       await waitFor(signal, 5000);
     }
   }
+}
+
+function createNatsSession(connection: NatsConnection): MessagingSession {
+  const codec = JSONCodec<MessagePayload>();
+
+  return {
+    async publish(subject, payload) {
+      connection.publish(subject, codec.encode(payload));
+    },
+    subscribe(subject, handler) {
+      const subscription = connection.subscribe(subject);
+      void (async () => {
+        for await (const message of subscription) {
+          await handler(codec.decode(message.data));
+        }
+      })();
+    }
+  };
 }
 
 async function waitFor(signal: AbortSignal, ms: number): Promise<void> {

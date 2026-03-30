@@ -1,0 +1,55 @@
+export type CommandResultStatus =
+  | "accepted"
+  | "encoded"
+  | "transmitted"
+  | "completed"
+  | "timed_out"
+  | "failed";
+
+export interface CommandTarget {
+  equipment_id?: string;
+  equipment_type?: string;
+  bus_address?: string;
+  circuit_key?: string;
+}
+
+export interface NormalizedCommandIntent {
+  pool_id: string;
+  command_id: string;
+  requested_at: string;
+  protocol_name: string;
+  target: CommandTarget;
+  command_type: string;
+  arguments: Record<string, unknown>;
+  requested_by?: string;
+  dry_run?: boolean;
+}
+
+export interface EncodedWrite {
+  bytes: Uint8Array;
+  bytesHex: string;
+  busRequirements: {
+    requires_idle_ms: number;
+  };
+}
+
+export interface CommandCorrelationExpectation {
+  kind: "pump_rpm";
+  targetRpm: number;
+  busAddress: string;
+}
+
+export interface CommandEncodingPlan {
+  protocolName: string;
+  writes: EncodedWrite[];
+  correlation: CommandCorrelationExpectation | null;
+}
+
+export class ProtocolCommandError extends Error {
+  constructor(
+    message: string,
+    readonly errorCode: string
+  ) {
+    super(message);
+  }
+}

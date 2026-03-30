@@ -1,6 +1,8 @@
 import { loadConfig, type ProtocolConfig } from "./config.js";
+import { CommandCoordinator } from "./commands/coordinator.js";
 import { LocalHttpServer, type HttpServer } from "./http.js";
 import { createLogger, type Logger } from "./logger.js";
+import type { MessagingSession } from "./messaging.js";
 import { NatsSupervisor } from "./nats.js";
 import { discoverPlugins, type PluginRegistry } from "./plugins/index.js";
 import {
@@ -25,6 +27,7 @@ export class App {
   private readonly httpServer?: HttpServer;
   private readonly snapshot: AppSnapshot = createInitialSnapshot();
   private readonly nats: NatsSupervisor;
+  private readonly commands: CommandCoordinator;
 
   constructor(options: AppOptions = {}) {
     this.config = options.config ?? loadConfig();
@@ -32,7 +35,12 @@ export class App {
     this.provider = options.provider ?? new UnavailableProtocolSelectionProvider();
     this.registry = options.registry ?? discoverPlugins();
     this.httpServer = options.httpServer;
-    this.nats = new NatsSupervisor(this.config.natsUrl, this.logger);
+    this.commands = new CommandCoordinator(this.logger, this.config.commandTimeoutMs, (streamId) => {
+      this.snapshot.streamId = streamId;
+    });
+    this.nats = new NatsSupervisor(this.config.natsUrl, this.logger, async (session, signal) =>
+      this.runNatsSession(session, signal)
+    );
   }
 
   getSnapshot(): AppSnapshot {
@@ -78,6 +86,7 @@ export class App {
     if (result.kind === "unavailable") {
       this.snapshot.poolId = null;
       this.snapshot.activePlugin = null;
+      this.commands.clearActiveSelection();
       this.snapshot.configuration = "error";
       this.snapshot.configErrorCode = result.errorCode;
       this.snapshot.decode = "error";
@@ -97,6 +106,7 @@ export class App {
       throw new Error(`Selected plugin '${result.selection.protocolPlugin}' is not locally available`);
     }
 
+    this.commands.setActiveSelection(result.selection, plugin);
     this.snapshot.poolId = result.selection.poolId;
     this.snapshot.activePlugin = result.selection.protocolPlugin;
     this.snapshot.configuration = "valid";
@@ -131,6 +141,11 @@ export class App {
     this.snapshot.startupPhase = phase;
     this.snapshot.lastTransitionAt = new Date().toISOString();
   }
+
+  private async runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void> {
+    this.commands.attach(session);
+    await waitForAbort(signal);
+  }
 }
 
 async function sleep(signal: AbortSignal, ms: number): Promise<void> {
@@ -140,6 +155,18 @@ async function sleep(signal: AbortSignal, ms: number): Promise<void> {
       "abort",
       () => {
         clearTimeout(timeout);
+        resolve();
+      },
+      { once: true }
+    );
+  });
+}
+
+async function waitForAbort(signal: AbortSignal): Promise<void> {
+  await new Promise<void>((resolve) => {
+    signal.addEventListener(
+      "abort",
+      () => {
         resolve();
       },
       { once: true }

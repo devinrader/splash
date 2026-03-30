@@ -1,3 +1,4 @@
+import { ProtocolCommandError } from "../commands/types.js";
 import type { ProtocolPlugin } from "./types.js";
 import { ProtocolDecodeError } from "../protocol/types.js";
 
@@ -8,6 +9,12 @@ export const haywardOmniLogicLocalPlugin: ProtocolPlugin = {
   decodeFrame() {
     throw new ProtocolDecodeError(
       "hayward_omnilogic_local decode is not implemented yet.",
+      "plugin_unsupported"
+    );
+  },
+  encodeCommand() {
+    throw new ProtocolCommandError(
+      "hayward_omnilogic_local command encode is not implemented yet.",
       "plugin_unsupported"
     );
   }

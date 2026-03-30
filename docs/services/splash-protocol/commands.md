@@ -20,6 +20,45 @@ It must:
 - publish `serial.write.request`
 - track command state until transmit confirmation and completion or timeout
 
+## Initial supported live command
+
+The first live command supported by `splash-protocol` is:
+
+- Pentair direct pump `set_speed`
+
+Initial scope rules:
+
+- target equipment type: `pump`
+- protocol plugin: `pentair_easytouch`
+- target bus address: direct IntelliFlo pump range such as `0x60`
+- command family: normalized `set_speed`
+
+ASSUMPTION: the initial `set_speed` implementation targets the direct Pentair
+pump RS-485 path and uses the currently documented remote-control plus direct
+RPM-write sequence rather than broader EasyTouch controller-mediated equipment
+write flows.
+
+## Initial Pentair direct pump write sequence
+
+For the first supported live `set_speed` path, `splash-protocol` should:
+
+1. enable remote control on the target pump
+2. send the direct RPM write for the supported Pentair pump command path
+3. disable remote control on the target pump
+
+Rules:
+
+- the sequence should remain part of one normalized command lifecycle
+- all writes in the sequence should carry the same `command_id`
+- `protocol.command.encoded` and `serial.write.request` may emit one message per
+  encoded transport write while still representing one normalized command
+- the plugin should attach `bus_requirements.requires_idle_ms = 50`
+- unsupported Pentair write families remain out of scope for this first slice
+
+ASSUMPTION: the initial direct RPM write uses the currently documented Pentair
+pump command path for Program 1 RPM while we validate additional captures for
+manual or controller-mediated speed control behavior.
+
 ## Result stages
 
 Command result progression should use `command.result.{command_id}`.
@@ -42,6 +81,13 @@ Expected stage meanings:
 - `timed_out`: no matching response or confirmation was observed before timeout
 - `failed`: plugin validation failed, encode failed, stream went stale, or transport returned a non-`ok` terminal result
 
+For the initial direct pump `set_speed` path:
+
+- `transmitted` means all required writes in the remote-enable, speed-write,
+  and remote-disable sequence were acknowledged by `serial.tx.raw` with
+  `write_result = ok`
+- `completed` means a later pump-status observation confirms the requested RPM
+
 ## Correlation ownership
 
 `splash-protocol` owns correlation between:
@@ -59,6 +105,8 @@ Rules:
 - `serial.tx.raw.write_result = ok` means bytes reached the transport layer
 - only `splash-protocol` may determine whether the command actually completed
 - stale-stream, timeout, rejected, or port-error transport results should become failed command states unless the command is retried through a new stream
+- if any write in a multi-write command sequence fails, the whole normalized
+  command should transition to `failed`
 
 ## Correlation window
 

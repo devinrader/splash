@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ProtocolCommandError } from "../src/commands/types.js";
 import { ProtocolDecodeError } from "../src/protocol/types.js";
-import { decodePentairFrame } from "../src/plugins/pentair-easytouch.js";
+import { decodePentairFrame, pentairEasyTouchPlugin } from "../src/plugins/pentair-easytouch.js";
 
 function buildPentairFrame(actionCode: number, payload: number[]): Uint8Array {
   const frame = [
@@ -87,4 +88,62 @@ test("decodePentairFrame emits partial normalized events for trusted message fam
   assert.equal(chlorinator.normalizedEvents?.[0].subject, "equipment.state.chlorinator");
   assert.equal(chlorinator.normalizedEvents?.[0].payload.salt_ppm, 3100);
   assert.equal(chlorinator.normalizedEvents?.[0].payload.output_percent, 40);
+});
+
+test("pentairEasyTouchPlugin encodes the initial direct pump set_speed sequence", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-1",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "pump",
+        bus_address: "0x60"
+      },
+      command_type: "set_speed",
+      arguments: {
+        rpm: 2800
+      },
+      dry_run: false
+    },
+    {}
+  );
+
+  assert.equal(encoded.writes.length, 3);
+  assert.equal(encoded.writes[0].bytesHex, "ff00ffa50060210401ff022a");
+  assert.equal(encoded.writes[1].bytesHex, "ff00ffa5006021010403270af0024f");
+  assert.equal(encoded.writes[2].bytesHex, "ff00ffa5006021040100012b");
+  assert.equal(encoded.writes[1].busRequirements.requires_idle_ms, 50);
+  assert.equal(encoded.correlation?.kind, "pump_rpm");
+  assert.equal(encoded.correlation?.targetRpm, 2800);
+});
+
+test("pentairEasyTouchPlugin rejects unsupported initial command targets", () => {
+  assert.throws(
+    () =>
+      pentairEasyTouchPlugin.encodeCommand(
+        {
+          pool_id: "pool-1",
+          command_id: "command-1",
+          requested_at: "2026-03-30T00:00:00Z",
+          protocol_name: "pentair_easytouch",
+          target: {
+            equipment_type: "pump",
+            bus_address: "0x10"
+          },
+          command_type: "set_speed",
+          arguments: {
+            rpm: 2800
+          },
+          dry_run: false
+        },
+        {}
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof ProtocolCommandError);
+      assert.equal(error.errorCode, "command_target_invalid");
+      return true;
+    }
+  );
 });

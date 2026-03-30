@@ -1,3 +1,8 @@
+import {
+  ProtocolCommandError,
+  type CommandEncodingPlan,
+  type NormalizedCommandIntent
+} from "../commands/types.js";
 import type { ProtocolPlugin } from "./types.js";
 import { bytesToHex } from "../protocol/hex.js";
 import {
@@ -7,6 +12,9 @@ import {
 } from "../protocol/types.js";
 
 const START_DELIMITER = [0xff, 0x00, 0xff, 0xa5];
+const SPLASH_REMOTE_ADDRESS = 0x21;
+const DEFAULT_IDLE_MS = 50;
+const PUMP_PROGRAM_1 = 0x27;
 
 function expectStartDelimiter(frame: Uint8Array): void {
   if (frame.length < 11) {
@@ -210,11 +218,84 @@ export function decodePentairFrame(
   };
 }
 
+function parseBusAddress(address: string): number {
+  const normalized = address.toLowerCase();
+  if (!normalized.startsWith("0x")) {
+    throw new ProtocolCommandError("Pentair pump commands require a hex bus address.", "command_target_invalid");
+  }
+
+  const parsed = Number.parseInt(normalized.slice(2), 16);
+  if (!Number.isInteger(parsed) || parsed < 0x60 || parsed > 0x6f) {
+    throw new ProtocolCommandError("Pentair direct pump commands require a direct pump bus address in the 0x60-0x6f range.", "command_target_invalid");
+  }
+  return parsed;
+}
+
+function parseTargetRpm(intent: NormalizedCommandIntent): number {
+  const rpm = intent.arguments.rpm;
+  if (typeof rpm !== "number" || !Number.isInteger(rpm) || rpm < 450 || rpm > 3450) {
+    throw new ProtocolCommandError("Pentair direct pump set_speed requires an integer rpm between 450 and 3450.", "command_arguments_invalid");
+  }
+  return rpm;
+}
+
+function buildPentairFrame(destination: number, source: number, actionCode: number, payload: number[]): Uint8Array {
+  const frame = [0xff, 0x00, 0xff, 0xa5, 0x00, destination, source, actionCode, payload.length, ...payload];
+  const checksum = frame.slice(3).reduce((sum, byte) => (sum + byte) & 0xffff, 0);
+  frame.push((checksum >> 8) & 0xff, checksum & 0xff);
+  return Uint8Array.from(frame);
+}
+
+function encodePentairCommand(intent: NormalizedCommandIntent): CommandEncodingPlan {
+  if (intent.command_type !== "set_speed") {
+    throw new ProtocolCommandError("pentair_easytouch only supports direct pump set_speed in the initial command slice.", "unsupported_command_encode");
+  }
+
+  if (intent.target.equipment_type !== "pump") {
+    throw new ProtocolCommandError("Pentair direct set_speed requires a pump target.", "command_target_invalid");
+  }
+
+  const busAddress = typeof intent.target.bus_address === "string" ? intent.target.bus_address : null;
+  if (!busAddress) {
+    throw new ProtocolCommandError("Pentair direct set_speed requires a target bus_address.", "command_target_invalid");
+  }
+
+  const destination = parseBusAddress(busAddress);
+  const rpm = parseTargetRpm(intent);
+  const rpmHi = (rpm >> 8) & 0xff;
+  const rpmLo = rpm & 0xff;
+
+  const writes = [
+    buildPentairFrame(destination, SPLASH_REMOTE_ADDRESS, 0x04, [0xff]),
+    buildPentairFrame(destination, SPLASH_REMOTE_ADDRESS, 0x01, [0x03, PUMP_PROGRAM_1, rpmHi, rpmLo]),
+    buildPentairFrame(destination, SPLASH_REMOTE_ADDRESS, 0x04, [0x00])
+  ].map((bytes) => ({
+    bytes,
+    bytesHex: bytesToHex(bytes),
+    busRequirements: {
+      requires_idle_ms: DEFAULT_IDLE_MS
+    }
+  }));
+
+  return {
+    protocolName: "pentair_easytouch",
+    writes,
+    correlation: {
+      kind: "pump_rpm",
+      targetRpm: rpm,
+      busAddress: busAddress.toLowerCase()
+    }
+  };
+}
+
 export const pentairEasyTouchPlugin: ProtocolPlugin = {
   id: "pentair_easytouch",
   status: "active",
   version: "0.1.0",
   decodeFrame(frame, context) {
     return decodePentairFrame(frame, context);
+  },
+  encodeCommand(intent) {
+    return encodePentairCommand(intent);
   }
 };

@@ -221,6 +221,23 @@ Pentair EasyTouch and IntelliTouch are the primary v1 protocol targets. Communit
 - the source material references a 50 ms idle requirement before writing
 - some pump-control flows require panel-control toggling before direct pump commands are accepted
 
+### Initial direct pump control assumption
+
+The first Splash command implementation may support Pentair direct pump
+`set_speed` before broader controller-managed write coverage exists.
+
+Initial assumption set:
+
+- target direct IntelliFlo pump address such as `0x60`
+- enable remote control before the RPM write
+- send the direct RPM write
+- disable remote control after the RPM write
+- require at least 50 ms bus idle before each write
+
+ASSUMPTION: the initial direct RPM write uses the currently documented Pentair
+pump Program 1 RPM path while additional captures are gathered to confirm the
+best long-term normalized `set_speed` mapping for EasyTouch-controlled systems.
+
 ### Normalized mapping targets
 
 - `equipment.state.controller`
