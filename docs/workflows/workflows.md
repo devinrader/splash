@@ -26,6 +26,47 @@ Caption: First-run onboarding sequence for creating the pool profile, optional e
 - initial weather fetch triggered
 - setup marked complete
 
+## Initial implementation workflow
+
+The first implementation target is a minimal end-to-end operational slice that
+proves Splash can read live equipment state, present it in the browser, and
+perform one real equipment write safely.
+
+### Read path
+
+1. `splash-serial` reads live Pentair RS-485 traffic
+2. `splash-protocol` assembles frames and decodes trusted Pentair fields
+3. `splash-protocol` emits normalized state for:
+   - controller air temperature
+   - controller water temperature
+   - chlorinator salt level
+   - pump RPM
+4. API persistence or latest-state projection records those values
+5. the browser shows the current values on the initial dashboard or equipment
+   view
+
+### Write path
+
+1. the user changes pump speed from the browser
+2. the API validates the normalized `set_speed` command against the target pump
+3. `splash-api` publishes `protocol.command.intent`
+4. `splash-protocol` encodes the direct Pentair pump command and publishes
+   `serial.write.request`
+5. `splash-serial` writes the bytes to the bus and reports `serial.tx.raw`
+6. `splash-protocol` correlates the write and resulting pump-status frames
+7. the browser shows pending, transmitted, and completed or failed command
+   state
+
+### Initial implementation success criteria
+
+- the browser shows current air temperature
+- the browser shows current water temperature
+- the browser shows current salt level
+- the browser shows current pump RPM
+- the browser can change pump RPM through the documented command flow
+- the system logs or persists enough state to verify the read path and the
+  resulting control action
+
 ## Routine chemistry maintenance
 
 ### Daily

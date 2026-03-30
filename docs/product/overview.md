@@ -26,6 +26,20 @@ Splash is intended to make proactive pool management practical for non-experts b
 
 ## Scope
 
+### Initial implementation target
+
+The initial implementation of Splash is a narrow end-to-end vertical slice:
+
+- read and display current air temperature
+- read and display current water temperature
+- read and display current salt level
+- read and display current pump RPM
+- change pump speed from the browser
+
+This first slice exists to validate the minimum useful closed loop from live
+RS-485 traffic through protocol decode, persistence, API delivery, browser
+presentation, command encode, serial write, and command-result tracking.
+
 ### In scope
 
 - Connectivity and control for pumps, heaters, lights, and related equipment
@@ -80,13 +94,18 @@ The application uses a persistent left sidebar on desktop and a collapsed or bot
 
 ### V1 definition of done
 
-- Working RS-485 connection that can read status from and send commands to at least one connected pool-equipment target
+- Initial implementation milestone completed:
+  - browser UI shows current air temp, water temp, salt level, and pump RPM
+  - browser UI can change pump RPM
+  - the end-to-end read and write path is proven on real equipment
+- Working RS-485 connection that can read status from and send commands to at
+  least one connected pool-equipment target
 - Chemistry logging plus historical trend charts in the web UI
 
 ### Build phases
 
-1. Core infrastructure: Raspberry Pi hosts, Go services, PostgreSQL, InfluxDB, frontend scaffold, RS-485 communication, weather ingestion, and core models
-2. Initial ship features: chemistry screen, equipment screen, dashboard, and notification delivery
+1. Initial implementation slice: Raspberry Pi hosts, RS-485 communication, protocol decode, minimal API and frontend, persistence or logging for live temperatures, salt, and pump RPM, plus browser pump-speed control
+2. Core platform expansion: chemistry screen, equipment screen, dashboard, notification delivery, and broader normalized equipment coverage
 3. Remaining v1 features: maintenance reminders, seasonal checklists, task list, predictive rules, cover tracking, SLAM workflow, Protocol Explorer, and rainfall tracking
 4. Future roadmap: dosing recommendations, usage-based maintenance, autonomous automation, predictive fault detection, energy optimization, and dark mode
 

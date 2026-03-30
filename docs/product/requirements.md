@@ -4,6 +4,31 @@
 
 ## Functional requirements
 
+### Initial implementation milestone
+
+The first end-to-end implementation of Splash should prove one complete read and
+write equipment-control slice before the broader v1 surface is considered in
+scope.
+
+Initial milestone goals:
+
+- show current air temperature in the browser
+- show current water temperature in the browser
+- show current salt level in the browser
+- show current pump RPM in the browser
+- allow the operator to change pump speed from the browser
+- persist or log enough state and command history to verify the read and write
+  path end to end
+
+This milestone is intentionally narrower than the full v1 requirements table
+below. It is the first implementation target that validates:
+
+- RS-485 read transport
+- protocol decode and normalized event publication
+- API and frontend state presentation
+- command encode, serial write, and command-result tracking
+- historical logging of the surfaced values and control actions
+
 | Area | v1 requirements |
 | --- | --- |
 | Water chemistry | Log manual or sensor readings, trend chemistry over time, support chlorine and saltwater pools, prompt users to test water, record rainfall as chart context |
@@ -32,6 +57,8 @@
 - Support inventory records for pump, filter, heater, lights, cleaner, and chlorinator
 - Show live equipment state through SSE
 - Expose command controls with loading state until `command.result`
+- The first browser control surface must expose pump RPM readout and pump speed
+  control before broader equipment-control coverage is considered complete
 - Log maintenance history and surface upcoming service dates
 - Resolve each controllable equipment instance to zero or one capability profile in v1
 - Validate UI controls and normalized commands against effective per-equipment capabilities rather than equipment type alone

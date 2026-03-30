@@ -82,6 +82,9 @@
 - The onboarding wizard is frontend-driven and only persists actual domain objects plus `POST /setup/complete`
 - Automation approval executes prebuilt normalized command intent rather than reconstructing protocol frames in the API
 - Error and degraded-state UX should derive from SSE connection state and API responses rather than dedicated polling endpoints
+- The initial implementation should expose enough latest-state and control
+  surface to support a browser view of air temperature, water temperature, salt
+  level, and pump RPM plus a pump-speed control action
 
 ## Example payloads
 
