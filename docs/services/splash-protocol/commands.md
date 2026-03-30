@@ -42,13 +42,17 @@ remote-control writes.
 For the first supported live `set_speed` path, `splash-protocol` should:
 
 1. resolve the controller-managed circuit that owns the target pump speed
-2. encode the Pentair controller write needed to update that circuit speed
-3. if required, issue or correlate the circuit activation flow that causes the
+2. use controller system-status decoding to confirm the relevant circuit
+   assignment and control clues before command encode
+3. encode the Pentair controller write needed to update that circuit speed
+4. if required, issue or correlate the circuit activation flow that causes the
    controller to apply the new speed
 
 Rules:
 
 - the sequence should remain part of one normalized command lifecycle
+- controller-status circuit discovery is a prerequisite, not an optional hint,
+  for the first controller-managed implementation
 - all writes in the sequence should carry the same `command_id`
 - `protocol.command.encoded` and `serial.write.request` may emit one message per
   encoded transport write while still representing one normalized command

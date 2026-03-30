@@ -230,6 +230,9 @@ RPM writes.
 Initial assumption set:
 
 - the target pump is assigned to one or more EasyTouch-managed circuits
+- Splash must first decode enough controller system-status information to
+  identify those circuit assignments and the controller clues that indicate pump
+  ownership
 - Splash changes the configured RPM for the relevant pump circuit rather than
   writing a direct standalone pump RPM
 - the controller remains the authority that keeps the pump at the requested
