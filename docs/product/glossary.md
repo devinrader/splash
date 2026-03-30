@@ -67,7 +67,9 @@ A controller-managed logical output or function, such as pool, spa, aux, or ligh
 Circuit type and circuit name are not the same thing. The type describes the
 controller behavior, while the name is the user-visible label. On Pentair
 systems, virtual Feature circuits are often named for pump-speed purposes such
-as `POOL LOW` or `POOL HIGH` without becoming fixed `pool` circuits.
+as `POOL LOW` or `POOL HIGH` without becoming fixed `pool` circuits. AUX and
+Feature circuits may be renamed freely, but renaming `pool` or `spa` does not
+change their underlying controller behavior.
 
 ### `pump`
 

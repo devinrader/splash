@@ -160,6 +160,7 @@ Important circuit classes:
   - `spa`
   - `pool`
   - these are controller-defined operating modes tied to valve and heater logic
+  - renaming them does not change their internal behavior as `spa` or `pool`
 - `aux` circuits:
   - relay-backed controller outputs such as `AUX1` through model-dependent aux
     ranges
@@ -175,6 +176,8 @@ Splash should preserve this distinction when decoding controller circuits:
 - stable machine identity should reflect the underlying circuit type and key
 - user-visible labels should remain editable display names
 - protocol discovery should not infer functional type from labels alone
+- operator setup and UI flows should allow renaming for `aux` and `feature`
+  circuits without implying that fixed `pool` or `spa` behavior can be changed
 
 ## Protocol status legend
 

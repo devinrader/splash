@@ -219,7 +219,8 @@ Notes:
   label
 - on Pentair EasyTouch and IntelliTouch, this distinction matters:
   - fixed or special circuits such as `pool` and `spa` have controller-defined
-    behavior and are not just user labels
+    behavior and are not just user labels; renaming them does not change their
+    internal `pool` or `spa` semantics
   - `aux` circuits are relay-backed controller outputs that may be renamed
   - `feature` circuits are virtual controller functions often used for pump
     speeds, valve-only actions, or logic functions
