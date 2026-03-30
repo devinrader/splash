@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { EventBroker } from "./events.js";
+import type { ProtocolAnnotation, ProtocolAnnotationInput } from "./protocol-annotations.js";
 import type {
   ProtocolBundleComparison,
   ProtocolFrameBundle,
@@ -23,6 +24,8 @@ export interface HttpHandlers {
     baselineBundleId: string;
     comparisonBundleId: string;
   }): ProtocolBundleComparison | null;
+  listProtocolAnnotations(bundleId: string | null): ProtocolAnnotation[];
+  createProtocolAnnotation(input: ProtocolAnnotationInput): ProtocolAnnotation;
   publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }): Promise<{ commandId: string }>;
 }
 
@@ -79,6 +82,12 @@ export class LocalHttpServer implements HttpServer {
       return json(res, 200, { data: this.handlers.listProtocolFrameBundles(), error: null });
     }
 
+    if (req.method === "GET" && req.url?.startsWith("/protocol/annotations")) {
+      const url = new URL(req.url, "http://localhost");
+      const bundleId = url.searchParams.get("bundle_id");
+      return json(res, 200, { data: this.handlers.listProtocolAnnotations(bundleId), error: null });
+    }
+
     if (req.method === "POST" && req.url === "/protocol/bundles") {
       const body = await readJsonBody(req);
       const result = this.handlers.createProtocolFrameBundle({
@@ -94,6 +103,12 @@ export class LocalHttpServer implements HttpServer {
         return json(res, 404, { data: null, error: "One or both protocol frame bundles were not found." });
       }
       return json(res, 200, { data: result, error: null });
+    }
+
+    if (req.method === "POST" && req.url === "/protocol/annotations") {
+      const body = await readJsonBody(req);
+      const result = this.handlers.createProtocolAnnotation(readProtocolAnnotation(body));
+      return json(res, 201, { data: result, error: null });
     }
 
     const bundleMatch = req.url?.match(/^\/protocol\/bundles\/([^/]+)$/);
@@ -211,6 +226,53 @@ function readBundleCompareRequest(body: Record<string, unknown>): {
   return {
     baselineBundleId,
     comparisonBundleId
+  };
+}
+
+function readProtocolAnnotation(body: Record<string, unknown>): ProtocolAnnotationInput {
+  const bundleId = body.bundle_id;
+  const frameIndex = body.frame_index;
+  const fieldName = body.field_name;
+  const byteStart = body.byte_start;
+  const byteEnd = body.byte_end;
+  const confidence = body.confidence;
+  const label = body.label;
+  const notes = body.notes;
+
+  if (typeof bundleId !== "string" || bundleId.length === 0) {
+    throw new Error("Protocol annotation requires a string bundle_id.");
+  }
+  if (typeof frameIndex !== "number" || !Number.isInteger(frameIndex) || frameIndex < 0) {
+    throw new Error("Protocol annotation requires a non-negative integer frame_index.");
+  }
+  if (typeof fieldName !== "string" || fieldName.trim().length === 0) {
+    throw new Error("Protocol annotation requires a non-empty string field_name.");
+  }
+  if (typeof byteStart !== "number" || !Number.isInteger(byteStart) || byteStart < 0) {
+    throw new Error("Protocol annotation requires a non-negative integer byte_start.");
+  }
+  if (typeof byteEnd !== "number" || !Number.isInteger(byteEnd) || byteEnd < byteStart) {
+    throw new Error("Protocol annotation requires byte_end greater than or equal to byte_start.");
+  }
+  if (confidence !== "known" && confidence !== "inferred" && confidence !== "unknown") {
+    throw new Error("Protocol annotation confidence must be one of known, inferred, or unknown.");
+  }
+  if (typeof label !== "string" || label.trim().length === 0) {
+    throw new Error("Protocol annotation requires a non-empty string label.");
+  }
+  if (notes != null && typeof notes !== "string") {
+    throw new Error("Protocol annotation notes must be a string when provided.");
+  }
+
+  return {
+    bundle_id: bundleId,
+    frame_index: frameIndex,
+    field_name: fieldName.trim(),
+    byte_start: byteStart,
+    byte_end: byteEnd,
+    confidence,
+    label: label.trim(),
+    notes: typeof notes === "string" && notes.trim().length > 0 ? notes : null
   };
 }
 

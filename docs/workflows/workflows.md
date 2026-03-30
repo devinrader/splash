@@ -270,6 +270,17 @@ The first saved-frame-bundle implementation may stay deliberately narrow:
   work
 - the first slice does not need persistent storage or long-term retention
 
+### Initial annotation slice
+
+- annotations should target a saved bundle plus frame position and field name
+- annotations should carry explicit confidence:
+  - `known`
+  - `inferred`
+  - `unknown`
+- annotations should support byte ranges rather than only one byte offset
+- the first slice may remain in-memory and API-local before PostgreSQL-backed
+  `protocol_annotations` exists
+
 ## Future virtual pool workflow
 
 Future platform work may support a virtual pool mode where the user can create a

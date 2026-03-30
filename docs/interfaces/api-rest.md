@@ -94,6 +94,9 @@
 - the first saved-frame-bundle slice may remain in-memory and non-persistent as
   long as it captures recent `protocol.frame.raw` and `protocol.frame.decoded`
   traffic for one controlled experiment window
+- the first annotation slice may also remain in-memory and API-local as long as
+  annotations carry explicit confidence and target saved bundles or frame
+  positions rather than pretending to be durable protocol truth
 - later Protocol Explorer API slices should support collaborative decoding by
   exposing annotation confidence, saved frame comparisons, and operator-needed
   prompts without bypassing the shared protocol engine
@@ -247,6 +250,43 @@ Request:
 {
   "baseline_bundle_id": "d4d9ec0e-8295-43be-9bcf-f6c1c6cc9b5f",
   "comparison_bundle_id": "ad7c11db-e6bb-4a8b-b986-1e7bb30bc0f3"
+}
+```
+
+### `POST /protocol/annotations`
+
+Request:
+
+```json
+{
+  "bundle_id": "d4d9ec0e-8295-43be-9bcf-f6c1c6cc9b5f",
+  "frame_index": 0,
+  "field_name": "payload_hex",
+  "byte_start": 2,
+  "byte_end": 3,
+  "confidence": "inferred",
+  "label": "likely circuit id",
+  "notes": "Changes when Pool High is edited."
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "bc1ecfe3-80be-4875-a56b-4da0f246b15f",
+    "bundle_id": "d4d9ec0e-8295-43be-9bcf-f6c1c6cc9b5f",
+    "frame_index": 0,
+    "field_name": "payload_hex",
+    "byte_start": 2,
+    "byte_end": 3,
+    "confidence": "inferred",
+    "label": "likely circuit id",
+    "notes": "Changes when Pool High is edited.",
+    "created_at": "2026-03-30T20:05:00Z"
+  },
+  "error": null
 }
 ```
 

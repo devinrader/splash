@@ -7,6 +7,11 @@ import { createLogger, type Logger } from "./logger.js";
 import type { MessagingSession } from "./messaging.js";
 import { NatsSupervisor } from "./nats.js";
 import {
+  ProtocolAnnotationStore,
+  type ProtocolAnnotation,
+  type ProtocolAnnotationInput
+} from "./protocol-annotations.js";
+import {
   type ProtocolBundleComparison,
   ProtocolFrameBundleStore,
   type ProtocolFrameBundle,
@@ -28,6 +33,7 @@ export class App {
   private readonly events = new EventBroker();
   private readonly protocolFrames = new EventBroker();
   private readonly protocolFrameBundles = new ProtocolFrameBundleStore();
+  private readonly protocolAnnotations = new ProtocolAnnotationStore();
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
 
@@ -76,6 +82,14 @@ export class App {
     return this.protocolFrameBundles.compareBundles(input.baselineBundleId, input.comparisonBundleId);
   }
 
+  listProtocolAnnotations(bundleId: string | null = null): ProtocolAnnotation[] {
+    return this.protocolAnnotations.list(bundleId);
+  }
+
+  createProtocolAnnotation(input: ProtocolAnnotationInput): ProtocolAnnotation {
+    return this.protocolAnnotations.create(input);
+  }
+
   async publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }, session: MessagingSession): Promise<{ commandId: string }> {
     const equipment = this.bridge.get(input.equipmentId);
     if (!equipment || equipment.equipmentType !== "pump" || !equipment.busAddress) {
@@ -116,6 +130,8 @@ export class App {
         getProtocolFrameBundle: (id) => this.getProtocolFrameBundle(id),
         compareProtocolFrameBundles: ({ baselineBundleId, comparisonBundleId }) =>
           this.compareProtocolFrameBundles({ baselineBundleId, comparisonBundleId }),
+        listProtocolAnnotations: (bundleId) => this.listProtocolAnnotations(bundleId),
+        createProtocolAnnotation: (input) => this.createProtocolAnnotation(input),
         publishPumpSpeedCommand: async ({ equipmentId, rpm }) => {
           const session = this.currentSession;
           if (!session) {

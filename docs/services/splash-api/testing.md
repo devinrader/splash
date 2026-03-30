@@ -16,6 +16,7 @@ for:
 - saved frame-bundle capture from recent protocol frame traffic
 - retrieval of saved frame bundles through REST
 - comparison of two saved bundles with byte-change reporting for hex fields
+- confidence-aware annotation creation and retrieval for saved bundles
 
 ## Slice-specific cases
 
@@ -33,3 +34,5 @@ The first slice should explicitly test:
   `protocol.frame.decoded` events from the recent buffer
 - bundle comparison that highlights changed byte offsets for `bytes_hex` or
   `payload_hex`
+- annotation validation for required bundle target, field name, byte range, and
+  confidence value

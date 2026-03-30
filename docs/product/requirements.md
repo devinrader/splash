@@ -89,6 +89,8 @@ below. It is the first implementation target that validates:
 - Decode known frames and annotate unknown fields
 - Support collaborative protocol discovery by clearly separating decoded fields
   into `known`, `inferred`, and `unknown` confidence levels
+- support saving confidence-aware annotations against saved frame bundles and
+  byte ranges during collaborative decoding
 - Allow Protocol Explorer to surface operator-needed questions or prompts when
   a frame cannot be safely decoded from captured traffic alone
 - Preserve frame bundles or experiment snapshots so one controlled controller

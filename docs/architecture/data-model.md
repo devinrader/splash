@@ -26,7 +26,7 @@ The design is single-pool in v1, but child records carry `pool_id` to keep futur
 | `slam_sessions` | SLAM workflow state | `status`, `cya_at_start`, `slam_fc_target`, `criterion_cc`, `criterion_clear`, `criterion_oclt`, `oclt_fc_before`, `oclt_fc_after` |
 | `tasks` | Actionable work items | `status`, `priority`, `source`, `automation_command`, `due_at`, `snooze_until` |
 | `notifications` | Notification inbox | `type`, `title`, `body`, `read`, `related_entity_type`, `related_entity_id` |
-| `protocol_annotations` | Saved byte-level protocol notes | `action_code`, `byte_position`, `label`, `notes` |
+| `protocol_annotations` | Saved protocol-discovery notes | `pool_id`, `bundle_id`, `frame_index`, `field_name`, `byte_start`, `byte_end`, `confidence`, `label`, `notes` |
 | `pool_settings` | Pool-scoped settings and integration configuration | `pool_id`, `chemistry_prompt_interval_days`, `maintenance_reminder_lead_days`, `notification_preferences`, `weather_provider`, `protocol_plugin`, `protocol_config`, `sensor_provider`, `sensor_config` |
 | `pool_circuits` | Circuit label and display-name mapping | `pool_id`, `circuit_key`, `display_name`, `circuit_type`, `bus_address`, `action_code`, `sort_order`, `enabled` |
 
@@ -37,6 +37,7 @@ The design is single-pool in v1, but child records carry `pool_id` to keep futur
 - `checklist_definitions` own `checklist_steps` and `checklist_completions`
 - `slam_sessions`, `tasks`, and `notifications` may reference related entities for UX and audit context
 - `protocol_annotations` are pool-scoped so findings can differ by installation
+- `protocol_annotations` may be attached to saved Protocol Explorer frame bundles so one controlled experiment can carry its own byte-level notes
 - `pool_settings` is one-to-one with `pools`
 - `pool_circuits` is one-to-many from `pools`
 

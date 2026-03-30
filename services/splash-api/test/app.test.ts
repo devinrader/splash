@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { App } from "../src/app.js";
 import type { MessagingSession } from "../src/messaging.js";
+import { ProtocolAnnotationStore } from "../src/protocol-annotations.js";
 import { ProtocolFrameBundleStore } from "../src/protocol-bundles.js";
 
 class FakeSession implements MessagingSession {
@@ -193,4 +194,23 @@ test("bundle store compares saved bundles with byte-level hex diffs", () => {
       byte_changes: [{ byte_index: 5, baseline: "10", comparison: "20" }]
     }
   ]);
+});
+
+test("annotation store saves confidence-aware protocol annotations", () => {
+  const store = new ProtocolAnnotationStore();
+  const created = store.create({
+    bundle_id: "bundle-1",
+    frame_index: 0,
+    field_name: "payload_hex",
+    byte_start: 2,
+    byte_end: 3,
+    confidence: "inferred",
+    label: "likely circuit id",
+    notes: "Changes when Pool High is edited."
+  });
+
+  assert.ok(created.id);
+  assert.equal(created.confidence, "inferred");
+  assert.equal(store.list("bundle-1").length, 1);
+  assert.equal(store.list("bundle-1")[0]?.field_name, "payload_hex");
 });

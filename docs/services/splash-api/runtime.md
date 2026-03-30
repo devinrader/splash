@@ -39,6 +39,10 @@ For the first browser milestone, `splash-api` should:
    - comparing two saved bundles
    - highlighting changed byte offsets for known hex-bearing fields
    - returning the comparison through REST
+9. expose a first confidence-aware annotation slice by:
+   - accepting annotations tied to saved bundles and frame positions
+   - preserving annotation confidence and byte ranges
+   - returning saved annotations through REST
 
 ## Initial equipment catalog bridge
 
@@ -89,6 +93,8 @@ The first slice should at least support:
 - `POST /protocol/bundles`
 - `GET /protocol/bundles/:id`
 - `POST /protocol/bundles/compare`
+- `GET /protocol/annotations`
+- `POST /protocol/annotations`
 
 Rules:
 
@@ -102,3 +108,5 @@ Rules:
   while Protocol Explorer is still a local protocol-discovery tool
 - the first frame-diff slice may stay purely API-local and compare saved
   bundles positionally without trying to infer protocol meaning
+- the first annotation slice may stay API-local and in-memory before the
+  repository-backed `protocol_annotations` model is implemented
