@@ -86,6 +86,8 @@ The documentation is grouped by role so related material stays together:
   Service-specific design index for the RS-485 transport daemon on `splash-zero`.
 - [Splash Protocol Service](./services/splash-protocol/README.md)
   Service-specific design index for the protocol decode, normalize, and command service on `splash-core`.
+- [Splash API Service](./services/splash-api/README.md)
+  Service-specific design index for the browser-facing REST and SSE service on `splash-core`.
 
 ### Workflows
 

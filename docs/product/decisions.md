@@ -51,6 +51,9 @@
 - `splash-protocol` owns frame reconstruction buffers and command-response correlation.
 - `splash-api` and `splash-scheduler` must operate on normalized events and command intents, not raw vendor packets.
 - Normalized equipment events and command types are the primary contract above the protocol layer.
+- The initial `splash-api` milestone may use a minimal local equipment catalog
+  bridge to preserve `/equipment/:id/control` without blocking on the full
+  PostgreSQL-backed equipment repository implementation.
 - Protocol plugin identity should be organized around protocol family and variant, not vendor name alone, when a vendor exposes multiple distinct integration surfaces.
 - Protocol plugins should resolve one capability profile per equipment instance in v1.
 - Capability profiles should be defined in code and docs, not primarily authored as relational records.
