@@ -88,6 +88,9 @@
 - the first Protocol Explorer implementation slice may expose `/protocol/frames`
   before broader protocol decode, annotation, and simulator endpoints are fully
   implemented
+- later Protocol Explorer API slices should support collaborative decoding by
+  exposing annotation confidence, saved frame comparisons, and operator-needed
+  prompts without bypassing the shared protocol engine
 
 ## Example payloads
 

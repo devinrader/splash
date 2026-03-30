@@ -87,6 +87,12 @@ below. It is the first implementation target that validates:
 
 - Stream raw RS-485 frames
 - Decode known frames and annotate unknown fields
+- Support collaborative protocol discovery by clearly separating decoded fields
+  into `known`, `inferred`, and `unknown` confidence levels
+- Allow Protocol Explorer to surface operator-needed questions or prompts when
+  a frame cannot be safely decoded from captured traffic alone
+- Preserve frame bundles or experiment snapshots so one controlled controller
+  change can be compared against a baseline during reverse engineering
 - Support dry-run command simulation by default
 - Require explicit confirmation for any live command transmission
 - Centralize protocol decode and encode in a dedicated protocol service rather than spreading packet logic across API and scheduler

@@ -192,6 +192,11 @@ Caption: Guided SLAM workflow for raising FC to SLAM level, maintaining it, and 
 - show decoded and raw fields
 - filter, pause, and export
 - optionally surface transport chunk boundaries for advanced debugging, but frame-level data remains the primary view
+- clearly distinguish:
+  - known fields
+  - inferred fields
+  - unknown bytes
+  - operator-needed questions
 
 Initial implementation note:
 
@@ -224,6 +229,26 @@ Initial implementation note:
 - compare changed bytes using the shared protocol parser
 - annotate newly discovered fields
 - store diff annotations through the same `protocol_annotations` path used elsewhere
+
+### Collaborative decoding loop
+
+1. capture a baseline frame bundle
+2. make one controlled controller or equipment change
+3. capture the comparison frame bundle
+4. have Splash highlight bytes or fields that are:
+   - known
+   - inferred
+   - still unknown
+5. have Splash explicitly call out what operator input is needed, such as:
+   - controller menu state
+   - circuit names
+   - configured RPM values
+   - observed equipment behavior
+6. save annotations and confidence levels with the frame bundle
+7. update production decoders only after the inferred fields are validated
+
+This collaborative loop is the preferred workflow for unresolved Pentair tasks
+such as `#43`, `#60`, and `#61`.
 
 ## Future virtual pool workflow
 
