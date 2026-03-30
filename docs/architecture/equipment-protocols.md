@@ -278,6 +278,14 @@ Current working model for `0x9b`:
 - this fits EasyTouch behavior where circuit-to-speed assignments are stored in
   the controller and later translated by the controller into pump commands
 
+Current inferred `0x9b` payload shape:
+
+- `[pumpId]`
+- `[slotIndex 1-8]`
+- `[circuitId]`
+- `[rpm_hi][rpm_lo]`
+- `[flags / mode]`
+
 ASSUMPTION: until the `0x9b` payload is mapped precisely, observed `0x9b`
 frames should be treated as controller-configuration-plane interaction traffic
 with diagnostic value but no normalized state meaning.
