@@ -67,6 +67,21 @@ perform one real equipment write safely.
 - the system logs or persists enough state to verify the read path and the
   resulting control action
 
+## Equipment scheduling direction
+
+Splash is intended to become the scheduling authority for normal pool-equipment
+operation rather than leaving day-to-day schedules in the EasyTouch
+controller.
+
+Target direction:
+
+- Splash should own pump-speed scheduling once the scheduling slice is
+  implemented
+- controller-native EasyTouch schedules should become unnecessary for normal
+  operation
+- the initial implementation milestone does not require schedule replacement,
+  but future scheduling work should be planned toward this outcome
+
 ## Routine chemistry maintenance
 
 ### Daily

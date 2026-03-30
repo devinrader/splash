@@ -40,6 +40,13 @@ This first slice exists to validate the minimum useful closed loop from live
 RS-485 traffic through protocol decode, persistence, API delivery, browser
 presentation, command encode, serial write, and command-result tracking.
 
+Longer-term platform direction:
+
+- Splash should become the primary scheduling authority for pool equipment
+- the operator should not need to rely on EasyTouch scheduling for normal
+  operation once Splash scheduling is implemented
+- pump-speed scheduling is the most important early scheduling replacement goal
+
 ### In scope
 
 - Connectivity and control for pumps, heaters, lights, and related equipment

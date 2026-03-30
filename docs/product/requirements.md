@@ -59,6 +59,9 @@ below. It is the first implementation target that validates:
 - Expose command controls with loading state until `command.result`
 - The first browser control surface must expose pump RPM readout and pump speed
   control before broader equipment-control coverage is considered complete
+- Splash should ultimately own normal pool-equipment scheduling so the operator
+  does not need to rely on EasyTouch scheduling for day-to-day pump-speed and
+  related equipment schedule changes
 - Log maintenance history and surface upcoming service dates
 - Resolve each controllable equipment instance to zero or one capability profile in v1
 - Validate UI controls and normalized commands against effective per-equipment capabilities rather than equipment type alone
