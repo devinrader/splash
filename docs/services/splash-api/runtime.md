@@ -35,6 +35,10 @@ For the first browser milestone, `splash-api` should:
    - buffering recent `protocol.frame.raw` and `protocol.frame.decoded` events
    - allowing a client to save a bundle from that recent buffer
    - returning saved bundles through REST
+8. expose a first Protocol Explorer frame-diff slice by:
+   - comparing two saved bundles
+   - highlighting changed byte offsets for known hex-bearing fields
+   - returning the comparison through REST
 
 ## Initial equipment catalog bridge
 
@@ -84,6 +88,7 @@ The first slice should at least support:
 - `GET /protocol/bundles`
 - `POST /protocol/bundles`
 - `GET /protocol/bundles/:id`
+- `POST /protocol/bundles/compare`
 
 Rules:
 
@@ -95,3 +100,5 @@ Rules:
 - command progress should be exposed through SSE `command.result`
 - the first saved-frame-bundle slice may remain in-memory and non-persistent
   while Protocol Explorer is still a local protocol-discovery tool
+- the first frame-diff slice may stay purely API-local and compare saved
+  bundles positionally without trying to infer protocol meaning

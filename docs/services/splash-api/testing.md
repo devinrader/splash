@@ -15,6 +15,7 @@ for:
 - degraded behavior when NATS is unavailable
 - saved frame-bundle capture from recent protocol frame traffic
 - retrieval of saved frame bundles through REST
+- comparison of two saved bundles with byte-change reporting for hex fields
 
 ## Slice-specific cases
 
@@ -30,3 +31,5 @@ The first slice should explicitly test:
 - command-result relay to SSE clients
 - bundle capture that preserves both `protocol.frame.raw` and
   `protocol.frame.decoded` events from the recent buffer
+- bundle comparison that highlights changed byte offsets for `bytes_hex` or
+  `payload_hex`

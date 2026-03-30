@@ -1,7 +1,11 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { EventBroker } from "./events.js";
-import type { ProtocolFrameBundle, ProtocolFrameBundleSummary } from "./protocol-bundles.js";
+import type {
+  ProtocolBundleComparison,
+  ProtocolFrameBundle,
+  ProtocolFrameBundleSummary
+} from "./protocol-bundles.js";
 
 export interface HttpServer {
   start(signal: AbortSignal): Promise<void>;
@@ -15,6 +19,10 @@ export interface HttpHandlers {
   listProtocolFrameBundles(): ProtocolFrameBundleSummary[];
   createProtocolFrameBundle(input: { label: string | null }): ProtocolFrameBundleSummary;
   getProtocolFrameBundle(id: string): ProtocolFrameBundle | null;
+  compareProtocolFrameBundles(input: {
+    baselineBundleId: string;
+    comparisonBundleId: string;
+  }): ProtocolBundleComparison | null;
   publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }): Promise<{ commandId: string }>;
 }
 
@@ -77,6 +85,15 @@ export class LocalHttpServer implements HttpServer {
         label: readOptionalLabel(body)
       });
       return json(res, 201, { data: result, error: null });
+    }
+
+    if (req.method === "POST" && req.url === "/protocol/bundles/compare") {
+      const body = await readJsonBody(req);
+      const result = this.handlers.compareProtocolFrameBundles(readBundleCompareRequest(body));
+      if (!result) {
+        return json(res, 404, { data: null, error: "One or both protocol frame bundles were not found." });
+      }
+      return json(res, 200, { data: result, error: null });
     }
 
     const bundleMatch = req.url?.match(/^\/protocol\/bundles\/([^/]+)$/);
@@ -179,6 +196,22 @@ function readOptionalLabel(body: Record<string, unknown>): string | null {
 
   const trimmed = label.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function readBundleCompareRequest(body: Record<string, unknown>): {
+  baselineBundleId: string;
+  comparisonBundleId: string;
+} {
+  const baselineBundleId = body.baseline_bundle_id;
+  const comparisonBundleId = body.comparison_bundle_id;
+  if (typeof baselineBundleId !== "string" || typeof comparisonBundleId !== "string") {
+    throw new Error("Bundle comparison requires string baseline_bundle_id and comparison_bundle_id.");
+  }
+
+  return {
+    baselineBundleId,
+    comparisonBundleId
+  };
 }
 
 function json(res: ServerResponse, status: number, payload: Record<string, unknown>): void {

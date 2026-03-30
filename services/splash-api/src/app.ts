@@ -7,6 +7,7 @@ import { createLogger, type Logger } from "./logger.js";
 import type { MessagingSession } from "./messaging.js";
 import { NatsSupervisor } from "./nats.js";
 import {
+  type ProtocolBundleComparison,
   ProtocolFrameBundleStore,
   type ProtocolFrameBundle,
   type ProtocolFrameBundleSummary
@@ -68,6 +69,13 @@ export class App {
     return this.protocolFrameBundles.getBundle(id);
   }
 
+  compareProtocolFrameBundles(input: {
+    baselineBundleId: string;
+    comparisonBundleId: string;
+  }): ProtocolBundleComparison | null {
+    return this.protocolFrameBundles.compareBundles(input.baselineBundleId, input.comparisonBundleId);
+  }
+
   async publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }, session: MessagingSession): Promise<{ commandId: string }> {
     const equipment = this.bridge.get(input.equipmentId);
     if (!equipment || equipment.equipmentType !== "pump" || !equipment.busAddress) {
@@ -106,6 +114,8 @@ export class App {
         listProtocolFrameBundles: () => this.listProtocolFrameBundles(),
         createProtocolFrameBundle: ({ label }) => this.createProtocolFrameBundle({ label }),
         getProtocolFrameBundle: (id) => this.getProtocolFrameBundle(id),
+        compareProtocolFrameBundles: ({ baselineBundleId, comparisonBundleId }) =>
+          this.compareProtocolFrameBundles({ baselineBundleId, comparisonBundleId }),
         publishPumpSpeedCommand: async ({ equipmentId, rpm }) => {
           const session = this.currentSession;
           if (!session) {

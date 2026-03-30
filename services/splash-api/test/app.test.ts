@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { App } from "../src/app.js";
 import type { MessagingSession } from "../src/messaging.js";
+import { ProtocolFrameBundleStore } from "../src/protocol-bundles.js";
 
 class FakeSession implements MessagingSession {
   readonly published: Array<{ subject: string; payload: Record<string, unknown> }> = [];
@@ -164,5 +165,32 @@ test("app saves protocol frame bundles from recent observed frame traffic", asyn
   assert.deepEqual(bundle?.frames.map((frame) => frame.event), [
     "protocol.frame.raw",
     "protocol.frame.decoded"
+  ]);
+});
+
+test("bundle store compares saved bundles with byte-level hex diffs", () => {
+  const baselineStore = new ProtocolFrameBundleStore();
+  baselineStore.recordFrame("protocol.frame.raw", { frame_id: "frame-1", bytes_hex: "ff00ffa50010" });
+  const baseline = baselineStore.createBundle("baseline");
+
+  const comparisonStore = new ProtocolFrameBundleStore();
+  comparisonStore.recordFrame("protocol.frame.raw", { frame_id: "frame-1", bytes_hex: "ff00ffa50020" });
+  const comparison = comparisonStore.createBundle("comparison");
+
+  const aggregateStore = new ProtocolFrameBundleStore();
+  (aggregateStore as unknown as { bundles: unknown[] }).bundles = [
+    baselineStore.getBundle(baseline.id),
+    comparisonStore.getBundle(comparison.id)
+  ].filter(Boolean);
+
+  const diff = aggregateStore.compareBundles(baseline.id, comparison.id);
+
+  assert.ok(diff);
+  assert.equal(diff?.frame_pairs.length, 1);
+  assert.deepEqual(diff?.frame_pairs[0].changed_fields, [
+    {
+      field: "bytes_hex",
+      byte_changes: [{ byte_index: 5, baseline: "10", comparison: "20" }]
+    }
   ]);
 });

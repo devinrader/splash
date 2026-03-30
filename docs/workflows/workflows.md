@@ -230,6 +230,14 @@ Initial implementation note:
 - annotate newly discovered fields
 - store diff annotations through the same `protocol_annotations` path used elsewhere
 
+Initial frame-diff slice:
+
+- compare two saved frame bundles by frame position
+- highlight changed byte offsets for hex-bearing fields such as `bytes_hex` or
+  `payload_hex`
+- keep unchanged fields visible as context
+- defer smarter frame matching or protocol-aware correlation until later
+
 ### Collaborative decoding loop
 
 1. capture a baseline frame bundle

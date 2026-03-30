@@ -52,6 +52,7 @@
 | `/protocol/frames` | `GET` as SSE | Live RS-485 frame stream |
 | `/protocol/bundles` | `GET`, `POST` | Saved Protocol Explorer frame bundles |
 | `/protocol/bundles/:id` | `GET` | One saved Protocol Explorer frame bundle |
+| `/protocol/bundles/compare` | `POST` | Compare two saved Protocol Explorer frame bundles |
 | `/protocol/decode` | `POST` | Decode a raw frame |
 | `/protocol/annotations` | `GET`, `POST` | Protocol annotations |
 | `/protocol/simulate` | `POST` | Dry-run or live-send protocol command |
@@ -231,6 +232,48 @@ Response:
           "frame_id": "frame-1",
           "action_code": "0x02"
         }
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+### `POST /protocol/bundles/compare`
+
+Request:
+
+```json
+{
+  "baseline_bundle_id": "d4d9ec0e-8295-43be-9bcf-f6c1c6cc9b5f",
+  "comparison_bundle_id": "ad7c11db-e6bb-4a8b-b986-1e7bb30bc0f3"
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "baseline_bundle_id": "d4d9ec0e-8295-43be-9bcf-f6c1c6cc9b5f",
+    "comparison_bundle_id": "ad7c11db-e6bb-4a8b-b986-1e7bb30bc0f3",
+    "frame_pairs": [
+      {
+        "index": 0,
+        "baseline_event": "protocol.frame.raw",
+        "comparison_event": "protocol.frame.raw",
+        "changed_fields": [
+          {
+            "field": "bytes_hex",
+            "byte_changes": [
+              {
+                "byte_index": 9,
+                "baseline": "01",
+                "comparison": "02"
+              }
+            ]
+          }
+        ]
       }
     ]
   },
