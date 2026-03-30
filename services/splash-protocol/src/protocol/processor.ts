@@ -1,0 +1,52 @@
+import { randomUUID } from "node:crypto";
+import { bytesToHex } from "./hex.js";
+import type { ProtocolPlugin } from "../plugins/types.js";
+import type { AssembledFrame, RawSerialChunk } from "./assembler.js";
+
+export interface PublishedMessage {
+  subject: string;
+  payload: Record<string, unknown>;
+}
+
+export interface MessagePublisher {
+  publish(subject: string, payload: Record<string, unknown>): Promise<void>;
+}
+
+export class ProtocolProcessor {
+  constructor(
+    private readonly plugin: ProtocolPlugin,
+    private readonly publisher: MessagePublisher
+  ) {}
+
+  async processChunk(chunk: RawSerialChunk, frames: AssembledFrame[]): Promise<void> {
+    for (const frame of frames) {
+      const frameId = randomUUID();
+      await this.publisher.publish("protocol.frame.raw", {
+        pool_id: chunk.poolId,
+        stream_id: chunk.streamId,
+        frame_id: frameId,
+        source_chunk_ids: frame.sourceChunkIds,
+        protocol_name: this.plugin.id,
+        captured_at: frame.capturedAt,
+        bytes_hex: bytesToHex(frame.frameBytes),
+        framing_status: "valid"
+      });
+
+      const decoded = this.plugin.decodeFrame(frame.frameBytes);
+      await this.publisher.publish("protocol.frame.decoded", {
+        pool_id: chunk.poolId,
+        stream_id: chunk.streamId,
+        frame_id: frameId,
+        protocol_name: decoded.protocolName,
+        decoded_at: frame.capturedAt,
+        message_type: decoded.messageType,
+        action_code: decoded.actionCode,
+        source_address: decoded.sourceAddress,
+        destination_address: decoded.destinationAddress,
+        checksum_status: decoded.checksumStatus,
+        fields: decoded.fields,
+        unknown_fields: decoded.unknownFields
+      });
+    }
+  }
+}
