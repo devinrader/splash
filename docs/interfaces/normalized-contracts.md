@@ -153,6 +153,8 @@ Profile resolution should prefer the most specific known profile in the catalog,
     "setpoint_f": 84
   },
   "freeze_protection": false,
+  "mode": "pool",
+  "active_circuit_keys": ["pool"],
   "circuits": {
     "pool": true,
     "spa": false,

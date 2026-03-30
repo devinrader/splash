@@ -233,6 +233,9 @@ Initial assumption set:
 - Splash must first decode enough controller system-status information to
   identify those circuit assignments and the controller clues that indicate pump
   ownership
+- the first trusted controller-status circuit-discovery slice should at minimum
+  expose known active circuit bits, `active_circuit_keys`, and a controller
+  `mode` hint derived from those same trusted bits
 - Splash changes the configured RPM for the relevant pump circuit rather than
   writing a direct standalone pump RPM
 - the controller remains the authority that keeps the pump at the requested

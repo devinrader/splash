@@ -15,6 +15,40 @@ const START_DELIMITER = [0xff, 0x00, 0xff, 0xa5];
 const SPLASH_REMOTE_ADDRESS = 0x21;
 const DEFAULT_IDLE_MS = 50;
 const PUMP_PROGRAM_1 = 0x27;
+const CONTROLLER_CIRCUIT_BITS = [
+  { key: "pool", mask: 0x01 },
+  { key: "spa", mask: 0x02 },
+  { key: "aux1", mask: 0x04 },
+  { key: "aux2", mask: 0x08 }
+] as const;
+
+type ControllerMode = "pool" | "spa" | "pool_spa" | "aux_only" | "idle";
+
+function decodeCircuitStates(circuitsByte: number): Record<string, boolean> {
+  return Object.fromEntries(
+    CONTROLLER_CIRCUIT_BITS.map(({ key, mask }) => [key, (circuitsByte & mask) !== 0])
+  );
+}
+
+function decodeActiveCircuitKeys(circuitsByte: number): string[] {
+  return CONTROLLER_CIRCUIT_BITS.filter(({ mask }) => (circuitsByte & mask) !== 0).map(({ key }) => key);
+}
+
+function decodeControllerMode(circuits: Record<string, boolean>): ControllerMode {
+  if (circuits.pool && circuits.spa) {
+    return "pool_spa";
+  }
+  if (circuits.pool) {
+    return "pool";
+  }
+  if (circuits.spa) {
+    return "spa";
+  }
+  if (circuits.aux1 || circuits.aux2) {
+    return "aux_only";
+  }
+  return "idle";
+}
 
 function expectStartDelimiter(frame: Uint8Array): void {
   if (frame.length < 11) {
@@ -53,15 +87,22 @@ function decodeFields(actionCode: number, payload: Uint8Array): Record<string, u
 
   switch (actionCode) {
     case 0x02:
-      return {
-        payload_hex: payloadHex,
-        payload_length: payload.length,
-        water_temp_f: payload[0] ?? null,
-        air_temp_f: payload[1] ?? null,
-        solar_temp_f: payload[2] ?? null,
-        status_byte: payload[3] ?? null,
-        circuits_byte: payload[4] ?? null
-      };
+      {
+        const circuitsByte = payload[4] ?? 0;
+        const circuits = decodeCircuitStates(circuitsByte);
+        return {
+          payload_hex: payloadHex,
+          payload_length: payload.length,
+          water_temp_f: payload[0] ?? null,
+          air_temp_f: payload[1] ?? null,
+          solar_temp_f: payload[2] ?? null,
+          status_byte: payload[3] ?? null,
+          circuits_byte: circuitsByte,
+          active_circuit_keys: decodeActiveCircuitKeys(circuitsByte),
+          mode: decodeControllerMode(circuits),
+          circuits
+        };
+      }
     case 0x07:
       return {
         payload_hex: payloadHex,
@@ -111,6 +152,7 @@ function decodeNormalizedEvents(
     case 0x02: {
       const statusByte = payload[3] ?? 0;
       const circuitsByte = payload[4] ?? 0;
+      const circuits = decodeCircuitStates(circuitsByte);
       return [
         {
           subject: "equipment.state.controller",
@@ -125,12 +167,9 @@ function decodeNormalizedEvents(
               enabled: (statusByte & 0x01) !== 0
             },
             freeze_protection: (statusByte & 0x02) !== 0,
-            circuits: {
-              pool: (circuitsByte & 0x01) !== 0,
-              spa: (circuitsByte & 0x02) !== 0,
-              aux1: (circuitsByte & 0x04) !== 0,
-              aux2: (circuitsByte & 0x08) !== 0
-            }
+            mode: decodeControllerMode(circuits),
+            active_circuit_keys: decodeActiveCircuitKeys(circuitsByte),
+            circuits
           }
         }
       ];

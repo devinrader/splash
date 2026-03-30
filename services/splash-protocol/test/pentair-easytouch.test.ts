@@ -49,7 +49,15 @@ test("decodePentairFrame validates checksum and decodes controller status identi
     air_temp_f: 0x4d,
     solar_temp_f: 0x00,
     status_byte: 0x01,
-    circuits_byte: 0x00
+    circuits_byte: 0x00,
+    active_circuit_keys: [],
+    mode: "idle",
+    circuits: {
+      pool: false,
+      spa: false,
+      aux1: false,
+      aux2: false
+    }
   });
 });
 
@@ -92,6 +100,14 @@ test("decodePentairFrame emits partial normalized events for trusted message fam
   assert.equal(controller.normalizedEvents?.[0].subject, "equipment.state.controller");
   assert.equal(controller.normalizedEvents?.[0].payload.water_temp_f, 82);
   assert.equal(controller.normalizedEvents?.[0].payload.freeze_protection, true);
+  assert.equal(controller.normalizedEvents?.[0].payload.mode, "pool");
+  assert.deepEqual(controller.normalizedEvents?.[0].payload.active_circuit_keys, ["pool", "aux1"]);
+  assert.deepEqual(controller.normalizedEvents?.[0].payload.circuits, {
+    pool: true,
+    spa: false,
+    aux1: true,
+    aux2: false
+  });
 
   assert.equal(pump.normalizedEvents?.[0].subject, "equipment.state.pump");
   assert.equal(pump.normalizedEvents?.[0].payload.rpm, 2300);
@@ -111,6 +127,19 @@ test("decodePentairFrame does not emit normalized pump state for controller poll
 
   assert.equal(poll.messageType, "pump_status");
   assert.deepEqual(poll.normalizedEvents, []);
+});
+
+test("decodePentairFrame derives controller mode hints from trusted circuit bits", () => {
+  const spa = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0, 0x00, 0x02]));
+  const poolSpa = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0, 0x00, 0x03]));
+  const auxOnly = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0, 0x00, 0x08]));
+
+  assert.equal(spa.fields.mode, "spa");
+  assert.deepEqual(spa.fields.active_circuit_keys, ["spa"]);
+  assert.equal(poolSpa.fields.mode, "pool_spa");
+  assert.deepEqual(poolSpa.fields.active_circuit_keys, ["pool", "spa"]);
+  assert.equal(auxOnly.fields.mode, "aux_only");
+  assert.deepEqual(auxOnly.fields.active_circuit_keys, ["aux2"]);
 });
 
 test("pentairEasyTouchPlugin encodes the initial direct pump set_speed sequence", () => {
