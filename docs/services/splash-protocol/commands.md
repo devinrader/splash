@@ -59,6 +59,43 @@ ASSUMPTION: the initial direct RPM write uses the currently documented Pentair
 pump command path for Program 1 RPM while we validate additional captures for
 manual or controller-mediated speed control behavior.
 
+## EasyTouch interaction for direct pump control
+
+The initial direct IntelliFlo `set_speed` slice must be documented as a
+best-effort direct pump command path, not as a guarantee that the requested RPM
+will remain in effect while EasyTouch still owns pump scheduling or circuit
+activation.
+
+If the operator goal is "set RPM directly and have it stick," the currently
+documented options are:
+
+1. disable EasyTouch pump control
+   - remove the pump from controller-managed circuits or disable the relevant
+     EasyTouch schedules
+   - direct Splash-issued RPM commands are most likely to persist in this mode
+2. override continuously
+   - re-send the requested RPM every few seconds
+   - this can work by competing with EasyTouch, but it is operationally messy
+     and should not be treated as the preferred steady-state design
+3. use EasyTouch properly
+   - change the controller-managed circuit speed and activate the circuit that
+     owns the pump
+   - this is the cleanest supported long-term model and requires broader
+     controller-mediated write support than the initial direct-pump slice
+4. physically isolate the pump
+   - disconnect the pump RS-485 link from EasyTouch and connect only the
+     Splash-controlled bus path
+   - this gives Splash full control but changes the physical deployment
+
+Rules:
+
+- a successful `serial.tx.raw` result means bytes reached the bus, not that the
+  controller will keep the pump at the requested RPM
+- a direct-pump `completed` result should rely on observed follow-up pump state,
+  not on transport success alone
+- future controller-mediated pump control should be preferred over perpetual
+  direct-RPM competition with EasyTouch
+
 ## Result stages
 
 Command result progression should use `command.result.{command_id}`.

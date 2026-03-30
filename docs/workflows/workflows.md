@@ -57,6 +57,11 @@ perform one real equipment write safely.
 7. the browser shows pending, transmitted, and completed or failed command
    state
 
+NOTE: while EasyTouch still owns pump schedules or circuit activation, a direct
+IntelliFlo RPM write may be acknowledged on the bus and still be overridden by
+the controller. The initial browser control slice therefore proves the command
+path, but not yet full controller-cooperative ownership of pump speed.
+
 ### Initial implementation success criteria
 
 - the browser shows current air temperature
