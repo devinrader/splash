@@ -6,5 +6,8 @@ export interface ProtocolPlugin {
   id: string;
   status: PluginStatus;
   version: string;
-  decodeFrame(frame: Uint8Array): DecodedProtocolFrame;
+  decodeFrame(
+    frame: Uint8Array,
+    context?: { frameId?: string; occurredAt?: string }
+  ): DecodedProtocolFrame;
 }

@@ -203,6 +203,14 @@ Profile resolution should prefer the most specific known profile in the catalog,
 }
 ```
 
+Partial normalized event rule:
+
+- normalized events may omit fields that are not yet confidently mapped for the
+  active protocol family
+- omitted fields should not be synthesized from uncertain byte interpretations
+- protocol-level diagnostics remain the source for incomplete or still
+  reverse-engineered payload areas
+
 ## Normalized command vocabulary
 
 | Command type | Purpose | Typical target |

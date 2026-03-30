@@ -32,7 +32,10 @@ export class ProtocolProcessor {
         framing_status: "valid"
       });
 
-      const decoded = this.plugin.decodeFrame(frame.frameBytes);
+      const decoded = this.plugin.decodeFrame(frame.frameBytes, {
+        frameId,
+        occurredAt: frame.capturedAt
+      });
       await this.publisher.publish("protocol.frame.decoded", {
         pool_id: chunk.poolId,
         stream_id: chunk.streamId,
@@ -47,6 +50,13 @@ export class ProtocolProcessor {
         fields: decoded.fields,
         unknown_fields: decoded.unknownFields
       });
+
+      for (const event of decoded.normalizedEvents ?? []) {
+        await this.publisher.publish(event.subject, {
+          pool_id: chunk.poolId,
+          ...event.payload
+        });
+      }
     }
   }
 }

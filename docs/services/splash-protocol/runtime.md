@@ -160,6 +160,16 @@ Minimum normalized outputs in the initial service design:
 - pump state
 - chlorinator state
 
+Partial normalized publication rule:
+
+- when a recognized protocol message maps to a normalized event but only a
+  subset of fields is confidently understood, `splash-protocol` may publish a
+  partial normalized event using only the trusted fields
+- unknown or untrusted fields should be omitted from the normalized event
+  rather than guessed
+- the corresponding `protocol.frame.decoded` payload should continue to surface
+  the remaining raw or unknown protocol data for diagnostics
+
 ## Command flow
 
 Live command flow:

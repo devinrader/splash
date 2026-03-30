@@ -22,18 +22,19 @@ function buildFrame(): Uint8Array {
     0x0f,
     0x10,
     0x02,
-    0x04,
-    0x52,
-    0x4d,
-    0x00,
-    0x01
+    0x05,
+    82,
+    77,
+    84,
+    0x03,
+    0x05
   ];
   const checksum = frame.slice(3).reduce((sum, byte) => (sum + byte) & 0xffff, 0);
   frame.push((checksum >> 8) & 0xff, checksum & 0xff);
   return Uint8Array.from(frame);
 }
 
-test("processor publishes protocol.frame.raw and protocol.frame.decoded", async () => {
+test("processor publishes protocol.frame.raw, protocol.frame.decoded, and normalized events", async () => {
   const publisher = new InMemoryPublisher();
   const processor = new ProtocolProcessor(pentairEasyTouchPlugin, publisher);
 
@@ -44,7 +45,7 @@ test("processor publishes protocol.frame.raw and protocol.frame.decoded", async 
     port: "/dev/ttyUSB0",
     receivedAt: "2026-03-29T00:00:00Z",
     bytesHex: Buffer.from(buildFrame()).toString("hex"),
-    byteCount: 15
+    byteCount: 16
   };
 
   const frames: AssembledFrame[] = [
@@ -59,8 +60,10 @@ test("processor publishes protocol.frame.raw and protocol.frame.decoded", async 
 
   await processor.processChunk(chunk, frames);
 
-  assert.equal(publisher.messages.length, 2);
+  assert.equal(publisher.messages.length, 3);
   assert.equal(publisher.messages[0].subject, "protocol.frame.raw");
   assert.equal(publisher.messages[1].subject, "protocol.frame.decoded");
+  assert.equal(publisher.messages[2].subject, "equipment.state.controller");
   assert.equal(publisher.messages[1].payload.message_type, "controller_status");
+  assert.equal(publisher.messages[2].payload.water_temp_f, 82);
 });

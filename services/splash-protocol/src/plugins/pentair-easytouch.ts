@@ -1,6 +1,10 @@
 import type { ProtocolPlugin } from "./types.js";
 import { bytesToHex } from "../protocol/hex.js";
-import { type DecodedProtocolFrame, ProtocolDecodeError } from "../protocol/types.js";
+import {
+  type DecodedProtocolFrame,
+  type NormalizedEvent,
+  ProtocolDecodeError
+} from "../protocol/types.js";
 
 const START_DELIMITER = [0xff, 0x00, 0xff, 0xa5];
 
@@ -41,11 +45,33 @@ function decodeFields(actionCode: number, payload: Uint8Array): Record<string, u
 
   switch (actionCode) {
     case 0x02:
+      return {
+        payload_hex: payloadHex,
+        payload_length: payload.length,
+        water_temp_f: payload[0] ?? null,
+        air_temp_f: payload[1] ?? null,
+        solar_temp_f: payload[2] ?? null,
+        status_byte: payload[3] ?? null,
+        circuits_byte: payload[4] ?? null
+      };
     case 0x07:
+      return {
+        payload_hex: payloadHex,
+        payload_length: payload.length,
+        running_byte: payload[0] ?? null,
+        rpm_hi: payload[1] ?? null,
+        rpm_lo: payload[2] ?? null,
+        watts_hi: payload[3] ?? null,
+        watts_lo: payload[4] ?? null
+      };
     case 0x19:
       return {
         payload_hex: payloadHex,
-        payload_length: payload.length
+        payload_length: payload.length,
+        salt_hi: payload[0] ?? null,
+        salt_lo: payload[1] ?? null,
+        output_percent: payload[2] ?? null,
+        status_byte: payload[3] ?? null
       };
     default:
       return {
@@ -55,7 +81,96 @@ function decodeFields(actionCode: number, payload: Uint8Array): Record<string, u
   }
 }
 
-export function decodePentairFrame(frame: Uint8Array): DecodedProtocolFrame {
+// ASSUMPTION: These partial Pentair normalized mappings use only the current
+// trusted subset of bytes. The unresolved payload areas are tracked in #41,
+// #42, and #43 and must be revisited against validated captures.
+function decodeNormalizedEvents(
+  actionCode: number,
+  payload: Uint8Array,
+  frameId: string | null,
+  occurredAt: string
+): NormalizedEvent[] {
+  const source = {
+    service: "splash-protocol",
+    protocol_name: "pentair_easytouch",
+    frame_id: frameId
+  };
+
+  switch (actionCode) {
+    case 0x02: {
+      const statusByte = payload[3] ?? 0;
+      const circuitsByte = payload[4] ?? 0;
+      return [
+        {
+          subject: "equipment.state.controller",
+          payload: {
+            event_id: null,
+            occurred_at: occurredAt,
+            source,
+            water_temp_f: payload[0] ?? null,
+            air_temp_f: payload[1] ?? null,
+            solar_temp_f: payload[2] ?? null,
+            heater: {
+              enabled: (statusByte & 0x01) !== 0
+            },
+            freeze_protection: (statusByte & 0x02) !== 0,
+            circuits: {
+              pool: (circuitsByte & 0x01) !== 0,
+              spa: (circuitsByte & 0x02) !== 0,
+              aux1: (circuitsByte & 0x04) !== 0,
+              aux2: (circuitsByte & 0x08) !== 0
+            }
+          }
+        }
+      ];
+    }
+    case 0x07: {
+      const rpm = ((payload[1] ?? 0) << 8) | (payload[2] ?? 0);
+      const watts = ((payload[3] ?? 0) << 8) | (payload[4] ?? 0);
+      return [
+        {
+          subject: "equipment.state.pump",
+          payload: {
+            event_id: null,
+            occurred_at: occurredAt,
+            source,
+            equipment_id: null,
+            equipment_type: "pump",
+            bus_address: "0x60",
+            running: (payload[0] ?? 0) !== 0,
+            rpm,
+            watts
+          }
+        }
+      ];
+    }
+    case 0x19: {
+      const saltPpm = ((payload[0] ?? 0) << 8) | (payload[1] ?? 0);
+      return [
+        {
+          subject: "equipment.state.chlorinator",
+          payload: {
+            event_id: null,
+            occurred_at: occurredAt,
+            source,
+            equipment_id: null,
+            equipment_type: "chlorinator",
+            salt_ppm: saltPpm,
+            output_percent: payload[2] ?? null,
+            status: (payload[3] ?? 0) === 0 ? "ok" : "warning"
+          }
+        }
+      ];
+    }
+    default:
+      return [];
+  }
+}
+
+export function decodePentairFrame(
+  frame: Uint8Array,
+  context: { frameId?: string; occurredAt?: string } = {}
+): DecodedProtocolFrame {
   expectStartDelimiter(frame);
 
   const payloadLength = frame[8];
@@ -85,7 +200,13 @@ export function decodePentairFrame(frame: Uint8Array): DecodedProtocolFrame {
     destinationAddress: `0x${frame[5].toString(16).padStart(2, "0")}`,
     checksumStatus: "valid",
     fields: decodeFields(actionCode, payload),
-    unknownFields: decodeUnknownFields(payload)
+    unknownFields: decodeUnknownFields(payload),
+    normalizedEvents: decodeNormalizedEvents(
+      actionCode,
+      payload,
+      context.frameId ?? null,
+      context.occurredAt ?? new Date().toISOString()
+    )
   };
 }
 
@@ -93,7 +214,7 @@ export const pentairEasyTouchPlugin: ProtocolPlugin = {
   id: "pentair_easytouch",
   status: "active",
   version: "0.1.0",
-  decodeFrame(frame) {
-    return decodePentairFrame(frame);
+  decodeFrame(frame, context) {
+    return decodePentairFrame(frame, context);
   }
 };

@@ -239,6 +239,16 @@ Pentair EasyTouch and IntelliTouch are the primary v1 protocol targets. Communit
 - multiple action codes remain only partially documented
 - Protocol Explorer frame diff is the preferred workflow for mapping remaining unknown fields
 
+### Initial partial normalized mapping rule
+
+- the first `splash-protocol` implementation may publish partial normalized
+  controller, pump, and chlorinator events using only the subset of bytes that
+  are currently trusted
+- bytes that remain incomplete should stay visible through protocol diagnostics
+  and `unknown_fields`, not be guessed into normalized state
+- unresolved byte ranges should be tracked as explicit follow-up issues so the
+  normalized mapping can expand safely over time
+
 ## Pentair IntelliCenter
 
 Status: `planned`

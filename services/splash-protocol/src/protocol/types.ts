@@ -7,6 +7,12 @@ export interface DecodedProtocolFrame {
   checksumStatus: "valid";
   fields: Record<string, unknown>;
   unknownFields: string[];
+  normalizedEvents?: NormalizedEvent[];
+}
+
+export interface NormalizedEvent {
+  subject: string;
+  payload: Record<string, unknown>;
 }
 
 export class ProtocolDecodeError extends Error {
