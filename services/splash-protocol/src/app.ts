@@ -9,6 +9,7 @@ import {
   type ProtocolSelectionProvider,
   UnavailableProtocolSelectionProvider
 } from "./provider.js";
+import { ProtocolRuntime } from "./protocol/runtime.js";
 import { createInitialSnapshot, type AppSnapshot, type StartupPhase } from "./state.js";
 
 export interface AppOptions {
@@ -28,6 +29,7 @@ export class App {
   private readonly snapshot: AppSnapshot = createInitialSnapshot();
   private readonly nats: NatsSupervisor;
   private readonly commands: CommandCoordinator;
+  private readonly protocolRuntime: ProtocolRuntime;
 
   constructor(options: AppOptions = {}) {
     this.config = options.config ?? loadConfig();
@@ -38,6 +40,7 @@ export class App {
     this.commands = new CommandCoordinator(this.logger, this.config.commandTimeoutMs, (streamId) => {
       this.snapshot.streamId = streamId;
     });
+    this.protocolRuntime = new ProtocolRuntime(this.logger);
     this.nats = new NatsSupervisor(this.config.natsUrl, this.logger, async (session, signal) =>
       this.runNatsSession(session, signal)
     );
@@ -87,6 +90,7 @@ export class App {
       this.snapshot.poolId = null;
       this.snapshot.activePlugin = null;
       this.commands.clearActiveSelection();
+      this.protocolRuntime.clearActivePlugin();
       this.snapshot.configuration = "error";
       this.snapshot.configErrorCode = result.errorCode;
       this.snapshot.decode = "error";
@@ -107,6 +111,7 @@ export class App {
     }
 
     this.commands.setActiveSelection(result.selection, plugin);
+    this.protocolRuntime.setActivePlugin(plugin);
     this.snapshot.poolId = result.selection.poolId;
     this.snapshot.activePlugin = result.selection.protocolPlugin;
     this.snapshot.configuration = "valid";
@@ -144,6 +149,7 @@ export class App {
 
   private async runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void> {
     this.commands.attach(session);
+    this.protocolRuntime.attach(session);
     await waitForAbort(signal);
   }
 }
