@@ -97,6 +97,9 @@ below. It is the first implementation target that validates:
 - Support profile-based capability mapping so protocol plugins can expose richer vendor-specific capabilities without collapsing to a lowest common denominator
 - Preserve native serial read boundaries in the raw transport contract rather than introducing frame-aware buffering in `splash-serial`
 - Define an explicit transport-facing outbound write contract from `splash-protocol` to `splash-serial`
+- Future platform work should support virtual or mock pool equipment so users
+  can create a simulated pool for testing, demos, and protocol experimentation
+  without real hardware
 
 ## Non-functional requirements
 

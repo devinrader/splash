@@ -212,6 +212,17 @@ Caption: Guided SLAM workflow for raising FC to SLAM level, maintaining it, and 
 - annotate newly discovered fields
 - store diff annotations through the same `protocol_annotations` path used elsewhere
 
+## Future virtual pool workflow
+
+Future platform work may support a virtual pool mode where the user can create a
+simulated pool backed by mock equipment instead of real RS-485 hardware.
+
+Target uses:
+
+- browser and API demos without physical equipment
+- protocol and command experimentation in a safe simulated environment
+- UI and workflow validation before deployment to a real pool
+
 ## Protocol stream workflow
 
 1. `splash-serial` establishes a port session and emits `serial.port.status`
