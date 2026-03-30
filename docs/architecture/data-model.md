@@ -215,7 +215,17 @@ Notes:
 
 - `circuit_key` is the stable machine identifier used in normalized events and command intents
 - `display_name` is user-facing and editable
-- `circuit_type` allows UI grouping such as `pool`, `spa`, `light`, `feature`, or `generic`
+- `circuit_type` describes the functional circuit class, not the user-visible
+  label
+- on Pentair EasyTouch and IntelliTouch, this distinction matters:
+  - fixed or special circuits such as `pool` and `spa` have controller-defined
+    behavior and are not just user labels
+  - `aux` circuits are relay-backed controller outputs that may be renamed
+  - `feature` circuits are virtual controller functions often used for pump
+    speeds, valve-only actions, or logic functions
+- user-facing names such as `POOL LOW` or `POOL HIGH` should therefore be
+  treated as `display_name` values on a stable circuit type such as `feature`,
+  not as evidence that the underlying circuit type is `pool`
 - `bus_address` and `action_code` are optional protocol hints, not required for all implementations
 
 ## InfluxDB measurements

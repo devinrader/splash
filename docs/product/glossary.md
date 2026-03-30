@@ -64,6 +64,11 @@ The primary automation or equipment control unit that coordinates other pool equ
 
 A controller-managed logical output or function, such as pool, spa, aux, or light control, typically surfaced through `pool_circuits`.
 
+Circuit type and circuit name are not the same thing. The type describes the
+controller behavior, while the name is the user-visible label. On Pentair
+systems, virtual Feature circuits are often named for pump-speed purposes such
+as `POOL LOW` or `POOL HIGH` without becoming fixed `pool` circuits.
+
 ### `pump`
 
 Water-circulation equipment, including single-speed or variable-speed pumps, that may expose run-state and performance telemetry such as RPM or watts.

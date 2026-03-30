@@ -136,7 +136,7 @@ The initial catalog is intentionally conservative and centered on the documented
 | `pentair.intelliflo_vs` | Pentair EasyTouch / IntelliTouch | pump | active | Primary v1 exact pump profile |
 | `pentair.easytouch_heater` | Pentair EasyTouch / IntelliTouch | heater | active | Heater profile exposed through Pentair controller semantics |
 | `pentair.intellichlor` | Pentair EasyTouch / IntelliTouch | chlorinator | active | Salt chlorinator profile for Pentair-family state and output control |
-| `pentair.controller_circuit` | Pentair EasyTouch / IntelliTouch | circuit | active | Named controller-managed circuits such as pool, spa, aux, or lights |
+| `pentair.controller_circuit` | Pentair EasyTouch / IntelliTouch | circuit | active | Controller-managed circuits where fixed type and user-visible name must remain distinct, such as pool, spa, aux, feature, or lights |
 
 Profiles not yet active in the initial catalog:
 
@@ -145,6 +145,36 @@ Profiles not yet active in the initial catalog:
 - IntelliCenter-specific exact profiles beyond future Pentair-family branching
 
 QUESTION: Should `generic.light` become a separate profile from `generic.circuit`, or should lighting remain a circuit specialization in v1?
+
+### Pentair circuit type versus circuit name
+
+On Pentair EasyTouch and IntelliTouch, circuit type and circuit name are
+separate concepts:
+
+- circuit type controls behavior
+- circuit name is only the user-visible label
+
+Important circuit classes:
+
+- fixed or special circuits:
+  - `spa`
+  - `pool`
+  - these are controller-defined operating modes tied to valve and heater logic
+- `aux` circuits:
+  - relay-backed controller outputs such as `AUX1` through model-dependent aux
+    ranges
+  - these may be renamed by the user
+- `feature` circuits:
+  - virtual controller functions commonly used for pump speeds, valve-only
+    actions, or controller logic
+  - labels such as `POOL LOW` or `POOL HIGH` are often feature-circuit names,
+    not fixed `pool` circuit types
+
+Splash should preserve this distinction when decoding controller circuits:
+
+- stable machine identity should reflect the underlying circuit type and key
+- user-visible labels should remain editable display names
+- protocol discovery should not infer functional type from labels alone
 
 ## Protocol status legend
 
