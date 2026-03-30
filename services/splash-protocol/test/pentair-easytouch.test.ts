@@ -5,14 +5,23 @@ import { ProtocolDecodeError } from "../src/protocol/types.js";
 import { decodePentairFrame, pentairEasyTouchPlugin } from "../src/plugins/pentair-easytouch.js";
 
 function buildPentairFrame(actionCode: number, payload: number[]): Uint8Array {
+  return buildPentairFrameWithAddresses(0x0f, 0x10, actionCode, payload);
+}
+
+function buildPentairFrameWithAddresses(
+  destination: number,
+  source: number,
+  actionCode: number,
+  payload: number[]
+): Uint8Array {
   const frame = [
     0xff,
     0x00,
     0xff,
     0xa5,
     0x01,
-    0x0f,
-    0x10,
+    destination,
+    source,
     actionCode,
     payload.length,
     ...payload
@@ -68,12 +77,15 @@ test("decodePentairFrame emits partial normalized events for trusted message fam
     frameId: "frame-1",
     occurredAt: "2026-03-30T00:00:00Z"
   });
-  const pump = decodePentairFrame(buildPentairFrame(0x07, [0x01, 0x0a, 0xf0, 0x05, 0xaa]), {
-    frameId: "frame-2",
-    occurredAt: "2026-03-30T00:00:01Z"
-  });
+  const pump = decodePentairFrame(
+    buildPentairFrameWithAddresses(0x10, 0x60, 0x07, [0x0a, 0x00, 0x02, 0x01, 0x60, 0x08, 0xfc, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x0e]),
+    {
+      frameId: "frame-2",
+      occurredAt: "2026-03-30T00:00:01Z"
+    }
+  );
   const chlorinator = decodePentairFrame(buildPentairFrame(0x19, [0x0c, 0x1c, 40, 0x00]), {
-    frameId: "frame-3",
+    frameId: "frame-2",
     occurredAt: "2026-03-30T00:00:02Z"
   });
 
@@ -82,12 +94,23 @@ test("decodePentairFrame emits partial normalized events for trusted message fam
   assert.equal(controller.normalizedEvents?.[0].payload.freeze_protection, true);
 
   assert.equal(pump.normalizedEvents?.[0].subject, "equipment.state.pump");
-  assert.equal(pump.normalizedEvents?.[0].payload.rpm, 2800);
-  assert.equal(pump.normalizedEvents?.[0].payload.watts, 1450);
+  assert.equal(pump.normalizedEvents?.[0].payload.rpm, 2300);
+  assert.equal(pump.normalizedEvents?.[0].payload.watts, 352);
+  assert.equal(pump.normalizedEvents?.[0].payload.bus_address, "0x60");
 
   assert.equal(chlorinator.normalizedEvents?.[0].subject, "equipment.state.chlorinator");
   assert.equal(chlorinator.normalizedEvents?.[0].payload.salt_ppm, 3100);
   assert.equal(chlorinator.normalizedEvents?.[0].payload.output_percent, 40);
+});
+
+test("decodePentairFrame does not emit normalized pump state for controller poll frames", () => {
+  const poll = decodePentairFrame(buildPentairFrameWithAddresses(0x60, 0x10, 0x07, []), {
+    frameId: "frame-poll",
+    occurredAt: "2026-03-30T00:00:03Z"
+  });
+
+  assert.equal(poll.messageType, "pump_status");
+  assert.deepEqual(poll.normalizedEvents, []);
 });
 
 test("pentairEasyTouchPlugin encodes the initial direct pump set_speed sequence", () => {

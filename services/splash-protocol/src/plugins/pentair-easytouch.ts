@@ -66,11 +66,12 @@ function decodeFields(actionCode: number, payload: Uint8Array): Record<string, u
       return {
         payload_hex: payloadHex,
         payload_length: payload.length,
-        running_byte: payload[0] ?? null,
-        rpm_hi: payload[1] ?? null,
-        rpm_lo: payload[2] ?? null,
+        status_byte: payload[0] ?? null,
+        mode_byte: payload[2] ?? null,
         watts_hi: payload[3] ?? null,
-        watts_lo: payload[4] ?? null
+        watts_lo: payload[4] ?? null,
+        rpm_hi: payload[5] ?? null,
+        rpm_lo: payload[6] ?? null
       };
     case 0x19:
       return {
@@ -95,6 +96,8 @@ function decodeFields(actionCode: number, payload: Uint8Array): Record<string, u
 function decodeNormalizedEvents(
   actionCode: number,
   payload: Uint8Array,
+  sourceAddress: string,
+  destinationAddress: string,
   frameId: string | null,
   occurredAt: string
 ): NormalizedEvent[] {
@@ -133,7 +136,11 @@ function decodeNormalizedEvents(
       ];
     }
     case 0x07: {
-      const rpm = ((payload[1] ?? 0) << 8) | (payload[2] ?? 0);
+      if (!sourceAddress.startsWith("0x6") || payload.length < 7) {
+        return [];
+      }
+
+      const rpm = ((payload[5] ?? 0) << 8) | (payload[6] ?? 0);
       const watts = ((payload[3] ?? 0) << 8) | (payload[4] ?? 0);
       return [
         {
@@ -144,8 +151,8 @@ function decodeNormalizedEvents(
             source,
             equipment_id: null,
             equipment_type: "pump",
-            bus_address: "0x60",
-            running: (payload[0] ?? 0) !== 0,
+            bus_address: sourceAddress.toLowerCase(),
+            running: rpm > 0,
             rpm,
             watts
           }
@@ -212,6 +219,8 @@ export function decodePentairFrame(
     normalizedEvents: decodeNormalizedEvents(
       actionCode,
       payload,
+      `0x${frame[6].toString(16).padStart(2, "0")}`,
+      `0x${frame[5].toString(16).padStart(2, "0")}`,
       context.frameId ?? null,
       context.occurredAt ?? new Date().toISOString()
     )
