@@ -68,6 +68,8 @@ This service design complements, but does not replace:
 - a configuration-provider path for:
   - `pool_settings.protocol_plugin`
   - `pool_settings.protocol_config`
+- milestone-1 may satisfy that provider path through a temporary env-backed
+  provider while the longer-term provider implementation is still pending
 - local runtime configuration for service-level settings
 - container or process supervision on `splash-core`
 

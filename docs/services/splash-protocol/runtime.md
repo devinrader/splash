@@ -105,6 +105,10 @@ Startup outcomes:
   - process stays alive
   - live decode and command encode remain blocked until configuration becomes
     available from the provider
+- temporary env-backed provider configured:
+  - phase may proceed directly to valid active plugin resolution
+  - this is acceptable for milestone-1 local and early integrated bring-up
+    while the fuller provider implementation does not yet exist
 - active plugin selection unavailable:
   - phase becomes `config_degraded`
   - process stays alive
@@ -198,6 +202,7 @@ Design requirement:
 - pool-level active plugin selection and plugin config should be obtained
   through a configuration-provider abstraction
 - the provider may read from PostgreSQL in normal operation
+- the milestone-1 concrete provider may read from explicit env vars
 - the runtime should support degraded startup when PostgreSQL is unavailable
 - degraded startup means the service stays alive while decode and command flow
   remain blocked until the provider can return a valid pool-selected plugin and

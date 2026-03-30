@@ -6,8 +6,8 @@ import type { MessagingSession } from "./messaging.js";
 import { NatsSupervisor } from "./nats.js";
 import { discoverPlugins, type PluginRegistry } from "./plugins/index.js";
 import {
+  createDefaultProtocolSelectionProvider,
   type ProtocolSelectionProvider,
-  UnavailableProtocolSelectionProvider
 } from "./provider.js";
 import { ProtocolRuntime } from "./protocol/runtime.js";
 import { createInitialSnapshot, type AppSnapshot, type StartupPhase } from "./state.js";
@@ -34,7 +34,7 @@ export class App {
   constructor(options: AppOptions = {}) {
     this.config = options.config ?? loadConfig();
     this.logger = options.logger ?? createLogger();
-    this.provider = options.provider ?? new UnavailableProtocolSelectionProvider();
+    this.provider = options.provider ?? createDefaultProtocolSelectionProvider();
     this.registry = options.registry ?? discoverPlugins();
     this.httpServer = options.httpServer;
     this.commands = new CommandCoordinator(this.logger, this.config.commandTimeoutMs, (streamId) => {

@@ -14,6 +14,10 @@ Pool-selected plugin identity and plugin-specific options should be obtained
 through a configuration-provider abstraction rather than being treated as
 static service env alone.
 
+For milestone-1 implementation work, `splash-protocol` may use a temporary
+environment-backed provider as the concrete configuration-provider
+implementation until the fuller PostgreSQL-backed provider exists.
+
 ## Expected service-level environment variables
 
 | Variable | Purpose |
@@ -24,7 +28,17 @@ static service env alone.
 | `LOG_LEVEL` | Runtime log verbosity |
 | `TZ` | Local timezone for logs and operations context |
 
-No fallback configuration source is required for provider outage in v1.
+## Temporary milestone-1 env-backed provider variables
+
+| Variable | Purpose |
+| --- | --- |
+| `PROTOCOL_POOL_ID` | Active pool id for the temporary provider |
+| `PROTOCOL_SELECTED_PLUGIN` | Active locally discovered plugin id |
+| `PROTOCOL_SELECTED_CONFIG_JSON` | JSON object of plugin-specific config |
+
+No fallback configuration source is required for provider outage in v1 beyond
+the temporary env-backed provider used in milestone-1 local or early host
+bring-up.
 
 When the provider is unavailable, `splash-protocol` should remain alive in a
 degraded state and wait for the provider to return valid pool-selected
@@ -55,6 +69,8 @@ The provider must supply:
 Provider rules:
 
 - normal operation may read from PostgreSQL-backed configuration
+- milestone-1 local and early integration work may use the temporary env-backed
+  provider
 - provider-backed plugin selection must resolve only against locally discovered
   plugin ids
 - runtime should not hard-fail solely because the backing database is
@@ -80,6 +96,8 @@ Validation outcomes:
 - invalid plugin config for the selected plugin is fatal
 - provider outage is degraded and blocks decode and command behavior until the
   provider returns valid selection and config
+- malformed `PROTOCOL_SELECTED_CONFIG_JSON` in the temporary env-backed
+  provider is fatal because the configured plugin options cannot be parsed
 
 Examples of fatal static config:
 
@@ -91,6 +109,8 @@ Examples of degraded provider config:
 
 - provider unavailable at startup
   while the service waits for valid provider-backed selection and config
+- temporary env-backed provider not configured
+  while no other concrete provider implementation is available
 
 Examples of fatal provider or selection config:
 
@@ -98,6 +118,7 @@ Examples of fatal provider or selection config:
 - `protocol_plugin` selected by the pool but not present in the local
   discovered plugin set
 - malformed `protocol_config` for the selected plugin
+- malformed `PROTOCOL_SELECTED_CONFIG_JSON`
 
 ## Example
 
@@ -105,6 +126,9 @@ Examples of fatal provider or selection config:
 NATS_URL=nats://splash-nats:4222
 PROTOCOL_HTTP_BIND=127.0.0.1:9110
 PROTOCOL_COMMAND_TIMEOUT_MS=5000
+PROTOCOL_POOL_ID=pool-1
+PROTOCOL_SELECTED_PLUGIN=pentair_easytouch
+PROTOCOL_SELECTED_CONFIG_JSON={}
 LOG_LEVEL=info
 TZ=America/New_York
 ```

@@ -61,6 +61,9 @@
   `splash-protocol`, and NATS on a developer machine while keeping
   `splash-serial` deployed on the hardware host that owns the live RS-485
   adapter.
+- The milestone-1 `splash-protocol` concrete configuration provider may be a
+  temporary env-backed implementation so the initial local and host-integrated
+  slice can run before the full PostgreSQL-backed provider exists.
 - Protocol plugin identity should be organized around protocol family and variant, not vendor name alone, when a vendor exposes multiple distinct integration surfaces.
 - Protocol plugins should resolve one capability profile per equipment instance in v1.
 - Capability profiles should be defined in code and docs, not primarily authored as relational records.
