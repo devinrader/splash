@@ -6,6 +6,11 @@ import { LocalHttpServer, type HttpServer } from "./http.js";
 import { createLogger, type Logger } from "./logger.js";
 import type { MessagingSession } from "./messaging.js";
 import { NatsSupervisor } from "./nats.js";
+import {
+  ProtocolFrameBundleStore,
+  type ProtocolFrameBundle,
+  type ProtocolFrameBundleSummary
+} from "./protocol-bundles.js";
 import { LatestStateProjection } from "./state.js";
 
 export interface AppOptions {
@@ -21,6 +26,7 @@ export class App {
   private readonly projection = new LatestStateProjection();
   private readonly events = new EventBroker();
   private readonly protocolFrames = new EventBroker();
+  private readonly protocolFrameBundles = new ProtocolFrameBundleStore();
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
 
@@ -48,6 +54,18 @@ export class App {
       },
       error: null
     };
+  }
+
+  listProtocolFrameBundles(): ProtocolFrameBundleSummary[] {
+    return this.protocolFrameBundles.listBundles();
+  }
+
+  createProtocolFrameBundle(input: { label: string | null }): ProtocolFrameBundleSummary {
+    return this.protocolFrameBundles.createBundle(input.label);
+  }
+
+  getProtocolFrameBundle(id: string): ProtocolFrameBundle | null {
+    return this.protocolFrameBundles.getBundle(id);
   }
 
   async publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }, session: MessagingSession): Promise<{ commandId: string }> {
@@ -85,6 +103,9 @@ export class App {
         getHealth: () => this.getHealth(),
         getEventBroker: () => this.events,
         getProtocolFrameBroker: () => this.protocolFrames,
+        listProtocolFrameBundles: () => this.listProtocolFrameBundles(),
+        createProtocolFrameBundle: ({ label }) => this.createProtocolFrameBundle({ label }),
+        getProtocolFrameBundle: (id) => this.getProtocolFrameBundle(id),
         publishPumpSpeedCommand: async ({ equipmentId, rpm }) => {
           const session = this.currentSession;
           if (!session) {
@@ -123,9 +144,11 @@ export class App {
       this.events.publish("command.result", payload);
     });
     session.subscribe("protocol.frame.raw", async (payload) => {
+      this.protocolFrameBundles.recordFrame("protocol.frame.raw", payload);
       this.protocolFrames.publish("protocol.frame.raw", payload);
     });
     session.subscribe("protocol.frame.decoded", async (payload) => {
+      this.protocolFrameBundles.recordFrame("protocol.frame.decoded", payload);
       this.protocolFrames.publish("protocol.frame.decoded", payload);
     });
 

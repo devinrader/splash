@@ -50,6 +50,8 @@
 | `/slam/:id/complete` | `POST` | Complete SLAM |
 | `/slam/:id/abandon` | `POST` | Abandon SLAM |
 | `/protocol/frames` | `GET` as SSE | Live RS-485 frame stream |
+| `/protocol/bundles` | `GET`, `POST` | Saved Protocol Explorer frame bundles |
+| `/protocol/bundles/:id` | `GET` | One saved Protocol Explorer frame bundle |
 | `/protocol/decode` | `POST` | Decode a raw frame |
 | `/protocol/annotations` | `GET`, `POST` | Protocol annotations |
 | `/protocol/simulate` | `POST` | Dry-run or live-send protocol command |
@@ -88,6 +90,9 @@
 - the first Protocol Explorer implementation slice may expose `/protocol/frames`
   before broader protocol decode, annotation, and simulator endpoints are fully
   implemented
+- the first saved-frame-bundle slice may remain in-memory and non-persistent as
+  long as it captures recent `protocol.frame.raw` and `protocol.frame.decoded`
+  traffic for one controlled experiment window
 - later Protocol Explorer API slices should support collaborative decoding by
   exposing annotation confidence, saved frame comparisons, and operator-needed
   prompts without bypassing the shared protocol engine
@@ -171,6 +176,63 @@ Response:
     },
     "sensor_provider": "manual",
     "sensor_config": {}
+  },
+  "error": null
+}
+```
+
+### `POST /protocol/bundles`
+
+Request:
+
+```json
+{
+  "label": "pool-high-before-change"
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "d4d9ec0e-8295-43be-9bcf-f6c1c6cc9b5f",
+    "label": "pool-high-before-change",
+    "frame_count": 12,
+    "created_at": "2026-03-30T19:15:00Z"
+  },
+  "error": null
+}
+```
+
+### `GET /protocol/bundles/:id`
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "d4d9ec0e-8295-43be-9bcf-f6c1c6cc9b5f",
+    "label": "pool-high-before-change",
+    "created_at": "2026-03-30T19:15:00Z",
+    "frames": [
+      {
+        "event": "protocol.frame.raw",
+        "captured_at": "2026-03-30T19:14:58Z",
+        "payload": {
+          "frame_id": "frame-1",
+          "bytes_hex": "ff00ffa5"
+        }
+      },
+      {
+        "event": "protocol.frame.decoded",
+        "captured_at": "2026-03-30T19:14:58Z",
+        "payload": {
+          "frame_id": "frame-1",
+          "action_code": "0x02"
+        }
+      }
+    ]
   },
   "error": null
 }

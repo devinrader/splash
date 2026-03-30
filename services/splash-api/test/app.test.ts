@@ -101,3 +101,68 @@ test("app republishes protocol frame events to the Protocol Explorer broker", as
     { event: "protocol.frame.decoded", payload: { frame_id: "frame-1", action_code: "0x02" } }
   ]);
 });
+
+test("app saves protocol frame bundles from recent observed frame traffic", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC"
+    },
+    logger: noopLogger
+  }) as unknown as {
+    createProtocolFrameBundle(input: { label: string | null }): {
+      id: string;
+      label: string | null;
+      frame_count: number;
+      created_at: string;
+    };
+    getProtocolFrameBundle(id: string): {
+      id: string;
+      label: string | null;
+      frame_count: number;
+      frames: Array<{ event: string; payload: Record<string, unknown> }>;
+    } | null;
+    runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
+  };
+
+  const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+  const session: MessagingSession & {
+    emit(subject: string, payload: Record<string, unknown>): Promise<void>;
+  } = {
+    async publish() {},
+    subscribe(subject, handler) {
+      const list = handlers.get(subject) ?? [];
+      list.push(handler);
+      handlers.set(subject, list);
+    },
+    async emit(subject, payload) {
+      for (const handler of handlers.get(subject) ?? []) {
+        await handler(payload);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  const running = app.runNatsSession(session, controller.signal);
+
+  await session.emit("protocol.frame.raw", { frame_id: "frame-1", bytes_hex: "ff00ffa5" });
+  await session.emit("protocol.frame.decoded", { frame_id: "frame-1", action_code: "0x02" });
+
+  const summary = app.createProtocolFrameBundle({ label: "baseline" });
+  const bundle = app.getProtocolFrameBundle(summary.id);
+
+  controller.abort();
+  await running;
+
+  assert.equal(summary.label, "baseline");
+  assert.equal(summary.frame_count, 2);
+  assert.ok(bundle);
+  assert.equal(bundle?.frames.length, 2);
+  assert.deepEqual(bundle?.frames.map((frame) => frame.event), [
+    "protocol.frame.raw",
+    "protocol.frame.decoded"
+  ]);
+});

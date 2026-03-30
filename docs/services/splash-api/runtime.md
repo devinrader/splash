@@ -31,6 +31,10 @@ For the first browser milestone, `splash-api` should:
 4. fan them out through SSE
 5. accept pump-speed control requests and publish `protocol.command.intent`
 6. consume `command.result.{command_id}` and relay command progress through SSE
+7. expose a first Protocol Explorer frame-bundle slice by:
+   - buffering recent `protocol.frame.raw` and `protocol.frame.decoded` events
+   - allowing a client to save a bundle from that recent buffer
+   - returning saved bundles through REST
 
 ## Initial equipment catalog bridge
 
@@ -76,6 +80,10 @@ The first slice should at least support:
 - `POST /equipment/:id/control`
 - `GET /events`
 - `GET /health`
+- `GET /protocol/frames`
+- `GET /protocol/bundles`
+- `POST /protocol/bundles`
+- `GET /protocol/bundles/:id`
 
 Rules:
 
@@ -85,3 +93,5 @@ Rules:
   `set_speed` action in the first slice
 - command ids should be created by `splash-api`
 - command progress should be exposed through SSE `command.result`
+- the first saved-frame-bundle slice may remain in-memory and non-persistent
+  while Protocol Explorer is still a local protocol-discovery tool

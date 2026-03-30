@@ -13,6 +13,8 @@ for:
 - SSE fanout of equipment state and command-result updates
 - pump-speed control validation and `protocol.command.intent` publication
 - degraded behavior when NATS is unavailable
+- saved frame-bundle capture from recent protocol frame traffic
+- retrieval of saved frame bundles through REST
 
 ## Slice-specific cases
 
@@ -26,3 +28,5 @@ The first slice should explicitly test:
   - `equipment.state.pump`
   - `equipment.state.chlorinator`
 - command-result relay to SSE clients
+- bundle capture that preserves both `protocol.frame.raw` and
+  `protocol.frame.decoded` events from the recent buffer

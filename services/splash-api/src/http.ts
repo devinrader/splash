@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { EventBroker } from "./events.js";
+import type { ProtocolFrameBundle, ProtocolFrameBundleSummary } from "./protocol-bundles.js";
 
 export interface HttpServer {
   start(signal: AbortSignal): Promise<void>;
@@ -11,6 +12,9 @@ export interface HttpHandlers {
   getHealth(): Record<string, unknown>;
   getEventBroker(): EventBroker;
   getProtocolFrameBroker(): EventBroker;
+  listProtocolFrameBundles(): ProtocolFrameBundleSummary[];
+  createProtocolFrameBundle(input: { label: string | null }): ProtocolFrameBundleSummary;
+  getProtocolFrameBundle(id: string): ProtocolFrameBundle | null;
   publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }): Promise<{ commandId: string }>;
 }
 
@@ -61,6 +65,27 @@ export class LocalHttpServer implements HttpServer {
 
     if (req.method === "GET" && req.url === "/protocol/frames") {
       return this.handleEvents(res, this.handlers.getProtocolFrameBroker());
+    }
+
+    if (req.method === "GET" && req.url === "/protocol/bundles") {
+      return json(res, 200, { data: this.handlers.listProtocolFrameBundles(), error: null });
+    }
+
+    if (req.method === "POST" && req.url === "/protocol/bundles") {
+      const body = await readJsonBody(req);
+      const result = this.handlers.createProtocolFrameBundle({
+        label: readOptionalLabel(body)
+      });
+      return json(res, 201, { data: result, error: null });
+    }
+
+    const bundleMatch = req.url?.match(/^\/protocol\/bundles\/([^/]+)$/);
+    if (req.method === "GET" && bundleMatch) {
+      const bundle = this.handlers.getProtocolFrameBundle(decodeURIComponent(bundleMatch[1]));
+      if (!bundle) {
+        return json(res, 404, { data: null, error: "Protocol frame bundle not found." });
+      }
+      return json(res, 200, { data: bundle, error: null });
     }
 
     const controlMatch = req.url?.match(/^\/equipment\/([^/]+)\/control$/);
@@ -140,6 +165,20 @@ function readRpm(body: Record<string, unknown>): number {
   }
 
   return rpm;
+}
+
+function readOptionalLabel(body: Record<string, unknown>): string | null {
+  const label = body.label;
+  if (label == null) {
+    return null;
+  }
+
+  if (typeof label !== "string") {
+    throw new Error("Protocol frame bundle label must be a string when provided.");
+  }
+
+  const trimmed = label.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function json(res: ServerResponse, status: number, payload: Record<string, unknown>): void {

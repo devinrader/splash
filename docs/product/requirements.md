@@ -93,6 +93,8 @@ below. It is the first implementation target that validates:
   a frame cannot be safely decoded from captured traffic alone
 - Preserve frame bundles or experiment snapshots so one controlled controller
   change can be compared against a baseline during reverse engineering
+- the first frame-bundle slice may use an in-memory recent-event buffer before
+  persistent Explorer storage is implemented
 - Support dry-run command simulation by default
 - Require explicit confirmation for any live command transmission
 - Centralize protocol decode and encode in a dedicated protocol service rather than spreading packet logic across API and scheduler

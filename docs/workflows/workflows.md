@@ -250,6 +250,18 @@ Initial implementation note:
 This collaborative loop is the preferred workflow for unresolved Pentair tasks
 such as `#43`, `#60`, and `#61`.
 
+### Initial saved bundle slice
+
+The first saved-frame-bundle implementation may stay deliberately narrow:
+
+- `splash-api` keeps a recent in-memory buffer of live `protocol.frame.raw` and
+  `protocol.frame.decoded` events
+- the operator or Explorer client creates a saved frame bundle by snapshotting
+  the buffered events for a short controlled experiment window
+- the saved bundle is retrievable through REST for later diff or annotation
+  work
+- the first slice does not need persistent storage or long-term retention
+
 ## Future virtual pool workflow
 
 Future platform work may support a virtual pool mode where the user can create a
