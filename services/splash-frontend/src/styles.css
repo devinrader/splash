@@ -346,6 +346,13 @@ input {
   gap: 0.75rem;
 }
 
+.frame-list {
+  max-height: 32rem;
+  overflow: auto;
+  padding-right: 0.25rem;
+  align-content: start;
+}
+
 .bundle-chip {
   text-align: left;
 }

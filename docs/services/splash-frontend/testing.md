@@ -19,6 +19,8 @@ coverage to validate the browser read and control slice without a live backend.
   APIs
 - create bundle comparison, annotation, and prompt requests through the
   documented API endpoints
+- keep the live frame list inside a bounded panel rather than letting new frame
+  traffic continually grow page height
 
 ## Preferred tooling
 

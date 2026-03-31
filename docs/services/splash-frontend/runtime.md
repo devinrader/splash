@@ -87,5 +87,7 @@ Cross-origin local development rule:
   - bundle diffs
   - annotations
   - operator-needed prompts
+- the live frame list should stay inside a bounded scroll region so ongoing
+  frame traffic does not continuously increase overall page height
 - the first slice may stay intentionally developer-oriented and does not need
   the full long-term product navigation treatment yet
