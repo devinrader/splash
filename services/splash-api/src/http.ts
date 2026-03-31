@@ -13,6 +13,8 @@ export interface HttpServer {
   start(signal: AbortSignal): Promise<void>;
 }
 
+export class HttpRequestError extends Error {}
+
 export interface HttpHandlers {
   getEquipment(): Array<Record<string, unknown>>;
   getHealth(): Record<string, unknown>;
@@ -66,113 +68,121 @@ export class LocalHttpServer implements HttpServer {
   }
 
   private async route(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method === "OPTIONS") {
-      return preflight(res, req);
-    }
-
-    if (req.method === "GET" && req.url === "/equipment") {
-      return json(req, res, 200, { data: this.handlers.getEquipment(), error: null });
-    }
-
-    if (req.method === "GET" && req.url === "/health") {
-      return json(req, res, 200, this.handlers.getHealth());
-    }
-
-    if (req.method === "GET" && req.url === "/events") {
-      return this.handleEvents(req, res, this.handlers.getEventBroker());
-    }
-
-    if (req.method === "GET" && req.url === "/protocol/frames") {
-      return this.handleEvents(req, res, this.handlers.getProtocolFrameBroker());
-    }
-
-    if (req.method === "GET" && req.url === "/protocol/bundles") {
-      return json(req, res, 200, { data: this.handlers.listProtocolFrameBundles(), error: null });
-    }
-
-    if (req.method === "GET" && req.url?.startsWith("/protocol/annotations")) {
-      const url = new URL(req.url, "http://localhost");
-      const bundleId = url.searchParams.get("bundle_id");
-      return json(req, res, 200, { data: this.handlers.listProtocolAnnotations(bundleId), error: null });
-    }
-
-    if (req.method === "GET" && req.url?.startsWith("/protocol/prompts")) {
-      const url = new URL(req.url, "http://localhost");
-      const bundleId = url.searchParams.get("bundle_id");
-      return json(req, res, 200, { data: this.handlers.listProtocolPrompts(bundleId), error: null });
-    }
-
-    if (req.method === "POST" && req.url === "/protocol/bundles") {
-      const body = await readJsonBody(req);
-      const result = this.handlers.createProtocolFrameBundle({
-        label: readOptionalLabel(body)
-      });
-      return json(req, res, 201, { data: result, error: null });
-    }
-
-    if (req.method === "POST" && req.url === "/protocol/bundles/compare") {
-      const body = await readJsonBody(req);
-      const result = this.handlers.compareProtocolFrameBundles(readBundleCompareRequest(body));
-      if (!result) {
-        return json(req, res, 404, { data: null, error: "One or both protocol frame bundles were not found." });
+    try {
+      if (req.method === "OPTIONS") {
+        return preflight(res, req);
       }
-      return json(req, res, 200, { data: result, error: null });
-    }
 
-    if (req.method === "POST" && req.url === "/protocol/annotations") {
-      const body = await readJsonBody(req);
-      const result = this.handlers.createProtocolAnnotation(readProtocolAnnotation(body));
-      return json(req, res, 201, { data: result, error: null });
-    }
-
-    if (req.method === "POST" && req.url === "/protocol/prompts") {
-      const body = await readJsonBody(req);
-      const result = this.handlers.createProtocolPrompt(readProtocolPrompt(body));
-      return json(req, res, 201, { data: result, error: null });
-    }
-
-    if (req.method === "POST" && req.url === "/protocol/remote-layout/request") {
-      const body = await readJsonBody(req);
-      const result = await this.handlers.publishRemoteLayoutRequest({
-        pageIndex: readPageIndex(body)
-      });
-      return json(req, res, 202, {
-        data: {
-          command_id: result.commandId,
-          status: "accepted"
-        },
-        error: null
-      });
-    }
-
-    const bundleMatch = req.url?.match(/^\/protocol\/bundles\/([^/]+)$/);
-    if (req.method === "GET" && bundleMatch) {
-      const bundle = this.handlers.getProtocolFrameBundle(decodeURIComponent(bundleMatch[1]));
-      if (!bundle) {
-        return json(req, res, 404, { data: null, error: "Protocol frame bundle not found." });
+      if (req.method === "GET" && req.url === "/equipment") {
+        return json(req, res, 200, { data: this.handlers.getEquipment(), error: null });
       }
-      return json(req, res, 200, { data: bundle, error: null });
-    }
 
-    const controlMatch = req.url?.match(/^\/equipment\/([^/]+)\/control$/);
-    if (req.method === "POST" && controlMatch) {
-      const body = await readJsonBody(req);
-      const rpm = readRpm(body);
-      const result = await this.handlers.publishPumpSpeedCommand({
-        equipmentId: decodeURIComponent(controlMatch[1]),
-        rpm
-      });
-      return json(req, res, 202, {
-        data: {
-          command_id: result.commandId,
-          status: "accepted"
-        },
-        error: null
-      });
-    }
+      if (req.method === "GET" && req.url === "/health") {
+        return json(req, res, 200, this.handlers.getHealth());
+      }
 
-    res.writeHead(404, corsHeaders(req));
-    res.end();
+      if (req.method === "GET" && req.url === "/events") {
+        return this.handleEvents(req, res, this.handlers.getEventBroker());
+      }
+
+      if (req.method === "GET" && req.url === "/protocol/frames") {
+        return this.handleEvents(req, res, this.handlers.getProtocolFrameBroker());
+      }
+
+      if (req.method === "GET" && req.url === "/protocol/bundles") {
+        return json(req, res, 200, { data: this.handlers.listProtocolFrameBundles(), error: null });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/protocol/annotations")) {
+        const url = new URL(req.url, "http://localhost");
+        const bundleId = url.searchParams.get("bundle_id");
+        return json(req, res, 200, { data: this.handlers.listProtocolAnnotations(bundleId), error: null });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/protocol/prompts")) {
+        const url = new URL(req.url, "http://localhost");
+        const bundleId = url.searchParams.get("bundle_id");
+        return json(req, res, 200, { data: this.handlers.listProtocolPrompts(bundleId), error: null });
+      }
+
+      if (req.method === "POST" && req.url === "/protocol/bundles") {
+        const body = await readJsonBody(req);
+        const result = this.handlers.createProtocolFrameBundle({
+          label: readOptionalLabel(body)
+        });
+        return json(req, res, 201, { data: result, error: null });
+      }
+
+      if (req.method === "POST" && req.url === "/protocol/bundles/compare") {
+        const body = await readJsonBody(req);
+        const result = this.handlers.compareProtocolFrameBundles(readBundleCompareRequest(body));
+        if (!result) {
+          return json(req, res, 404, { data: null, error: "One or both protocol frame bundles were not found." });
+        }
+        return json(req, res, 200, { data: result, error: null });
+      }
+
+      if (req.method === "POST" && req.url === "/protocol/annotations") {
+        const body = await readJsonBody(req);
+        const result = this.handlers.createProtocolAnnotation(readProtocolAnnotation(body));
+        return json(req, res, 201, { data: result, error: null });
+      }
+
+      if (req.method === "POST" && req.url === "/protocol/prompts") {
+        const body = await readJsonBody(req);
+        const result = this.handlers.createProtocolPrompt(readProtocolPrompt(body));
+        return json(req, res, 201, { data: result, error: null });
+      }
+
+      if (req.method === "POST" && req.url === "/protocol/remote-layout/request") {
+        const body = await readJsonBody(req);
+        const result = await this.handlers.publishRemoteLayoutRequest({
+          pageIndex: readPageIndex(body)
+        });
+        return json(req, res, 202, {
+          data: {
+            command_id: result.commandId,
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      const bundleMatch = req.url?.match(/^\/protocol\/bundles\/([^/]+)$/);
+      if (req.method === "GET" && bundleMatch) {
+        const bundle = this.handlers.getProtocolFrameBundle(decodeURIComponent(bundleMatch[1]));
+        if (!bundle) {
+          return json(req, res, 404, { data: null, error: "Protocol frame bundle not found." });
+        }
+        return json(req, res, 200, { data: bundle, error: null });
+      }
+
+      const controlMatch = req.url?.match(/^\/equipment\/([^/]+)\/control$/);
+      if (req.method === "POST" && controlMatch) {
+        const body = await readJsonBody(req);
+        const rpm = readRpm(body);
+        const result = await this.handlers.publishPumpSpeedCommand({
+          equipmentId: decodeURIComponent(controlMatch[1]),
+          rpm
+        });
+        return json(req, res, 202, {
+          data: {
+            command_id: result.commandId,
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      res.writeHead(404, corsHeaders(req));
+      res.end();
+    } catch (error) {
+      if (error instanceof HttpRequestError) {
+        return json(req, res, 400, { data: null, error: error.message });
+      }
+
+      return json(req, res, 500, { data: null, error: "Internal server error." });
+    }
   }
 
   private handleEvents(req: IncomingMessage, res: ServerResponse, broker: EventBroker): void {
@@ -214,7 +224,7 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
 
   const parsed = JSON.parse(body);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Request body must be a JSON object.");
+    throw new HttpRequestError("Request body must be a JSON object.");
   }
   return parsed as Record<string, unknown>;
 }
@@ -223,12 +233,12 @@ function readRpm(body: Record<string, unknown>): number {
   const commandType = body.command_type;
   const args = body.arguments;
   if (commandType !== "set_speed" || !args || typeof args !== "object" || Array.isArray(args)) {
-    throw new Error("Control payload must provide command_type 'set_speed' and arguments.");
+    throw new HttpRequestError("Control payload must provide command_type 'set_speed' and arguments.");
   }
 
   const rpm = (args as Record<string, unknown>).rpm;
   if (typeof rpm !== "number" || !Number.isInteger(rpm)) {
-    throw new Error("Pump speed control requires an integer rpm.");
+    throw new HttpRequestError("Pump speed control requires an integer rpm.");
   }
 
   return rpm;
@@ -237,7 +247,7 @@ function readRpm(body: Record<string, unknown>): number {
 function readPageIndex(body: Record<string, unknown>): number {
   const pageIndex = body.page_index;
   if (typeof pageIndex !== "number" || !Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex > 255) {
-    throw new Error("Remote Layout request requires an integer page_index between 0 and 255.");
+    throw new HttpRequestError("Remote Layout request requires an integer page_index between 0 and 255.");
   }
 
   return pageIndex;
@@ -250,21 +260,21 @@ function readOptionalLabel(body: Record<string, unknown>): string | null {
   }
 
   if (typeof label !== "string") {
-    throw new Error("Protocol frame bundle label must be a string when provided.");
+    throw new HttpRequestError("Protocol frame bundle label must be a string when provided.");
   }
 
   const trimmed = label.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function readBundleCompareRequest(body: Record<string, unknown>): {
+export function readBundleCompareRequest(body: Record<string, unknown>): {
   baselineBundleId: string;
   comparisonBundleId: string;
 } {
   const baselineBundleId = body.baseline_bundle_id;
   const comparisonBundleId = body.comparison_bundle_id;
   if (typeof baselineBundleId !== "string" || typeof comparisonBundleId !== "string") {
-    throw new Error("Bundle comparison requires string baseline_bundle_id and comparison_bundle_id.");
+    throw new HttpRequestError("Bundle comparison requires string baseline_bundle_id and comparison_bundle_id.");
   }
 
   return {
@@ -284,28 +294,28 @@ function readProtocolAnnotation(body: Record<string, unknown>): ProtocolAnnotati
   const notes = body.notes;
 
   if (typeof bundleId !== "string" || bundleId.length === 0) {
-    throw new Error("Protocol annotation requires a string bundle_id.");
+    throw new HttpRequestError("Protocol annotation requires a string bundle_id.");
   }
   if (typeof frameIndex !== "number" || !Number.isInteger(frameIndex) || frameIndex < 0) {
-    throw new Error("Protocol annotation requires a non-negative integer frame_index.");
+    throw new HttpRequestError("Protocol annotation requires a non-negative integer frame_index.");
   }
   if (typeof fieldName !== "string" || fieldName.trim().length === 0) {
-    throw new Error("Protocol annotation requires a non-empty string field_name.");
+    throw new HttpRequestError("Protocol annotation requires a non-empty string field_name.");
   }
   if (typeof byteStart !== "number" || !Number.isInteger(byteStart) || byteStart < 0) {
-    throw new Error("Protocol annotation requires a non-negative integer byte_start.");
+    throw new HttpRequestError("Protocol annotation requires a non-negative integer byte_start.");
   }
   if (typeof byteEnd !== "number" || !Number.isInteger(byteEnd) || byteEnd < byteStart) {
-    throw new Error("Protocol annotation requires byte_end greater than or equal to byte_start.");
+    throw new HttpRequestError("Protocol annotation requires byte_end greater than or equal to byte_start.");
   }
   if (confidence !== "known" && confidence !== "inferred" && confidence !== "unknown") {
-    throw new Error("Protocol annotation confidence must be one of known, inferred, or unknown.");
+    throw new HttpRequestError("Protocol annotation confidence must be one of known, inferred, or unknown.");
   }
   if (typeof label !== "string" || label.trim().length === 0) {
-    throw new Error("Protocol annotation requires a non-empty string label.");
+    throw new HttpRequestError("Protocol annotation requires a non-empty string label.");
   }
   if (notes != null && typeof notes !== "string") {
-    throw new Error("Protocol annotation notes must be a string when provided.");
+    throw new HttpRequestError("Protocol annotation notes must be a string when provided.");
   }
 
   return {
@@ -330,19 +340,19 @@ function readProtocolPrompt(body: Record<string, unknown>): ProtocolPromptInput 
   const operatorResponse = body.operator_response;
 
   if (typeof bundleId !== "string" || bundleId.length === 0) {
-    throw new Error("Protocol prompt requires a string bundle_id.");
+    throw new HttpRequestError("Protocol prompt requires a string bundle_id.");
   }
   if (typeof frameIndex !== "number" || !Number.isInteger(frameIndex) || frameIndex < 0) {
-    throw new Error("Protocol prompt requires a non-negative integer frame_index.");
+    throw new HttpRequestError("Protocol prompt requires a non-negative integer frame_index.");
   }
   if (fieldName != null && (typeof fieldName !== "string" || fieldName.trim().length === 0)) {
-    throw new Error("Protocol prompt field_name must be a non-empty string when provided.");
+    throw new HttpRequestError("Protocol prompt field_name must be a non-empty string when provided.");
   }
   if (typeof prompt !== "string" || prompt.trim().length === 0) {
-    throw new Error("Protocol prompt requires a non-empty string prompt.");
+    throw new HttpRequestError("Protocol prompt requires a non-empty string prompt.");
   }
   if (typeof why !== "string" || why.trim().length === 0) {
-    throw new Error("Protocol prompt requires a non-empty string why.");
+    throw new HttpRequestError("Protocol prompt requires a non-empty string why.");
   }
   if (
     inputType !== "controller_menu_state" &&
@@ -350,12 +360,12 @@ function readProtocolPrompt(body: Record<string, unknown>): ProtocolPromptInput 
     inputType !== "circuit_name" &&
     inputType !== "configured_rpm"
   ) {
-    throw new Error(
+    throw new HttpRequestError(
       "Protocol prompt input_type must be one of controller_menu_state, equipment_behavior, circuit_name, or configured_rpm."
     );
   }
   if (operatorResponse != null && typeof operatorResponse !== "string") {
-    throw new Error("Protocol prompt operator_response must be a string when provided.");
+    throw new HttpRequestError("Protocol prompt operator_response must be a string when provided.");
   }
 
   return {

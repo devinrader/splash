@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { corsHeaders } from "../src/http.js";
+import { HttpRequestError, corsHeaders, readBundleCompareRequest } from "../src/http.js";
 
 test("corsHeaders echoes browser origin when present", () => {
   const headers = corsHeaders({
@@ -20,4 +20,19 @@ test("corsHeaders falls back to wildcard when origin is absent", () => {
   });
 
   assert.equal(headers["access-control-allow-origin"], "*");
+});
+
+test("readBundleCompareRequest rejects malformed bundle compare requests", () => {
+  assert.throws(
+    () =>
+      readBundleCompareRequest({
+        left_bundle_id: "bundle-1",
+        right_bundle_id: "bundle-2"
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpRequestError);
+      assert.match(error.message, /baseline_bundle_id/);
+      return true;
+    }
+  );
 });
