@@ -53,7 +53,7 @@
 | `/protocol/bundles` | `GET`, `POST` | Saved Protocol Explorer frame bundles |
 | `/protocol/bundles/:id` | `GET` | One saved Protocol Explorer frame bundle |
 | `/protocol/bundles/compare` | `POST` | Compare two saved Protocol Explorer frame bundles |
-| `/protocol/watch-sessions` | `POST` | Start a live Protocol Explorer watch session |
+| `/protocol/watch-sessions` | `POST` | Start a live Protocol Explorer watch session, optionally filtered to selected events |
 | `/protocol/watch-sessions/:id` | `GET` | Read one watch session and its captured frames |
 | `/protocol/watch-sessions/:id/stop` | `POST` | Stop a live Protocol Explorer watch session |
 | `/protocol/decode` | `POST` | Decode a raw frame |
@@ -117,6 +117,10 @@
 - the first watch-session slice may expose explicit start and stop routes so a
   controlled “watch live frames” capture window can be preserved and later
   displayed without relying on the rolling recent-frame buffer
+- watch sessions may accept an explicit event filter so Explorer can capture
+  only transport-layer serial I/O such as `serial.rx.raw` and `serial.tx.raw`
+  when the operator wants to inspect exactly what `splash-serial` received and
+  wrote
 - `/protocol/frames` may include outbound diagnostic traffic such as
   `protocol.command.encoded` and `serial.tx.raw` so Explorer can show the exact
   request bytes that were written, not only received bus frames
@@ -215,6 +219,34 @@ Request:
 ```json
 {
   "label": "pool-high-before-change"
+}
+```
+
+### `POST /protocol/watch-sessions`
+
+Request:
+
+```json
+{
+  "label": "serial-only-watch",
+  "events": ["serial.rx.raw", "serial.tx.raw"]
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "c8b0e1a1-58cb-4c52-91c4-4f4d4d0b7190",
+    "label": "serial-only-watch",
+    "status": "active",
+    "events": ["serial.rx.raw", "serial.tx.raw"],
+    "frame_count": 0,
+    "created_at": "2026-03-30T19:10:00Z",
+    "stopped_at": null
+  },
+  "error": null
 }
 ```
 

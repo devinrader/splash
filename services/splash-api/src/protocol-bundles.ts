@@ -47,6 +47,7 @@ export interface ProtocolWatchSessionSummary {
   id: string;
   label: string | null;
   status: "active" | "stopped";
+  events: string[] | null;
   frame_count: number;
   created_at: string;
   stopped_at: string | null;
@@ -83,6 +84,9 @@ export class ProtocolFrameBundleStore {
       if (session.status !== "active") {
         continue;
       }
+      if (session.events && !session.events.includes(event)) {
+        continue;
+      }
       session.frames.push(structuredClone(frame));
       session.frame_count = session.frames.length;
     }
@@ -114,11 +118,12 @@ export class ProtocolFrameBundleStore {
     return bundle ? structuredClone(bundle) : null;
   }
 
-  startWatchSession(label: string | null): ProtocolWatchSessionSummary {
+  startWatchSession(label: string | null, events: string[] | null = null): ProtocolWatchSessionSummary {
     const session: ProtocolWatchSession = {
       id: randomUUID(),
       label,
       status: "active",
+      events: events ? [...events] : null,
       frame_count: 0,
       created_at: new Date().toISOString(),
       stopped_at: null,
@@ -192,6 +197,7 @@ export class ProtocolFrameBundleStore {
       id: session.id,
       label: session.label,
       status: session.status,
+      events: session.events ? [...session.events] : null,
       frame_count: session.frame_count,
       created_at: session.created_at,
       stopped_at: session.stopped_at

@@ -25,7 +25,7 @@ export interface HttpHandlers {
   listProtocolFrameBundles(): ProtocolFrameBundleSummary[];
   createProtocolFrameBundle(input: { label: string | null }): ProtocolFrameBundleSummary;
   getProtocolFrameBundle(id: string): ProtocolFrameBundle | null;
-  startProtocolWatchSession(input: { label: string | null }): ProtocolWatchSessionSummary;
+  startProtocolWatchSession(input: { label: string | null; events: string[] | null }): ProtocolWatchSessionSummary;
   getProtocolWatchSession(id: string): ProtocolWatchSession | null;
   stopProtocolWatchSession(id: string): ProtocolWatchSessionSummary | null;
   compareProtocolFrameBundles(input: {
@@ -121,9 +121,7 @@ export class LocalHttpServer implements HttpServer {
 
       if (req.method === "POST" && req.url === "/protocol/watch-sessions") {
         const body = await readJsonBody(req);
-        const result = this.handlers.startProtocolWatchSession({
-          label: readOptionalLabel(body)
-        });
+        const result = this.handlers.startProtocolWatchSession(readWatchSessionRequest(body));
         return json(req, res, 201, { data: result, error: null });
       }
 
@@ -309,6 +307,44 @@ function readOptionalLabel(body: Record<string, unknown>): string | null {
 
   const trimmed = label.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+const ALLOWED_WATCH_EVENTS = [
+  "protocol.frame.raw",
+  "protocol.frame.decoded",
+  "protocol.command.encoded",
+  "serial.rx.raw",
+  "serial.tx.raw"
+] as const;
+
+export function readWatchSessionRequest(body: Record<string, unknown>): {
+  label: string | null;
+  events: string[] | null;
+} {
+  const label = readOptionalLabel(body);
+  const events = body.events;
+  if (events == null) {
+    return { label, events: null };
+  }
+
+  if (!Array.isArray(events) || events.some((value) => typeof value !== "string")) {
+    throw new HttpRequestError("Protocol watch session events must be an array of strings when provided.");
+  }
+
+  const normalized = [...new Set(events.map((value) => value.trim()).filter((value) => value.length > 0))];
+  if (normalized.length === 0) {
+    return { label, events: null };
+  }
+
+  for (const event of normalized) {
+    if (!(ALLOWED_WATCH_EVENTS as readonly string[]).includes(event)) {
+      throw new HttpRequestError(
+        `Protocol watch session event '${event}' is unsupported. Allowed values: ${ALLOWED_WATCH_EVENTS.join(", ")}.`
+      );
+    }
+  }
+
+  return { label, events: normalized };
 }
 
 export function readBundleCompareRequest(body: Record<string, unknown>): {

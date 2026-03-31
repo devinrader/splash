@@ -83,8 +83,8 @@ export class App {
     return this.protocolFrameBundles.getBundle(id);
   }
 
-  startProtocolWatchSession(input: { label: string | null }): ProtocolWatchSessionSummary {
-    return this.protocolFrameBundles.startWatchSession(input.label);
+  startProtocolWatchSession(input: { label: string | null; events: string[] | null }): ProtocolWatchSessionSummary {
+    return this.protocolFrameBundles.startWatchSession(input.label, input.events);
   }
 
   getProtocolWatchSession(id: string): ProtocolWatchSession | null {
@@ -195,7 +195,7 @@ export class App {
         listProtocolFrameBundles: () => this.listProtocolFrameBundles(),
         createProtocolFrameBundle: ({ label }) => this.createProtocolFrameBundle({ label }),
         getProtocolFrameBundle: (id) => this.getProtocolFrameBundle(id),
-        startProtocolWatchSession: ({ label }) => this.startProtocolWatchSession({ label }),
+        startProtocolWatchSession: ({ label, events }) => this.startProtocolWatchSession({ label, events }),
         getProtocolWatchSession: (id) => this.getProtocolWatchSession(id),
         stopProtocolWatchSession: (id) => this.stopProtocolWatchSession(id),
         compareProtocolFrameBundles: ({ baselineBundleId, comparisonBundleId }) =>
@@ -270,6 +270,10 @@ export class App {
     session.subscribe("serial.tx.raw", async (payload) => {
       this.protocolFrameBundles.recordFrame("serial.tx.raw", payload);
       this.protocolFrames.publish("serial.tx.raw", payload);
+    });
+    session.subscribe("serial.rx.raw", async (payload) => {
+      this.protocolFrameBundles.recordFrame("serial.rx.raw", payload);
+      this.protocolFrames.publish("serial.rx.raw", payload);
     });
 
     await waitForAbort(signal);

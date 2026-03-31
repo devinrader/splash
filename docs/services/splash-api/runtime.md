@@ -61,6 +61,9 @@ For the first browser milestone, `splash-api` should:
 13. expose a first watch-session slice by:
     - starting an explicit capture window
     - recording all live Explorer frame events into that watch session
+    - allowing an optional per-session event filter so a watch can be limited
+      to transport-only serial activity such as `serial.rx.raw` and
+      `serial.tx.raw`
     - stopping and returning the captured frame set for later inspection
 
 ## Initial equipment catalog bridge
@@ -145,6 +148,8 @@ Rules:
   silently rewrite the operator-provided bytes
 - the first watch-session slice may stay API-local and in-memory before a
   broader persistent capture model exists
+- the first watch-session filter may remain a simple explicit allowlist of
+  known Explorer event names rather than a general-purpose query language
 - the API should allow browser-origin requests from the frontend deployment
   origin, including the local milestone topology where `splash-frontend` runs
   on `127.0.0.1:3000` and `splash-api` runs on `127.0.0.1:8080`

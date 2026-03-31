@@ -218,6 +218,10 @@ Initial implementation note:
 Rules:
 
 - watch sessions should capture receive-side and outbound Explorer events
+- watch sessions may be filtered to selected event types when the operator
+  wants a narrower transport-only view such as:
+  - `serial.rx.raw`
+  - `serial.tx.raw`
 - watch sessions should not depend on the rolling recent-frame buffer after they
   start
 - the first slice may remain in-memory and local to `splash-api`

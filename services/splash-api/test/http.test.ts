@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HttpRequestError, corsHeaders, readBundleCompareRequest, readRawFrameRequest } from "../src/http.js";
+import {
+  HttpRequestError,
+  corsHeaders,
+  readBundleCompareRequest,
+  readRawFrameRequest,
+  readWatchSessionRequest
+} from "../src/http.js";
 
 test("corsHeaders echoes browser origin when present", () => {
   const headers = corsHeaders({
@@ -47,6 +53,30 @@ test("readRawFrameRequest rejects non-lowercase or odd-length hex", () => {
     (error: unknown) => {
       assert.ok(error instanceof HttpRequestError);
       assert.match(error.message, /even-length lowercase hex/);
+      return true;
+    }
+  );
+});
+
+test("readWatchSessionRequest accepts serial-only watch filters", () => {
+  const request = readWatchSessionRequest({
+    label: "serial only",
+    events: ["serial.rx.raw", "serial.tx.raw", "serial.rx.raw"]
+  });
+
+  assert.equal(request.label, "serial only");
+  assert.deepEqual(request.events, ["serial.rx.raw", "serial.tx.raw"]);
+});
+
+test("readWatchSessionRequest rejects unsupported watch events", () => {
+  assert.throws(
+    () =>
+      readWatchSessionRequest({
+        events: ["serial.unknown"]
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpRequestError);
+      assert.match(error.message, /unsupported/);
       return true;
     }
   );

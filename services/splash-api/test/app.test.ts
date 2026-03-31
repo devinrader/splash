@@ -145,6 +145,7 @@ test("app republishes protocol frame events to the Protocol Explorer broker", as
   await session.emit("protocol.frame.raw", { frame_id: "frame-1", bytes_hex: "ff00ffa5" });
   await session.emit("protocol.frame.decoded", { frame_id: "frame-1", action_code: "0x02" });
   await session.emit("protocol.command.encoded", { command_id: "command-1", bytes_hex: "ff00ffa5011021e1010001b9" });
+  await session.emit("serial.rx.raw", { stream_id: "stream-1", bytes_hex: "ff00ffa5340f1002" });
   await session.emit("serial.tx.raw", { command_id: "command-1", write_result: "ok", bytes_hex: "ff00ffa5011021e1010001b9" });
 
   controller.abort();
@@ -157,6 +158,10 @@ test("app republishes protocol frame events to the Protocol Explorer broker", as
     {
       event: "protocol.command.encoded",
       payload: { command_id: "command-1", bytes_hex: "ff00ffa5011021e1010001b9" }
+    },
+    {
+      event: "serial.rx.raw",
+      payload: { stream_id: "stream-1", bytes_hex: "ff00ffa5340f1002" }
     },
     {
       event: "serial.tx.raw",
@@ -243,14 +248,16 @@ test("watch sessions capture live explorer frames after explicit start", async (
     },
     logger: noopLogger
   }) as unknown as {
-    startProtocolWatchSession(input: { label: string | null }): {
+    startProtocolWatchSession(input: { label: string | null; events: string[] | null }): {
       id: string;
       status: "active" | "stopped";
+      events: string[] | null;
       frame_count: number;
     };
     getProtocolWatchSession(id: string): {
       id: string;
       status: "active" | "stopped";
+      events: string[] | null;
       frame_count: number;
       frames: Array<{ event: string; payload: Record<string, unknown> }>;
     } | null;
@@ -284,8 +291,12 @@ test("watch sessions capture live explorer frames after explicit start", async (
   const running = app.runNatsSession(session, controller.signal);
 
   await session.emit("protocol.frame.raw", { frame_id: "before", bytes_hex: "ff00ffa5" });
-  const watch = app.startProtocolWatchSession({ label: "watch test" });
+  const watch = app.startProtocolWatchSession({
+    label: "watch test",
+    events: ["serial.rx.raw", "serial.tx.raw"]
+  });
   await session.emit("protocol.frame.decoded", { frame_id: "after-1", action_code: "0x02" });
+  await session.emit("serial.rx.raw", { stream_id: "stream-1", bytes_hex: "ff00ffa5340f1002" });
   await session.emit("serial.tx.raw", { command_id: "after-2", write_result: "ok", bytes_hex: "ff00ffa5" });
 
   const active = app.getProtocolWatchSession(watch.id);
@@ -296,10 +307,11 @@ test("watch sessions capture live explorer frames after explicit start", async (
 
   assert.ok(active);
   assert.equal(active?.status, "active");
+  assert.deepEqual(active?.events, ["serial.rx.raw", "serial.tx.raw"]);
   assert.equal(active?.frame_count, 2);
   assert.deepEqual(
     active?.frames.map((frame) => frame.event),
-    ["protocol.frame.decoded", "serial.tx.raw"]
+    ["serial.rx.raw", "serial.tx.raw"]
   );
   assert.ok(stopped);
   assert.equal(stopped?.status, "stopped");
