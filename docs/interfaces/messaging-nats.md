@@ -191,6 +191,7 @@ Allowed `reason` values in the first slice:
 
 - `delimiter_noise`
 - `stream_reset`
+- `unknown_frame_type`
 
 Rules:
 

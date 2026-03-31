@@ -34,6 +34,23 @@ function buildFrame(): Uint8Array {
   return Uint8Array.from(frame);
 }
 
+function buildInvalidProtocolFrame(): Uint8Array {
+  return Uint8Array.from([
+    0xff,
+    0x00,
+    0xff,
+    0xa5,
+    0x34,
+    0x0f,
+    0x10,
+    0x02,
+    0x01,
+    0x00,
+    0x00,
+    0x5a
+  ]);
+}
+
 test("processor publishes protocol.frame.raw, protocol.frame.decoded, and normalized events", async () => {
   const publisher = new InMemoryPublisher();
   const processor = new ProtocolProcessor("pool-1", pentairEasyTouchPlugin, publisher);
@@ -72,4 +89,38 @@ test("processor publishes protocol.frame.raw, protocol.frame.decoded, and normal
   assert.equal(decodedFields.hour_24, 82);
   assert.equal(decodedFields.minute, 77);
   assert.equal(publisher.messages[2].payload.water_temp_f, null);
+});
+
+test("processor classifies assembled frames with invalid pentair protocol bytes as unknown", async () => {
+  const publisher = new InMemoryPublisher();
+  const processor = new ProtocolProcessor("pool-1", pentairEasyTouchPlugin, publisher);
+
+  const chunk: RawSerialChunk = {
+    serialInstanceId: "serial-1",
+    streamId: "stream-1",
+    chunkId: "chunk-1",
+    port: "/dev/ttyUSB0",
+    receivedAt: "2026-03-29T00:00:00Z",
+    bytesHex: Buffer.from(buildInvalidProtocolFrame()).toString("hex"),
+    byteCount: 12
+  };
+
+  const frames: AssembledFrame[] = [
+    {
+      serialInstanceId: "serial-1",
+      streamId: "stream-1",
+      frameFamily: "pentair",
+      frameBytes: buildInvalidProtocolFrame(),
+      sourceChunkIds: ["chunk-1"],
+      capturedAt: "2026-03-29T00:00:00Z"
+    }
+  ];
+
+  await processor.processChunk(chunk, frames);
+
+  assert.equal(publisher.messages.length, 2);
+  assert.equal(publisher.messages[0].subject, "protocol.frame.raw");
+  assert.equal(publisher.messages[1].subject, "protocol.frame.unidentified");
+  assert.equal(publisher.messages[1].payload.reason, "unknown_frame_type");
+  assert.equal(publisher.messages[1].payload.bytes_hex, Buffer.from(buildInvalidProtocolFrame()).toString("hex"));
 });

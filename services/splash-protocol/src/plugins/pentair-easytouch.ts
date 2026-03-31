@@ -135,6 +135,16 @@ function expectStartDelimiter(frame: Uint8Array): void {
   }
 }
 
+function expectValidPentairProtocolByte(frame: Uint8Array): void {
+  const protocolByte = frame[4];
+  if (protocolByte !== 0x00 && protocolByte !== 0x01) {
+    throw new ProtocolDecodeError(
+      `Frame uses unsupported Pentair protocol byte 0x${(protocolByte ?? 0).toString(16).padStart(2, "0")}.`,
+      "protocol_byte_invalid"
+    );
+  }
+}
+
 function hasDelimiter(frame: Uint8Array, delimiter: number[], offset = 0): boolean {
   if (frame.length < offset + delimiter.length) {
     return false;
@@ -378,6 +388,7 @@ export function decodePentairFrame(
   }
 
   expectStartDelimiter(frame);
+  expectValidPentairProtocolByte(frame);
 
   const payloadLength = frame[8];
   const dataStart = 9;

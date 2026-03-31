@@ -180,6 +180,9 @@ Decoder invariant:
   - a known assembled frame
   - buffered bytes awaiting more input
   - unknown bytes
+- for Pentair `FF 00 FF A5` frames, only protocol bytes `0x00` and `0x01` are
+  valid; any other value must be classified as unknown frame type rather than
+  decoded as Pentair protocol traffic
 
 Minimum normalized outputs in the initial service design:
 

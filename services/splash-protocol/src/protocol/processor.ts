@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { bytesToHex } from "./hex.js";
 import type { ProtocolPlugin } from "../plugins/types.js";
 import type { AssembledFrame, RawSerialChunk } from "./assembler.js";
+import { ProtocolDecodeError } from "./types.js";
 
 export interface PublishedMessage {
   subject: string;
@@ -34,10 +35,29 @@ export class ProtocolProcessor {
         framing_status: "valid"
       });
 
-      const decoded = this.plugin.decodeFrame(frame.frameBytes, {
-        frameId,
-        occurredAt: frame.capturedAt
-      });
+      let decoded;
+      try {
+        decoded = this.plugin.decodeFrame(frame.frameBytes, {
+          frameId,
+          occurredAt: frame.capturedAt
+        });
+      } catch (error) {
+        if (error instanceof ProtocolDecodeError) {
+          await this.publisher.publish("protocol.frame.unidentified", {
+            pool_id: this.poolId,
+            stream_id: chunk.streamId,
+            serial_instance_id: chunk.serialInstanceId,
+            chunk_id: frame.sourceChunkIds[frame.sourceChunkIds.length - 1] ?? chunk.chunkId,
+            protocol_name: this.plugin.id,
+            captured_at: frame.capturedAt,
+            bytes_hex: bytesToHex(frame.frameBytes),
+            byte_count: frame.frameBytes.length,
+            reason: "unknown_frame_type"
+          });
+          continue;
+        }
+        throw error;
+      }
       await this.publisher.publish("protocol.frame.decoded", {
         pool_id: this.poolId,
         stream_id: chunk.streamId,

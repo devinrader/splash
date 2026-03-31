@@ -110,6 +110,22 @@ test("decodePentairFrame rejects invalid checksum", () => {
   });
 });
 
+test("decodePentairFrame rejects invalid pentair protocol bytes", () => {
+  const frame = Uint8Array.from([
+    0xff, 0x00, 0xff, 0xa5,
+    0x34,
+    0x0f, 0x10, 0x02, 0x01,
+    0x00,
+    0x00, 0x5a
+  ]);
+
+  assert.throws(() => decodePentairFrame(frame), (error: unknown) => {
+    assert.ok(error instanceof ProtocolDecodeError);
+    assert.equal(error.errorCode, "protocol_byte_invalid");
+    return true;
+  });
+});
+
 test("decodePentairFrame emits partial normalized events for trusted message families", () => {
   const controller = decodePentairFrame(buildPentairFrame(0x02, [
     0x15, 0x37, 0x22, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08,

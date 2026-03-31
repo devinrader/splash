@@ -454,6 +454,63 @@ func TestReadLoopPublishesNativeReadBoundary(t *testing.T) {
 	}
 }
 
+func TestReadLoopPublishesConsecutiveReadsWithoutBufferContamination(t *testing.T) {
+	manager := serial.NewManager("/dev/ttyUSB0", 10*time.Millisecond, appFactory{
+		open: func(string) (serial.Port, error) {
+			return &scriptedAppPort{
+				device: "/dev/ttyUSB0",
+				reads: []appReadResult{
+					{data: []byte{0xff, 0x00, 0xff, 0xa5, 0x00, 0x60}},
+					{data: []byte{0x10, 0x04, 0x01, 0xff}},
+					{err: io.EOF},
+				},
+			}, nil
+		},
+	})
+
+	session, err := manager.Connect()
+	if err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+
+	app := &App{
+		logger:        log.New(io.Discard, "", 0),
+		natsClient:    nats.NewClient("nats://splash-core.local:4222", time.Second),
+		serialManager: manager,
+		healthServer:  httpapi.NewServer("127.0.0.1:9108", httpapi.HealthState{}),
+	}
+
+	err = app.readLoop(context.Background(), session)
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("expected EOF from readLoop, got %v", err)
+	}
+
+	published := app.natsClient.PublishedMessages()
+	if len(published) != 2 {
+		t.Fatalf("expected 2 rx messages, got %d", len(published))
+	}
+
+	if app.healthServer.Metrics().BytesReadTotal != 10 {
+		t.Fatalf("expected bytes read metric 10, got %d", app.healthServer.Metrics().BytesReadTotal)
+	}
+
+	var firstPayload nats.SerialRXRaw
+	if err := json.Unmarshal(published[0].Data, &firstPayload); err != nil {
+		t.Fatalf("Unmarshal first payload returned error: %v", err)
+	}
+	if firstPayload.BytesHex != "ff00ffa50060" {
+		t.Fatalf("expected first read bytes ff00ffa50060, got %q", firstPayload.BytesHex)
+	}
+
+	var secondPayload nats.SerialRXRaw
+	if err := json.Unmarshal(published[1].Data, &secondPayload); err != nil {
+		t.Fatalf("Unmarshal second payload returned error: %v", err)
+	}
+	if secondPayload.BytesHex != "100401ff" {
+		t.Fatalf("expected second read bytes 100401ff, got %q", secondPayload.BytesHex)
+	}
+}
+
 func TestHandleWriteRequestPublishesStaleStreamResult(t *testing.T) {
 	app := &App{
 		cfg: config.Config{

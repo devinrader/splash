@@ -236,6 +236,47 @@ Pentair EasyTouch and IntelliTouch are the primary v1 protocol targets. Communit
   - checksum
 - checksum: 2-byte big-endian sum from `0xA5` through end of payload
 
+Checksum example:
+
+- request bytes:
+  - `ff 00 ff a5 34 10 21 fd 00 02 07`
+- checksum input bytes:
+  - `a5 34 10 21 fd 00`
+- decimal checksum sum:
+  - `165 + 52 + 16 + 33 + 253 + 0 = 519`
+- hex checksum sum:
+  - `0x0207`
+
+Current validation note:
+
+- this `0xfd` identification-style request with source `0x21`, destination
+  `0x10`, header byte `0x34`, and checksum `0x0207` produced an observed
+  controller reply with action `0xfc` on the live system
+- earlier variants using the same body with a checksum that did not include the
+  trailing delimiter byte `0xa5` did not produce the `0xfc` response
+- Splash therefore currently treats “include `0xa5` in the checksum basis” as
+  the most strongly validated checksum rule for this Pentair message family on
+  the observed EasyTouch installation
+
+Current working model for `0xfd -> 0xfc`:
+
+- `0xfd` is the software-version request action
+- the request uses zero payload bytes
+- the controller replies using action `0xfc`
+- in the observed `0xfc` payload:
+  - payload byte `1` is the major version number
+  - payload byte `2` is the minor version number
+- the function of the remaining `0xfc` payload bytes is still unknown and
+  should remain diagnostic-only until further live validation
+
+Pentair protocol-byte invariant:
+
+- for the `FF 00 FF A5` frame family, Splash must treat only `0x00` and `0x01`
+  as valid protocol byte values
+- any other value means the bytes must not be decoded as a valid Pentair frame
+- such bytes must remain visible as unknown frame type or unknown data rather
+  than being silently dropped or mislabeled
+
 Observed nuance:
 
 - the same physical Pentair-family RS-485 installation may carry more than one
