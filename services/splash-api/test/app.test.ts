@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { App } from "../src/app.js";
 import type { MessagingSession } from "../src/messaging.js";
 import { ProtocolAnnotationStore } from "../src/protocol-annotations.js";
+import { ProtocolPromptStore } from "../src/protocol-prompts.js";
 import { ProtocolFrameBundleStore } from "../src/protocol-bundles.js";
 
 class FakeSession implements MessagingSession {
@@ -213,4 +214,22 @@ test("annotation store saves confidence-aware protocol annotations", () => {
   assert.equal(created.confidence, "inferred");
   assert.equal(store.list("bundle-1").length, 1);
   assert.equal(store.list("bundle-1")[0]?.field_name, "payload_hex");
+});
+
+test("prompt store saves operator-needed protocol prompts", () => {
+  const store = new ProtocolPromptStore();
+  const created = store.create({
+    bundle_id: "bundle-1",
+    frame_index: 0,
+    field_name: "payload_hex",
+    prompt: "What circuit was active when this frame was captured?",
+    why: "This byte range changes with pump-circuit edits.",
+    input_type: "controller_menu_state",
+    operator_response: null
+  });
+
+  assert.ok(created.id);
+  assert.equal(created.status, "open");
+  assert.equal(store.list("bundle-1").length, 1);
+  assert.equal(store.list("bundle-1")[0]?.input_type, "controller_menu_state");
 });

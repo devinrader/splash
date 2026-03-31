@@ -17,6 +17,7 @@ for:
 - retrieval of saved frame bundles through REST
 - comparison of two saved bundles with byte-change reporting for hex fields
 - confidence-aware annotation creation and retrieval for saved bundles
+- operator-prompt creation and retrieval for saved bundles
 
 ## Slice-specific cases
 
@@ -36,3 +37,5 @@ The first slice should explicitly test:
   `payload_hex`
 - annotation validation for required bundle target, field name, byte range, and
   confidence value
+- prompt validation for required bundle target, prompt text, rationale, and
+  expected input type

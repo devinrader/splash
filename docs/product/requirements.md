@@ -93,6 +93,8 @@ below. It is the first implementation target that validates:
   byte ranges during collaborative decoding
 - Allow Protocol Explorer to surface operator-needed questions or prompts when
   a frame cannot be safely decoded from captured traffic alone
+- support saving operator-needed prompts with bundle and frame context during
+  collaborative protocol decoding
 - Preserve frame bundles or experiment snapshots so one controlled controller
   change can be compared against a baseline during reverse engineering
 - the first frame-bundle slice may use an in-memory recent-event buffer before

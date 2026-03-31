@@ -12,6 +12,11 @@ import {
   type ProtocolAnnotationInput
 } from "./protocol-annotations.js";
 import {
+  ProtocolPromptStore,
+  type ProtocolPrompt,
+  type ProtocolPromptInput
+} from "./protocol-prompts.js";
+import {
   type ProtocolBundleComparison,
   ProtocolFrameBundleStore,
   type ProtocolFrameBundle,
@@ -34,6 +39,7 @@ export class App {
   private readonly protocolFrames = new EventBroker();
   private readonly protocolFrameBundles = new ProtocolFrameBundleStore();
   private readonly protocolAnnotations = new ProtocolAnnotationStore();
+  private readonly protocolPrompts = new ProtocolPromptStore();
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
 
@@ -90,6 +96,14 @@ export class App {
     return this.protocolAnnotations.create(input);
   }
 
+  listProtocolPrompts(bundleId: string | null = null): ProtocolPrompt[] {
+    return this.protocolPrompts.list(bundleId);
+  }
+
+  createProtocolPrompt(input: ProtocolPromptInput): ProtocolPrompt {
+    return this.protocolPrompts.create(input);
+  }
+
   async publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }, session: MessagingSession): Promise<{ commandId: string }> {
     const equipment = this.bridge.get(input.equipmentId);
     if (!equipment || equipment.equipmentType !== "pump" || !equipment.busAddress) {
@@ -132,6 +146,8 @@ export class App {
           this.compareProtocolFrameBundles({ baselineBundleId, comparisonBundleId }),
         listProtocolAnnotations: (bundleId) => this.listProtocolAnnotations(bundleId),
         createProtocolAnnotation: (input) => this.createProtocolAnnotation(input),
+        listProtocolPrompts: (bundleId) => this.listProtocolPrompts(bundleId),
+        createProtocolPrompt: (input) => this.createProtocolPrompt(input),
         publishPumpSpeedCommand: async ({ equipmentId, rpm }) => {
           const session = this.currentSession;
           if (!session) {

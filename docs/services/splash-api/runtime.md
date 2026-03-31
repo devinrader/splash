@@ -43,6 +43,10 @@ For the first browser milestone, `splash-api` should:
    - accepting annotations tied to saved bundles and frame positions
    - preserving annotation confidence and byte ranges
    - returning saved annotations through REST
+10. expose a first operator-prompt slice by:
+    - accepting prompts tied to saved bundles and frame positions
+    - preserving the prompt question, rationale, and expected input type
+    - returning saved prompts through REST
 
 ## Initial equipment catalog bridge
 
@@ -95,6 +99,8 @@ The first slice should at least support:
 - `POST /protocol/bundles/compare`
 - `GET /protocol/annotations`
 - `POST /protocol/annotations`
+- `GET /protocol/prompts`
+- `POST /protocol/prompts`
 
 Rules:
 
@@ -110,3 +116,5 @@ Rules:
   bundles positionally without trying to infer protocol meaning
 - the first annotation slice may stay API-local and in-memory before the
   repository-backed `protocol_annotations` model is implemented
+- the first operator-prompt slice may stay API-local and in-memory before a
+  broader task or notification workflow exists

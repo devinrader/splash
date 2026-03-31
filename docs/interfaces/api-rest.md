@@ -55,6 +55,7 @@
 | `/protocol/bundles/compare` | `POST` | Compare two saved Protocol Explorer frame bundles |
 | `/protocol/decode` | `POST` | Decode a raw frame |
 | `/protocol/annotations` | `GET`, `POST` | Protocol annotations |
+| `/protocol/prompts` | `GET`, `POST` | Operator-assisted decoding prompts |
 | `/protocol/simulate` | `POST` | Dry-run or live-send protocol command |
 | `/settings` | `GET`, `PUT` | User preferences |
 | `/events` | `GET` as SSE | Main frontend event stream |
@@ -97,6 +98,8 @@
 - the first annotation slice may also remain in-memory and API-local as long as
   annotations carry explicit confidence and target saved bundles or frame
   positions rather than pretending to be durable protocol truth
+- the first operator-prompt slice may remain in-memory and API-local as long as
+  prompts are explicitly tied to saved bundles and unresolved decoding work
 - later Protocol Explorer API slices should support collaborative decoding by
   exposing annotation confidence, saved frame comparisons, and operator-needed
   prompts without bypassing the shared protocol engine
@@ -267,6 +270,43 @@ Request:
   "confidence": "inferred",
   "label": "likely circuit id",
   "notes": "Changes when Pool High is edited."
+}
+```
+
+### `POST /protocol/prompts`
+
+Request:
+
+```json
+{
+  "bundle_id": "d4d9ec0e-8295-43be-9bcf-f6c1c6cc9b5f",
+  "frame_index": 0,
+  "field_name": "payload_hex",
+  "prompt": "What circuit was active when this frame was captured?",
+  "why": "This byte range changes with pump-circuit edits.",
+  "input_type": "controller_menu_state",
+  "operator_response": null
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "4d889762-e77b-46b5-b9e7-f261f61a2110",
+    "bundle_id": "d4d9ec0e-8295-43be-9bcf-f6c1c6cc9b5f",
+    "frame_index": 0,
+    "field_name": "payload_hex",
+    "prompt": "What circuit was active when this frame was captured?",
+    "why": "This byte range changes with pump-circuit edits.",
+    "input_type": "controller_menu_state",
+    "operator_response": null,
+    "status": "open",
+    "created_at": "2026-03-30T20:20:00Z",
+    "resolved_at": null
+  },
+  "error": null
 }
 ```
 

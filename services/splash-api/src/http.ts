@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from "node:crypto";
 import type { EventBroker } from "./events.js";
 import type { ProtocolAnnotation, ProtocolAnnotationInput } from "./protocol-annotations.js";
+import type { ProtocolPrompt, ProtocolPromptInput } from "./protocol-prompts.js";
 import type {
   ProtocolBundleComparison,
   ProtocolFrameBundle,
@@ -26,6 +27,8 @@ export interface HttpHandlers {
   }): ProtocolBundleComparison | null;
   listProtocolAnnotations(bundleId: string | null): ProtocolAnnotation[];
   createProtocolAnnotation(input: ProtocolAnnotationInput): ProtocolAnnotation;
+  listProtocolPrompts(bundleId: string | null): ProtocolPrompt[];
+  createProtocolPrompt(input: ProtocolPromptInput): ProtocolPrompt;
   publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }): Promise<{ commandId: string }>;
 }
 
@@ -88,6 +91,12 @@ export class LocalHttpServer implements HttpServer {
       return json(res, 200, { data: this.handlers.listProtocolAnnotations(bundleId), error: null });
     }
 
+    if (req.method === "GET" && req.url?.startsWith("/protocol/prompts")) {
+      const url = new URL(req.url, "http://localhost");
+      const bundleId = url.searchParams.get("bundle_id");
+      return json(res, 200, { data: this.handlers.listProtocolPrompts(bundleId), error: null });
+    }
+
     if (req.method === "POST" && req.url === "/protocol/bundles") {
       const body = await readJsonBody(req);
       const result = this.handlers.createProtocolFrameBundle({
@@ -108,6 +117,12 @@ export class LocalHttpServer implements HttpServer {
     if (req.method === "POST" && req.url === "/protocol/annotations") {
       const body = await readJsonBody(req);
       const result = this.handlers.createProtocolAnnotation(readProtocolAnnotation(body));
+      return json(res, 201, { data: result, error: null });
+    }
+
+    if (req.method === "POST" && req.url === "/protocol/prompts") {
+      const body = await readJsonBody(req);
+      const result = this.handlers.createProtocolPrompt(readProtocolPrompt(body));
       return json(res, 201, { data: result, error: null });
     }
 
@@ -273,6 +288,56 @@ function readProtocolAnnotation(body: Record<string, unknown>): ProtocolAnnotati
     confidence,
     label: label.trim(),
     notes: typeof notes === "string" && notes.trim().length > 0 ? notes : null
+  };
+}
+
+function readProtocolPrompt(body: Record<string, unknown>): ProtocolPromptInput {
+  const bundleId = body.bundle_id;
+  const frameIndex = body.frame_index;
+  const fieldName = body.field_name;
+  const prompt = body.prompt;
+  const why = body.why;
+  const inputType = body.input_type;
+  const operatorResponse = body.operator_response;
+
+  if (typeof bundleId !== "string" || bundleId.length === 0) {
+    throw new Error("Protocol prompt requires a string bundle_id.");
+  }
+  if (typeof frameIndex !== "number" || !Number.isInteger(frameIndex) || frameIndex < 0) {
+    throw new Error("Protocol prompt requires a non-negative integer frame_index.");
+  }
+  if (fieldName != null && (typeof fieldName !== "string" || fieldName.trim().length === 0)) {
+    throw new Error("Protocol prompt field_name must be a non-empty string when provided.");
+  }
+  if (typeof prompt !== "string" || prompt.trim().length === 0) {
+    throw new Error("Protocol prompt requires a non-empty string prompt.");
+  }
+  if (typeof why !== "string" || why.trim().length === 0) {
+    throw new Error("Protocol prompt requires a non-empty string why.");
+  }
+  if (
+    inputType !== "controller_menu_state" &&
+    inputType !== "equipment_behavior" &&
+    inputType !== "circuit_name" &&
+    inputType !== "configured_rpm"
+  ) {
+    throw new Error(
+      "Protocol prompt input_type must be one of controller_menu_state, equipment_behavior, circuit_name, or configured_rpm."
+    );
+  }
+  if (operatorResponse != null && typeof operatorResponse !== "string") {
+    throw new Error("Protocol prompt operator_response must be a string when provided.");
+  }
+
+  return {
+    bundle_id: bundleId,
+    frame_index: frameIndex,
+    field_name: typeof fieldName === "string" ? fieldName.trim() : null,
+    prompt: prompt.trim(),
+    why: why.trim(),
+    input_type: inputType,
+    operator_response:
+      typeof operatorResponse === "string" && operatorResponse.trim().length > 0 ? operatorResponse : null
   };
 }
 

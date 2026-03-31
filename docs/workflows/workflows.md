@@ -281,6 +281,19 @@ The first saved-frame-bundle implementation may stay deliberately narrow:
 - the first slice may remain in-memory and API-local before PostgreSQL-backed
   `protocol_annotations` exists
 
+### Initial operator prompt slice
+
+- prompts should target a saved bundle and a frame position
+- prompts should explain why operator input is needed
+- prompts should declare the expected input type, such as:
+  - `controller_menu_state`
+  - `equipment_behavior`
+  - `circuit_name`
+  - `configured_rpm`
+- prompts may include an operator response in the first slice, but do not need
+  a separate task or notification workflow yet
+- the first slice may remain in-memory and API-local
+
 ## Future virtual pool workflow
 
 Future platform work may support a virtual pool mode where the user can create a
