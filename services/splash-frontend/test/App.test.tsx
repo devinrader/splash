@@ -408,6 +408,21 @@ test("captures explorer bundles and creates annotation and prompt records", asyn
   render(<App />);
   await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
 
+  FakeEventSource.instances[1].emit("protocol.command.encoded", {
+    command_id: "command-remote-layout",
+    bytes_hex: "ff00ffa5011021e1010001b9"
+  });
+  FakeEventSource.instances[1].emit("serial.tx.raw", {
+    command_id: "command-remote-layout",
+    write_result: "ok",
+    bytes_hex: "ff00ffa5011021e1010001b9"
+  });
+
+  await waitFor(() => {
+    assert.ok(screen.getByText(/protocol.command.encoded/));
+    assert.ok(screen.getByText(/serial.tx.raw/));
+  });
+
   fireEvent.change(screen.getByLabelText("Bundle label"), { target: { value: "captured" } });
   fireEvent.click(screen.getByRole("button", { name: "Save frame bundle" }));
 

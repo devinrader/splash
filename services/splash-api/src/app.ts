@@ -221,6 +221,14 @@ export class App {
       this.protocolFrameBundles.recordFrame("protocol.frame.decoded", payload);
       this.protocolFrames.publish("protocol.frame.decoded", payload);
     });
+    session.subscribe("protocol.command.encoded", async (payload) => {
+      this.protocolFrameBundles.recordFrame("protocol.command.encoded", payload);
+      this.protocolFrames.publish("protocol.command.encoded", payload);
+    });
+    session.subscribe("serial.tx.raw", async (payload) => {
+      this.protocolFrameBundles.recordFrame("serial.tx.raw", payload);
+      this.protocolFrames.publish("serial.tx.raw", payload);
+    });
 
     await waitForAbort(signal);
     this.currentSession = null;

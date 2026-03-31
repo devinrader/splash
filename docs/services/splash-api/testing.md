@@ -13,7 +13,7 @@ for:
 - SSE fanout of equipment state and command-result updates
 - pump-speed control validation and `protocol.command.intent` publication
 - degraded behavior when NATS is unavailable
-- saved frame-bundle capture from recent protocol frame traffic
+- saved frame-bundle capture from recent protocol and transport traffic
 - retrieval of saved frame bundles through REST
 - comparison of two saved bundles with byte-change reporting for hex fields
 - confidence-aware annotation creation and retrieval for saved bundles
@@ -33,6 +33,8 @@ The first slice should explicitly test:
 - command-result relay to SSE clients
 - bundle capture that preserves both `protocol.frame.raw` and
   `protocol.frame.decoded` events from the recent buffer
+- bundle capture and Explorer SSE fanout that may also preserve
+  `protocol.command.encoded` and `serial.tx.raw` for diagnostic request flows
 - bundle comparison that highlights changed byte offsets for `bytes_hex` or
   `payload_hex`
 - annotation validation for required bundle target, field name, byte range, and

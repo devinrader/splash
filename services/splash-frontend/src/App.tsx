@@ -127,6 +127,14 @@ export default function App() {
       appendFrame(setRecentFrames, "protocol.frame.decoded", parseEventPayload(event));
     });
 
+    source.addEventListener("protocol.command.encoded", (event) => {
+      appendFrame(setRecentFrames, "protocol.command.encoded", parseEventPayload(event));
+    });
+
+    source.addEventListener("serial.tx.raw", (event) => {
+      appendFrame(setRecentFrames, "serial.tx.raw", parseEventPayload(event));
+    });
+
     source.onerror = () => {
       setExplorerError((current) => current ?? "Protocol frame stream disconnected.");
     };

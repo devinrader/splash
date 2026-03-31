@@ -107,6 +107,9 @@
 - the first manual Remote Layout request slice may expose one Explorer-only
   route that accepts a single page index and triggers a protocol-diagnostic
   request through `splash-protocol`
+- `/protocol/frames` may include outbound diagnostic traffic such as
+  `protocol.command.encoded` and `serial.tx.raw` so Explorer can show the exact
+  request bytes that were written, not only received bus frames
 - browser-facing API routes should emit CORS headers compatible with the
   frontend deployment origin, including the local developer topology where the
   frontend and API run on different loopback ports

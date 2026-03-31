@@ -116,6 +116,8 @@ test("app republishes protocol frame events to the Protocol Explorer broker", as
 
   await session.emit("protocol.frame.raw", { frame_id: "frame-1", bytes_hex: "ff00ffa5" });
   await session.emit("protocol.frame.decoded", { frame_id: "frame-1", action_code: "0x02" });
+  await session.emit("protocol.command.encoded", { command_id: "command-1", bytes_hex: "ff00ffa5011021e1010001b9" });
+  await session.emit("serial.tx.raw", { command_id: "command-1", write_result: "ok", bytes_hex: "ff00ffa5011021e1010001b9" });
 
   controller.abort();
   await running;
@@ -123,7 +125,15 @@ test("app republishes protocol frame events to the Protocol Explorer broker", as
 
   assert.deepEqual(observed, [
     { event: "protocol.frame.raw", payload: { frame_id: "frame-1", bytes_hex: "ff00ffa5" } },
-    { event: "protocol.frame.decoded", payload: { frame_id: "frame-1", action_code: "0x02" } }
+    { event: "protocol.frame.decoded", payload: { frame_id: "frame-1", action_code: "0x02" } },
+    {
+      event: "protocol.command.encoded",
+      payload: { command_id: "command-1", bytes_hex: "ff00ffa5011021e1010001b9" }
+    },
+    {
+      event: "serial.tx.raw",
+      payload: { command_id: "command-1", write_result: "ok", bytes_hex: "ff00ffa5011021e1010001b9" }
+    }
   ]);
 });
 
@@ -175,6 +185,7 @@ test("app saves protocol frame bundles from recent observed frame traffic", asyn
 
   await session.emit("protocol.frame.raw", { frame_id: "frame-1", bytes_hex: "ff00ffa5" });
   await session.emit("protocol.frame.decoded", { frame_id: "frame-1", action_code: "0x02" });
+  await session.emit("protocol.command.encoded", { command_id: "command-1", bytes_hex: "ff00ffa5011021e1010001b9" });
 
   const summary = app.createProtocolFrameBundle({ label: "baseline" });
   const bundle = app.getProtocolFrameBundle(summary.id);
@@ -183,12 +194,13 @@ test("app saves protocol frame bundles from recent observed frame traffic", asyn
   await running;
 
   assert.equal(summary.label, "baseline");
-  assert.equal(summary.frame_count, 2);
+  assert.equal(summary.frame_count, 3);
   assert.ok(bundle);
-  assert.equal(bundle?.frames.length, 2);
+  assert.equal(bundle?.frames.length, 3);
   assert.deepEqual(bundle?.frames.map((frame) => frame.event), [
     "protocol.frame.raw",
-    "protocol.frame.decoded"
+    "protocol.frame.decoded",
+    "protocol.command.encoded"
   ]);
 });
 

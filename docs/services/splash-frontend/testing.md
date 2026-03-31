@@ -17,6 +17,8 @@ coverage to validate the browser read and control slice without a live backend.
 - surface API or command failures in the UI
 - render a narrow Protocol Explorer panel from mocked protocol frame and bundle
   APIs
+- show outbound Explorer diagnostic events such as `protocol.command.encoded`
+  and `serial.tx.raw` when present
 - create bundle comparison, annotation, and prompt requests through the
   documented API endpoints
 - keep the live frame list inside a bounded panel rather than letting new frame

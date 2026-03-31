@@ -20,6 +20,8 @@ The initial milestone runtime is intentionally narrow:
    - creates saved bundles
    - compares saved bundles
    - reads and creates annotations and prompts
+   - shows outbound diagnostic request events such as `protocol.command.encoded`
+     and `serial.tx.raw` when present
 
 ## Data flow
 
@@ -36,7 +38,7 @@ The initial milestone runtime is intentionally narrow:
 Protocol Explorer flow:
 
 1. browser opens `GET /protocol/frames`
-2. frontend shows recent raw and decoded frame events
+2. frontend shows recent raw, decoded, and outbound diagnostic protocol events
 3. operator saves one or more frame bundles through `POST /protocol/bundles`
 4. frontend compares saved bundles through `POST /protocol/bundles/compare`
 5. frontend reads or creates annotations and prompts through
