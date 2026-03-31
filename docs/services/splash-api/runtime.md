@@ -32,8 +32,9 @@ For the first browser milestone, `splash-api` should:
 5. accept pump-speed control requests and publish `protocol.command.intent`
 6. consume `command.result.{command_id}` and relay command progress through SSE
 7. expose a first Protocol Explorer frame-bundle slice by:
-   - buffering recent `protocol.frame.raw`, `protocol.frame.decoded`,
-     `protocol.command.encoded`, and `serial.tx.raw` events
+   - buffering recent `protocol.frame.raw`, `protocol.frame.unidentified`,
+     `protocol.frame.decoded`, `protocol.command.encoded`, and `serial.tx.raw`
+     events
    - allowing a client to save a bundle from that recent buffer
    - returning saved bundles through REST
 8. expose a first Protocol Explorer frame-diff slice by:

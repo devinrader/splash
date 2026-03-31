@@ -124,6 +124,10 @@
 - `/protocol/frames` may include outbound diagnostic traffic such as
   `protocol.command.encoded` and `serial.tx.raw` so Explorer can show the exact
   request bytes that were written, not only received bus frames
+- `/protocol/frames` may also include derived receive-side diagnostic events
+  such as `protocol.frame.unidentified` so Explorer can show bytes that were
+  discarded during frame assembly without mislabeling them as valid protocol
+  frames
 - browser-facing API routes should emit CORS headers compatible with the
   frontend deployment origin, including the local developer topology where the
   frontend and API run on different loopback ports

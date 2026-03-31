@@ -20,13 +20,38 @@ export interface AssembledFrame {
   capturedAt: string;
 }
 
+export interface UnidentifiedBytes {
+  serialInstanceId: string;
+  streamId: string;
+  chunkId: string;
+  capturedAt: string;
+  bytes: Uint8Array;
+  reason: "delimiter_noise" | "stream_reset";
+}
+
+export interface AssemblyResult {
+  frames: AssembledFrame[];
+  unidentified: UnidentifiedBytes[];
+}
+
 export class StreamFrameAssembler {
   private activeStreamId: string | null = null;
   private buffer: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
   private chunkIds: string[] = [];
 
-  ingest(chunk: RawSerialChunk): AssembledFrame[] {
+  ingest(chunk: RawSerialChunk): AssemblyResult {
+    const unidentified: UnidentifiedBytes[] = [];
     if (this.activeStreamId !== chunk.streamId) {
+      if (this.buffer.length > 0 && this.activeStreamId !== null) {
+        unidentified.push({
+          serialInstanceId: chunk.serialInstanceId,
+          streamId: this.activeStreamId,
+          chunkId: chunk.chunkId,
+          capturedAt: chunk.receivedAt,
+          bytes: this.buffer,
+          reason: "stream_reset"
+        });
+      }
       this.activeStreamId = chunk.streamId;
       this.buffer = new Uint8Array(0);
       this.chunkIds = [];
@@ -39,23 +64,41 @@ export class StreamFrameAssembler {
     while (true) {
       const start = findDelimiter(this.buffer);
       if (start < 0) {
+        if (this.buffer.length > 0) {
+          unidentified.push({
+            serialInstanceId: chunk.serialInstanceId,
+            streamId: chunk.streamId,
+            chunkId: chunk.chunkId,
+            capturedAt: chunk.receivedAt,
+            bytes: this.buffer,
+            reason: "delimiter_noise"
+          });
+        }
         this.buffer = new Uint8Array(0);
         this.chunkIds = [];
-        return frames;
+        return { frames, unidentified };
       }
 
       if (start > 0) {
+        unidentified.push({
+          serialInstanceId: chunk.serialInstanceId,
+          streamId: chunk.streamId,
+          chunkId: chunk.chunkId,
+          capturedAt: chunk.receivedAt,
+          bytes: this.buffer.slice(0, start) as Uint8Array,
+          reason: "delimiter_noise"
+        });
         this.buffer = this.buffer.slice(start) as Uint8Array;
       }
 
       if (this.buffer.length < 11) {
-        return frames;
+        return { frames, unidentified };
       }
 
       const payloadLength = this.buffer[8];
       const expectedLength = 11 + payloadLength;
       if (this.buffer.length < expectedLength) {
-        return frames;
+        return { frames, unidentified };
       }
 
       const frameBytes = this.buffer.slice(0, expectedLength) as Uint8Array;

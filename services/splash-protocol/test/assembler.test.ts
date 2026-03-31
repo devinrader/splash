@@ -40,10 +40,11 @@ test("assembler reconstructs a frame split across multiple chunks", () => {
   const first = assembler.ingest(chunk(frameHex.slice(0, 10), { chunkId: "chunk-a" }));
   const second = assembler.ingest(chunk(frameHex.slice(10), { chunkId: "chunk-b" }));
 
-  assert.equal(first.length, 0);
-  assert.equal(second.length, 1);
-  assert.equal(Buffer.from(second[0].frameBytes).toString("hex"), frameHex);
-  assert.deepEqual(second[0].sourceChunkIds, ["chunk-a", "chunk-b"]);
+  assert.equal(first.frames.length, 0);
+  assert.equal(first.unidentified.length, 0);
+  assert.equal(second.frames.length, 1);
+  assert.equal(Buffer.from(second.frames[0].frameBytes).toString("hex"), frameHex);
+  assert.deepEqual(second.frames[0].sourceChunkIds, ["chunk-a", "chunk-b"]);
 });
 
 test("assembler resets buffered state when stream id changes", () => {
@@ -51,10 +52,24 @@ test("assembler resets buffered state when stream id changes", () => {
   const frameHex = buildPentairFrameHex(0x02, [0x52, 0x4d, 0x00, 0x01]);
 
   assembler.ingest(chunk(frameHex.slice(0, 10), { chunkId: "chunk-a", streamId: "stream-1" }));
-  const frames = assembler.ingest(
+  const result = assembler.ingest(
     chunk(frameHex, { chunkId: "chunk-b", streamId: "stream-2" })
   );
 
-  assert.equal(frames.length, 1);
-  assert.deepEqual(frames[0].sourceChunkIds, ["chunk-b"]);
+  assert.equal(result.frames.length, 1);
+  assert.deepEqual(result.frames[0].sourceChunkIds, ["chunk-b"]);
+  assert.equal(result.unidentified.length, 1);
+  assert.equal(result.unidentified[0]?.reason, "stream_reset");
+});
+
+test("assembler reports discarded leading bytes before a valid delimiter", () => {
+  const assembler = new StreamFrameAssembler();
+  const frameHex = buildPentairFrameHex(0x02, [0x52, 0x4d, 0x00, 0x01]);
+
+  const result = assembler.ingest(chunk(`ffff${frameHex}`, { chunkId: "chunk-a" }));
+
+  assert.equal(result.frames.length, 1);
+  assert.equal(result.unidentified.length, 1);
+  assert.equal(Buffer.from(result.unidentified[0]?.bytes ?? new Uint8Array()).toString("hex"), "ffff");
+  assert.equal(result.unidentified[0]?.reason, "delimiter_noise");
 });

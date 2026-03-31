@@ -2,6 +2,7 @@ import type { Logger } from "../logger.js";
 import type { MessagingSession } from "../messaging.js";
 import type { ProtocolPlugin } from "../plugins/types.js";
 import { type RawSerialChunk, StreamFrameAssembler } from "./assembler.js";
+import { bytesToHex } from "./hex.js";
 import { ProtocolProcessor } from "./processor.js";
 import { ProtocolDecodeError } from "./types.js";
 
@@ -50,7 +51,22 @@ export class ProtocolRuntime {
           this.onStreamIdChange?.(chunk.streamId);
         }
 
-        const frames = this.assembler.ingest(chunk);
+        const assembly = this.assembler.ingest(chunk);
+        for (const unidentified of assembly.unidentified) {
+          await session.publish("protocol.frame.unidentified", {
+            pool_id: this.activePoolId,
+            stream_id: unidentified.streamId,
+            serial_instance_id: unidentified.serialInstanceId,
+            chunk_id: unidentified.chunkId,
+            protocol_name: this.activePlugin.id,
+            captured_at: unidentified.capturedAt,
+            bytes_hex: bytesToHex(unidentified.bytes),
+            byte_count: unidentified.bytes.length,
+            reason: unidentified.reason
+          });
+        }
+
+        const frames = assembly.frames;
         if (frames.length === 0) {
           return;
         }

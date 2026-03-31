@@ -10,6 +10,7 @@
 | `serial.tx.raw` | Core NATS | `splash-serial` |
 | `serial.port.status` | Core NATS | `splash-serial` |
 | `protocol.frame.raw` | Core NATS | `splash-protocol` |
+| `protocol.frame.unidentified` | Core NATS | `splash-protocol` |
 | `protocol.frame.decoded` | Core NATS | `splash-protocol` |
 | `equipment.state.controller` | Core NATS | `splash-protocol` |
 | `equipment.state.pump` | Core NATS | `splash-protocol` |
@@ -128,6 +129,37 @@ Allowed `status` values:
   "framing_status": "valid"
 }
 ```
+
+### `protocol.frame.unidentified`
+
+```json
+{
+  "pool_id": "uuid",
+  "stream_id": "uuid",
+  "serial_instance_id": "uuid",
+  "chunk_id": "uuid",
+  "protocol_name": "pentair_easytouch",
+  "captured_at": "2026-03-26T20:00:02Z",
+  "bytes_hex": "ffff",
+  "byte_count": 2,
+  "reason": "delimiter_noise"
+}
+```
+
+Allowed `reason` values in the first slice:
+
+- `delimiter_noise`
+- `stream_reset`
+
+Rules:
+
+- `protocol.frame.unidentified` is a derived receive-side diagnostic event
+- it must only represent bytes that `splash-protocol` definitively discarded and
+  could not use as part of an assembled frame
+- it must not be used for partial bytes still buffered for a future frame
+- it complements `serial.rx.raw`; it does not replace the transport-truth view
+- it must not be confused with `protocol.frame.raw`, which remains reserved for
+  successfully assembled frames only
 
 ### `protocol.frame.decoded`
 

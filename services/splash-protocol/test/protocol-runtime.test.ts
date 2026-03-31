@@ -78,6 +78,30 @@ test("protocol runtime publishes decoded and normalized output for live serial c
   assert.equal(session.published[2].subject, "equipment.state.controller");
 });
 
+test("protocol runtime publishes unidentified byte diagnostics for discarded receive bytes", async () => {
+  const session = new FakeSession();
+  const runtime = new ProtocolRuntime(logger);
+  runtime.setActiveSelection("pool-1", pentairEasyTouchPlugin);
+  runtime.attach(session);
+
+  await session.emit("serial.rx.raw", {
+    serial_instance_id: "serial-1",
+    stream_id: "stream-1",
+    chunk_id: "chunk-1",
+    port: "/dev/ttyUSB0",
+    received_at: "2026-03-30T00:00:00Z",
+    bytes_hex: `ffff${buildFrameHex()}`,
+    byte_count: 18
+  });
+
+  assert.equal(session.published[0]?.subject, "protocol.frame.unidentified");
+  assert.equal(session.published[0]?.payload.reason, "delimiter_noise");
+  assert.equal(session.published[0]?.payload.bytes_hex, "ffff");
+  assert.equal(session.published[1]?.subject, "protocol.frame.raw");
+  assert.equal(session.published[2]?.subject, "protocol.frame.decoded");
+  assert.equal(session.published[3]?.subject, "equipment.state.controller");
+});
+
 test("protocol runtime reports the active stream id from live serial chunks", async () => {
   const session = new FakeSession();
   let activeStreamId: string | null = null;

@@ -259,6 +259,10 @@ export class App {
       this.protocolFrameBundles.recordFrame("protocol.frame.raw", payload);
       this.protocolFrames.publish("protocol.frame.raw", payload);
     });
+    session.subscribe("protocol.frame.unidentified", async (payload) => {
+      this.protocolFrameBundles.recordFrame("protocol.frame.unidentified", payload);
+      this.protocolFrames.publish("protocol.frame.unidentified", payload);
+    });
     session.subscribe("protocol.frame.decoded", async (payload) => {
       this.protocolFrameBundles.recordFrame("protocol.frame.decoded", payload);
       this.protocolFrames.publish("protocol.frame.decoded", payload);

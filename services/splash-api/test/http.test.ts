@@ -61,11 +61,11 @@ test("readRawFrameRequest rejects non-lowercase or odd-length hex", () => {
 test("readWatchSessionRequest accepts serial-only watch filters", () => {
   const request = readWatchSessionRequest({
     label: "serial only",
-    events: ["serial.rx.raw", "serial.tx.raw", "serial.rx.raw"]
+    events: ["serial.rx.raw", "serial.tx.raw", "protocol.frame.unidentified", "serial.rx.raw"]
   });
 
   assert.equal(request.label, "serial only");
-  assert.deepEqual(request.events, ["serial.rx.raw", "serial.tx.raw"]);
+  assert.deepEqual(request.events, ["serial.rx.raw", "serial.tx.raw", "protocol.frame.unidentified"]);
 });
 
 test("readWatchSessionRequest rejects unsupported watch events", () => {
