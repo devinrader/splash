@@ -146,7 +146,7 @@ Profile resolution should prefer the most specific known profile in the catalog,
   },
   "water_temp_f": null,
   "air_temp_f": null,
-  "solar_temp_f": 84,
+  "solar_temp_f": null,
   "heater": {
     "enabled": false,
     "mode": "off",

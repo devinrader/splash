@@ -33,7 +33,7 @@ function buildPentairFrameWithAddresses(
 }
 
 test("decodePentairFrame validates checksum and decodes controller status identity", () => {
-  const frame = buildPentairFrame(0x02, [0x52, 0x4d, 0x20, 0x01, 0x00]);
+  const frame = buildPentairFrame(0x02, [0x15, 0x37, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x03]);
   const decoded = decodePentairFrame(frame);
 
   assert.equal(decoded.protocolName, "pentair_easytouch");
@@ -43,15 +43,16 @@ test("decodePentairFrame validates checksum and decodes controller status identi
   assert.equal(decoded.destinationAddress, "0x0f");
   assert.equal(decoded.checksumStatus, "valid");
   assert.deepEqual(decoded.fields, {
-    payload_hex: "524d200100",
-    payload_length: 5,
-    hour_24: 0x52,
-    minute: 0x4d,
+    payload_hex: "1537200000000000000403",
+    payload_length: 11,
+    hour_24: 0x15,
+    minute: 0x37,
     water_temp_f: null,
     air_temp_f: null,
-    solar_temp_f: 0x20,
-    status_byte: 0x01,
+    solar_temp_f: null,
     circuits_byte: 0x20,
+    controller_mode_byte: 0x04,
+    heater_status_byte: 0x03,
     active_circuit_keys: ["pool"],
     mode: "pool",
     circuits: {
@@ -87,7 +88,7 @@ test("decodePentairFrame rejects invalid checksum", () => {
 });
 
 test("decodePentairFrame emits partial normalized events for trusted message families", () => {
-  const controller = decodePentairFrame(buildPentairFrame(0x02, [82, 77, 0x22, 0x03, 0x05]), {
+  const controller = decodePentairFrame(buildPentairFrame(0x02, [0x15, 0x37, 0x22, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x0f]), {
     frameId: "frame-1",
     occurredAt: "2026-03-30T00:00:00Z"
   });
@@ -106,7 +107,10 @@ test("decodePentairFrame emits partial normalized events for trusted message fam
   assert.equal(controller.normalizedEvents?.[0].subject, "equipment.state.controller");
   assert.equal(controller.normalizedEvents?.[0].payload.water_temp_f, null);
   assert.equal(controller.normalizedEvents?.[0].payload.air_temp_f, null);
+  assert.equal(controller.normalizedEvents?.[0].payload.solar_temp_f, null);
   assert.equal(controller.normalizedEvents?.[0].payload.freeze_protection, true);
+  const controllerHeater = controller.normalizedEvents?.[0].payload.heater as Record<string, unknown>;
+  assert.equal(controllerHeater.enabled, true);
   assert.equal(controller.normalizedEvents?.[0].payload.mode, "pool");
   assert.deepEqual(controller.normalizedEvents?.[0].payload.active_circuit_keys, ["pool", "aux1"]);
   assert.deepEqual(controller.normalizedEvents?.[0].payload.circuits, {
@@ -159,14 +163,14 @@ test("decodePentairFrame derives controller mode hints from trusted circuit bits
 test("decodePentairFrame decodes live 0x02 pool-only and pool-plus-0x08 circuit bytes", () => {
   const poolOnly = decodePentairFrame(
     buildPentairFrame(0x02, [
-      0x15, 0x21, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x15, 0x21, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04,
       0x00, 0x00, 0x00, 0x80, 0x3f, 0x3f, 0x00, 0x00, 0x3e, 0x00,
       0x00, 0x00, 0x00, 0x00, 0x00, 0xab, 0xbb, 0x03, 0x0d
     ])
   );
   const poolPlus08 = decodePentairFrame(
     buildPentairFrame(0x02, [
-      0x15, 0x23, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x15, 0x23, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0c,
       0x00, 0x00, 0x00, 0x80, 0x3f, 0x3f, 0x00, 0x00, 0x3e, 0x00,
       0x00, 0x00, 0x00, 0x00, 0x00, 0xab, 0xbb, 0x03, 0x0d
     ])

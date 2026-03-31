@@ -296,28 +296,80 @@ with diagnostic value but no normalized state meaning.
 - several fields remain incompletely decoded
 - pump and chlorinator payloads are sufficiently understood to support normalized state and control paths in the intended design
 
-Current trusted `0x02` controller-circuit mapping:
+Current working `0x02` controller-circuit mapping hypothesis:
 
-- use payload byte `2` as the current controller circuit bitfield
-- current trusted bit meanings for that byte are:
-  - `0x01`: `spa`
-  - `0x02`: `aux1`
-  - `0x04`: `aux2`
-  - `0x08`: `aux3`
-  - `0x10`: `feature1`
-  - `0x20`: `pool`
-  - `0x40`: `feature2`
-  - `0x80`: `feature3`
+- payload byte `2` appears to carry controller circuit bits `1` through `8`
+- payload byte `3` appears to carry controller circuit bits `9` through `16`
+- payload byte `4` and beyond should not currently be assumed to be live
+  circuit-status bytes on EasyTouch
 
-ASSUMPTION: this byte-level mapping is currently trusted for active fixed and
-early feature-circuit state, even though the rest of the `0x02` payload,
-including temperature fields, remains only partially mapped.
+Current working grouping model:
+
+- payload byte `2`:
+  - `spa`
+  - `pool`
+  - `aux1` through `aux6`
+- payload byte `3`:
+  - `aux7`
+  - `feature1` through `feature7`
+
+ASSUMPTION: this is a stronger current model than the earlier single-byte
+`data[2]` interpretation, but it still requires validation through controlled
+controller experiments and live capture comparison before Splash treats the
+full multi-byte circuit layout as authoritative.
+
+Observed note:
+
+- live captures have already shown payload byte `2` values such as `0x20` and
+  `0x28`, which is consistent with a stable fixed-circuit `pool` bit plus one
+  additional non-fixed bit
+- that supports using payload byte `2` as part of the circuit model, but does
+  not by itself prove the exact cross-byte circuit numbering yet
+- additional research indicates that on EasyTouch, circuit state appears to be
+  carried in the first one or two payload bitmask bytes and that payload bytes
+  `4` through `8` are commonly observed as zero rather than as live
+  circuit-status indicators
+- further live controller testing is therefore still required before Splash
+  promotes payload byte `3` to authoritative decoded circuit state or assumes
+  any live circuit meaning for payload byte `4+`
 
 Current trusted `0x02` time mapping:
 
 - payload byte `0` is the controller hour in 24-hour representation
 - payload byte `1` is the controller minute
 - these bytes must not be treated as water or air temperature
+
+Current working `0x02` controller-mode mapping hypothesis:
+
+- payload byte `9` appears to carry a 1-byte controller mode value on
+  EasyTouch
+- this field should be treated as separate from the live circuit-status bytes
+  in payload bytes `2` and possibly `3`
+- current working bit meanings for payload byte `9` are:
+  - `0x01`: run mode (`normal` vs `service`)
+  - `0x04`: temperature unit (`f` vs `c`)
+  - `0x08`: freeze protection (`off` vs `on`)
+  - `0x10`: timeout (`off` vs `on`)
+- the exact value semantics, bit combinations, and any additional bits still
+  require validation from controlled controller experiments and live capture
+  comparison
+- recent live normal pool-mode captures have shown payload byte `9` as `0x00`,
+  so Splash should currently surface this byte diagnostically rather than
+  treating the working bit meanings as authoritative
+
+Current working `0x02` heater-status mapping hypothesis:
+
+- payload byte `10` appears to carry heater on or off status on EasyTouch
+- this field should be treated as distinct from the controller mode byte at
+  payload index `9`
+- current working values are:
+  - `0x0f`: heater on
+  - `0x03`: heater off
+- the exact value mapping still requires validation from controlled controller
+  experiments and live capture comparison
+- recent live captures with the heater off have shown payload byte `10` as
+  `0x00`, so Splash should currently surface this byte diagnostically rather
+  than treating the working values as authoritative
 
 Until the real temperature bytes are mapped, Splash should surface `hour_24`
 and `minute` as decoded diagnostic fields and publish `water_temp_f` and

@@ -5,6 +5,11 @@
 ## Protocol and hardware
 
 - QUESTION: What are the unresolved byte mappings in the Pentair `0x02` controller status message, especially heater-setpoint-related bytes called out by the source?
+- QUESTION: Does Pentair `0x02` use a three-byte circuit-status layout where payload bytes `2`, `3`, and `4` represent circuits `1-8`, `9-16`, and `17+` respectively, and if so what are the exact bit-to-circuit assignments on the target EasyTouch controller?
+- QUESTION: On EasyTouch specifically, does live circuit state stop at payload byte `3`, with payload bytes `4+` usually unused for live circuit status, and what controlled controller experiments are needed to verify byte `3` assignments?
+- QUESTION: Is zero-based payload byte `9` in Pentair `0x02` the controller mode field on EasyTouch, and what are the exact observed values for idle, pool, spa, and active feature-circuit states?
+- QUESTION: For the EasyTouch `0x02` mode byte at zero-based payload index `9`, are the current working flags complete: `0x01` run mode, `0x04` temp unit, `0x08` freeze protection, and `0x10` timeout?
+- QUESTION: Is zero-based payload byte `10` in Pentair `0x02` the heater on or off status field on EasyTouch, and beyond the current working values `0x03` off and `0x0f` on, are there any additional heater-state values for heating, cooldown, or fault conditions?
 - QUESTION: Should controller type be auto-detected from bus framing, or remain an explicit configuration choice in v1?
 - QUESTION: What is the exact production path and timeline for Hayward support?
 - QUESTION: What is the exact production path and timeline for Jandy support?

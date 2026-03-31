@@ -108,6 +108,8 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
     case 0x02:
       {
         const circuitsByte = payload[2] ?? 0;
+        const controllerModeByte = payload[9] ?? null;
+        const heaterStatusByte = payload[10] ?? null;
         const circuits = decodeCircuitStates(circuitsByte);
         return {
           payload_hex: payloadHex,
@@ -116,9 +118,10 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
           minute: payload[1] ?? null,
           water_temp_f: null,
           air_temp_f: null,
-          solar_temp_f: payload[2] ?? null,
-          status_byte: payload[3] ?? null,
+          solar_temp_f: null,
           circuits_byte: circuitsByte,
+          controller_mode_byte: controllerModeByte,
+          heater_status_byte: heaterStatusByte,
           active_circuit_keys: decodeActiveCircuitKeys(circuitsByte),
           mode: decodeControllerMode(circuits),
           circuits
@@ -192,7 +195,7 @@ function decodeNormalizedEvents(
             source,
             water_temp_f: null,
             air_temp_f: null,
-            solar_temp_f: payload[2] ?? null,
+            solar_temp_f: null,
             heater: {
               enabled: (statusByte & 0x01) !== 0
             },

@@ -146,7 +146,9 @@ Allowed `status` values:
   "fields": {
     "hour_24": 21,
     "minute": 35,
-    "circuits_byte": 32
+    "circuits_byte": 32,
+    "controller_mode_byte": 4,
+    "heater_status_byte": 3
   },
   "unknown_fields": []
 }
