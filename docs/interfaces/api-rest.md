@@ -57,6 +57,7 @@
 | `/protocol/annotations` | `GET`, `POST` | Protocol annotations |
 | `/protocol/prompts` | `GET`, `POST` | Operator-assisted decoding prompts |
 | `/protocol/remote-layout/request` | `POST` | Manual Pentair Remote Layout page request |
+| `/protocol/raw-frame/send` | `POST` | Manual raw protocol frame send for Explorer diagnostics |
 | `/protocol/simulate` | `POST` | Dry-run or live-send protocol command |
 | `/settings` | `GET`, `PUT` | User preferences |
 | `/events` | `GET` as SSE | Main frontend event stream |
@@ -107,6 +108,9 @@
 - the first manual Remote Layout request slice may expose one Explorer-only
   route that accepts a single page index and triggers a protocol-diagnostic
   request through `splash-protocol`
+- the first manual raw-frame send slice may expose one Explorer-only route that
+  accepts explicit lowercase hex bytes and forwards them through
+  `splash-protocol` without rewriting checksums or other frame fields
 - `/protocol/frames` may include outbound diagnostic traffic such as
   `protocol.command.encoded` and `serial.tx.raw` so Explorer can show the exact
   request bytes that were written, not only received bus frames
@@ -298,6 +302,26 @@ Request:
   "operator_response": null
 }
 ```
+
+### `POST /protocol/raw-frame/send`
+
+Request:
+
+```json
+{
+  "protocol_name": "pentair_easytouch",
+  "bytes_hex": "ff00ffa5011022e1010001ba"
+}
+```
+
+Rules:
+
+- Explorer-only diagnostic route
+- accepts explicit lowercase hex bytes only
+- does not normalize, recalculate, or rewrite protocol fields in the first
+  slice
+- returns transport-acceptance only; protocol-level meaning is determined later
+  from observed receive-side traffic
 
 Response:
 

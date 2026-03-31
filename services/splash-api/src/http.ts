@@ -32,6 +32,7 @@ export interface HttpHandlers {
   listProtocolPrompts(bundleId: string | null): ProtocolPrompt[];
   createProtocolPrompt(input: ProtocolPromptInput): ProtocolPrompt;
   publishRemoteLayoutRequest(input: { pageIndex: number }): Promise<{ commandId: string }>;
+  publishRawFrameCommand(input: { protocolName: string; bytesHex: string }): Promise<{ commandId: string }>;
   publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }): Promise<{ commandId: string }>;
 }
 
@@ -139,6 +140,18 @@ export class LocalHttpServer implements HttpServer {
         const result = await this.handlers.publishRemoteLayoutRequest({
           pageIndex: readPageIndex(body)
         });
+        return json(req, res, 202, {
+          data: {
+            command_id: result.commandId,
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      if (req.method === "POST" && req.url === "/protocol/raw-frame/send") {
+        const body = await readJsonBody(req);
+        const result = await this.handlers.publishRawFrameCommand(readRawFrameRequest(body));
         return json(req, res, 202, {
           data: {
             command_id: result.commandId,
@@ -280,6 +293,28 @@ export function readBundleCompareRequest(body: Record<string, unknown>): {
   return {
     baselineBundleId,
     comparisonBundleId
+  };
+}
+
+export function readRawFrameRequest(body: Record<string, unknown>): {
+  protocolName: string;
+  bytesHex: string;
+} {
+  const protocolName = body.protocol_name;
+  const bytesHex = body.bytes_hex;
+  if (typeof protocolName !== "string" || protocolName.trim().length === 0) {
+    throw new HttpRequestError("Raw frame request requires a non-empty string protocol_name.");
+  }
+  if (typeof bytesHex !== "string" || bytesHex.length === 0) {
+    throw new HttpRequestError("Raw frame request requires a non-empty string bytes_hex.");
+  }
+  if (!/^[0-9a-f]+$/.test(bytesHex) || bytesHex.length % 2 !== 0) {
+    throw new HttpRequestError("Raw frame request bytes_hex must be even-length lowercase hex.");
+  }
+
+  return {
+    protocolName: protocolName.trim(),
+    bytesHex
   };
 }
 

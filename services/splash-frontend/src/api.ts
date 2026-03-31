@@ -9,6 +9,7 @@ import type {
   ProtocolBundleSummaryResponse,
   ProtocolPromptInputType,
   ProtocolPromptResponse,
+  RawFrameSendResponse,
   RemoteLayoutRequestResponse
 } from "./types";
 
@@ -205,6 +206,28 @@ export async function requestRemoteLayoutPage(input: { pageIndex: number }): Pro
   }
 
   return (await response.json()) as RemoteLayoutRequestResponse;
+}
+
+export async function sendRawProtocolFrame(input: {
+  protocolName: string;
+  bytesHex: string;
+}): Promise<RawFrameSendResponse> {
+  const response = await fetch(buildApiUrl("/protocol/raw-frame/send"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      protocol_name: input.protocolName,
+      bytes_hex: input.bytesHex
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Raw frame send failed with HTTP ${response.status}.`);
+  }
+
+  return (await response.json()) as RawFrameSendResponse;
 }
 
 function normalizeBaseUrl(value: string | undefined): string {

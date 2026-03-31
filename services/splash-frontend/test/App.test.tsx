@@ -461,6 +461,58 @@ test("captures explorer bundles and creates annotation and prompt records", asyn
   });
 });
 
+test("submits a manual raw frame send from Protocol Explorer", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (input.endsWith("/equipment") && (!init || !init.method)) {
+        return response({
+          data: [],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/health")) {
+        return response({ status: "ok", error: null });
+      }
+
+      if (input.endsWith("/protocol/bundles") && (!init || !init.method)) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/protocol/raw-frame/send") && init?.method === "POST") {
+        return response({
+          data: {
+            command_id: "command-raw-1",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      throw new Error(`Unhandled fetch call for ${input}`);
+    })
+  );
+
+  render(<App />);
+  await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+
+  fireEvent.change(screen.getByLabelText("Raw frame hex"), {
+    target: { value: "ff00ffa5011022e1010001ba" }
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send raw frame" }));
+
+  await waitFor(() => {
+    const fetchMock = vi.mocked(globalThis.fetch);
+    assert.ok(
+      fetchMock.mock.calls.some((call) => {
+        const [url, init] = call;
+        return typeof url === "string" && url.endsWith("/protocol/raw-frame/send") && init?.method === "POST";
+      })
+    );
+  });
+});
+
 function response(payload: unknown): Response {
   return {
     ok: true,

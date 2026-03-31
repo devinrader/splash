@@ -236,3 +236,48 @@ test("command coordinator completes transport-ack diagnostic commands after writ
   assert.ok(results.includes("transmitted"));
   assert.ok(results.includes("completed"));
 });
+
+test("command coordinator completes manual raw frame commands after write acknowledgement", async () => {
+  const session = new FakeSession();
+  const coordinator = new CommandCoordinator(noopLogger, 100);
+  coordinator.setActiveSelection(selection, pentairEasyTouchPlugin);
+  coordinator.attach(session);
+
+  await session.emit("serial.port.status", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    status: "connected",
+    reported_at: "2026-03-30T00:00:00Z"
+  });
+  await session.emit(
+    "protocol.command.intent",
+    commandIntent({
+      command_id: "command-raw-frame",
+      command_type: "send_raw_frame",
+      arguments: {
+        bytes_hex: "ff00ffa5011022e1010001ba"
+      }
+    })
+  );
+
+  const writes = session.published.filter((entry) => entry.subject === "serial.write.request");
+  assert.equal(writes.length, 1);
+
+  await session.emit("serial.tx.raw", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    command_id: "command-raw-frame",
+    written_at: "2026-03-30T00:00:01Z",
+    bytes_hex: writes[0]?.payload.bytes_hex,
+    byte_count: writes[0]?.payload.byte_count,
+    write_result: "ok",
+    error_code: null,
+    detail: null
+  });
+
+  const results = session.published
+    .filter((entry) => entry.subject === "command.result.command-raw-frame")
+    .map((entry) => entry.payload.status);
+  assert.ok(results.includes("transmitted"));
+  assert.ok(results.includes("completed"));
+});

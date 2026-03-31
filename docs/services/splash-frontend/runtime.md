@@ -20,6 +20,8 @@ The initial milestone runtime is intentionally narrow:
    - creates saved bundles
    - compares saved bundles
    - reads and creates annotations and prompts
+   - submits manual Remote Layout page requests
+   - submits manual raw frame sends
    - shows outbound diagnostic request events such as `protocol.command.encoded`
      and `serial.tx.raw` when present
 
@@ -43,6 +45,7 @@ Protocol Explorer flow:
 4. frontend compares saved bundles through `POST /protocol/bundles/compare`
 5. frontend reads or creates annotations and prompts through
    `/protocol/annotations` and `/protocol/prompts`
+6. frontend may send manual Remote Layout or raw frame diagnostic requests
 
 Cross-origin local development rule:
 
@@ -91,5 +94,9 @@ Cross-origin local development rule:
   - operator-needed prompts
 - the live frame list should stay inside a bounded scroll region so ongoing
   frame traffic does not continuously increase overall page height
+- manual Remote Layout and raw-frame send actions should remain clearly labeled
+  as diagnostic-only
+- raw-frame send should preserve the operator-provided lowercase hex exactly and
+  should not imply protocol-level success when the transport write succeeds
 - the first slice may stay intentionally developer-oriented and does not need
   the full long-term product navigation treatment yet

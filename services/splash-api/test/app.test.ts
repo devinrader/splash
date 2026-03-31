@@ -70,6 +70,34 @@ test("app publishes a manual Remote Layout request intent for Protocol Explorer"
   assert.equal((session.published[0].payload.arguments as { page_index: number }).page_index, 5);
 });
 
+test("app publishes a manual raw frame request intent for Protocol Explorer", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC"
+    },
+    logger: noopLogger
+  });
+  const session = new FakeSession();
+
+  const result = await app.publishRawFrameCommand(
+    { protocolName: "pentair_easytouch", bytesHex: "ff00ffa5011022e1010001ba" },
+    session
+  );
+
+  assert.ok(result.commandId);
+  assert.equal(session.published.length, 1);
+  assert.equal(session.published[0].subject, "protocol.command.intent");
+  assert.equal(session.published[0].payload.command_type, "send_raw_frame");
+  assert.equal(
+    (session.published[0].payload.arguments as { bytes_hex: string }).bytes_hex,
+    "ff00ffa5011022e1010001ba"
+  );
+});
+
 test("app republishes protocol frame events to the Protocol Explorer broker", async () => {
   const app = new App({
     config: {

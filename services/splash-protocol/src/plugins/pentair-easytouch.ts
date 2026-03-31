@@ -414,7 +414,43 @@ function buildPentairFrame(protocolByte: number, destination: number, source: nu
   return Uint8Array.from(frame);
 }
 
+function parseExactHex(bytesHex: string): Uint8Array {
+  if (!/^[0-9a-f]+$/.test(bytesHex) || bytesHex.length % 2 !== 0) {
+    throw new ProtocolCommandError("Raw frame bytes must be even-length lowercase hex.", "invalid_raw_bytes_hex");
+  }
+
+  const bytes = new Uint8Array(bytesHex.length / 2);
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = Number.parseInt(bytesHex.slice(index * 2, index * 2 + 2), 16);
+  }
+  return bytes;
+}
+
 function encodePentairCommand(intent: NormalizedCommandIntent): CommandEncodingPlan {
+  if (intent.command_type === "send_raw_frame") {
+    const bytesHex = intent.arguments.bytes_hex;
+    if (typeof bytesHex !== "string") {
+      throw new ProtocolCommandError("Raw frame command requires string bytes_hex.", "command_arguments_invalid");
+    }
+
+    const bytes = parseExactHex(bytesHex);
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex,
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "transport_ack"
+      }
+    };
+  }
+
   if (intent.command_type === "request_remote_layout_page") {
     const pageIndex = intent.arguments.page_index;
     if (typeof pageIndex !== "number" || !Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex > 255) {
@@ -440,7 +476,10 @@ function encodePentairCommand(intent: NormalizedCommandIntent): CommandEncodingP
   }
 
   if (intent.command_type !== "set_speed") {
-    throw new ProtocolCommandError("pentair_easytouch only supports direct pump set_speed and manual Remote Layout requests in the current command slice.", "unsupported_command_encode");
+    throw new ProtocolCommandError(
+      "pentair_easytouch only supports direct pump set_speed, manual Remote Layout requests, and Explorer raw frame sends in the current command slice.",
+      "unsupported_command_encode"
+    );
   }
 
   if (intent.target.equipment_type !== "pump") {

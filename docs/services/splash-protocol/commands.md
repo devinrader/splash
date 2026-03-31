@@ -29,6 +29,7 @@ The first live command supported by `splash-protocol` is:
 The first Explorer-only diagnostic command should be:
 
 - Pentair manual Remote Layout page request
+- Pentair manual raw frame send
 
 Initial scope rules:
 
@@ -101,6 +102,25 @@ Initial rules:
   - complete once the transport write is observed successfully
   - later `0x21` response correlation is tracked separately as protocol mapping
     work, not required for this first diagnostic slice
+
+## Manual raw-frame diagnostic request
+
+Protocol Explorer may also trigger an explicit raw bus write without pretending
+it is a normalized equipment-control action.
+
+Initial rules:
+
+- protocol plugin: `pentair_easytouch`
+- command type: `send_raw_frame`
+- arguments:
+  - `bytes_hex`
+- the first slice must:
+  - validate lowercase hex shape
+  - preserve the exact operator-provided bytes
+  - avoid checksum or field rewriting
+- initial completion rule:
+  - complete once the transport write is observed successfully
+  - do not imply any protocol-level semantic success
 
 ## Result stages
 

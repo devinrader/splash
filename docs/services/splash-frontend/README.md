@@ -29,6 +29,8 @@ It should:
 - surface command pending, completion, and failure state to the operator
 - expose a narrow developer-facing Protocol Explorer view that consumes the
   shared `splash-api` protocol endpoints without bypassing the documented API
+- allow developer-oriented diagnostic actions such as manual Remote Layout and
+  raw frame sends through the documented Protocol Explorer API routes
 
 It should not:
 

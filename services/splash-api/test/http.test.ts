@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HttpRequestError, corsHeaders, readBundleCompareRequest } from "../src/http.js";
+import { HttpRequestError, corsHeaders, readBundleCompareRequest, readRawFrameRequest } from "../src/http.js";
 
 test("corsHeaders echoes browser origin when present", () => {
   const headers = corsHeaders({
@@ -32,6 +32,21 @@ test("readBundleCompareRequest rejects malformed bundle compare requests", () =>
     (error: unknown) => {
       assert.ok(error instanceof HttpRequestError);
       assert.match(error.message, /baseline_bundle_id/);
+      return true;
+    }
+  );
+});
+
+test("readRawFrameRequest rejects non-lowercase or odd-length hex", () => {
+  assert.throws(
+    () =>
+      readRawFrameRequest({
+        protocol_name: "pentair_easytouch",
+        bytes_hex: "FF"
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpRequestError);
+      assert.match(error.message, /even-length lowercase hex/);
       return true;
     }
   );

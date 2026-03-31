@@ -218,6 +218,25 @@ Initial implementation note:
 - later controller `0x21` traffic is inspected through the live frame stream
   and saved bundles
 
+### Manual raw frame send
+
+- the operator pastes an explicit lowercase hex frame into Protocol Explorer
+- `splash-api` publishes a diagnostic `protocol.command.intent`
+- `splash-protocol` treats the bytes as an Explorer-only raw write request
+- `splash-serial` writes the exact bytes to the bus without checksum or field
+  rewriting in the first slice
+- Explorer inspects:
+  - `protocol.command.encoded`
+  - `serial.tx.raw`
+  - any later receive-side response traffic
+
+Guardrails:
+
+- this path is diagnostic-only and not promoted into normal dashboard or task
+  controls
+- malformed hex must be rejected before publish
+- the first slice should complete on transport acknowledgement only
+
 ### Decoder
 
 - paste hex frame

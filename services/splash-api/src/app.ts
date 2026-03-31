@@ -104,6 +104,24 @@ export class App {
     return this.protocolPrompts.create(input);
   }
 
+  async publishRawFrameCommand(input: { protocolName: string; bytesHex: string }, session: MessagingSession): Promise<{ commandId: string }> {
+    const commandId = randomUUID();
+    await session.publish("protocol.command.intent", {
+      pool_id: this.config.poolId,
+      command_id: commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: input.protocolName,
+      target: {},
+      command_type: "send_raw_frame",
+      arguments: {
+        bytes_hex: input.bytesHex
+      },
+      requested_by: "protocol_explorer",
+      dry_run: false
+    });
+    return { commandId };
+  }
+
   async publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }, session: MessagingSession): Promise<{ commandId: string }> {
     const equipment = this.bridge.get(input.equipmentId);
     if (!equipment || equipment.equipmentType !== "pump" || !equipment.busAddress) {
@@ -175,6 +193,13 @@ export class App {
             throw new Error("NATS session unavailable.");
           }
           return this.publishRemoteLayoutRequest({ pageIndex }, session);
+        },
+        publishRawFrameCommand: async ({ protocolName, bytesHex }) => {
+          const session = this.currentSession;
+          if (!session) {
+            throw new Error("NATS session unavailable.");
+          }
+          return this.publishRawFrameCommand({ protocolName, bytesHex }, session);
         },
         publishPumpSpeedCommand: async ({ equipmentId, rpm }) => {
           const session = this.currentSession;

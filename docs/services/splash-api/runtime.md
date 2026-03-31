@@ -53,6 +53,11 @@ For the first browser milestone, `splash-api` should:
     - publishing a diagnostic `protocol.command.intent`
     - keeping the flow explicitly Explorer-only rather than normal automation
       or dashboard control
+12. expose a first manual raw-frame send slice by:
+    - accepting explicit lowercase hex bytes from Protocol Explorer
+    - publishing a diagnostic `protocol.command.intent`
+    - keeping the flow explicitly Explorer-only rather than normal automation
+      or dashboard control
 
 ## Initial equipment catalog bridge
 
@@ -108,6 +113,7 @@ The first slice should at least support:
 - `GET /protocol/prompts`
 - `POST /protocol/prompts`
 - `POST /protocol/remote-layout/request`
+- `POST /protocol/raw-frame/send`
 
 Rules:
 
@@ -127,6 +133,9 @@ Rules:
   broader task or notification workflow exists
 - the first manual Remote Layout request slice may remain a thin API-to-NATS
   bridge as long as it is explicitly scoped to Protocol Explorer diagnostics
+- the first manual raw-frame send slice may remain a thin API-to-NATS bridge as
+  long as it is explicitly scoped to Protocol Explorer diagnostics and does not
+  silently rewrite the operator-provided bytes
 - the API should allow browser-origin requests from the frontend deployment
   origin, including the local milestone topology where `splash-frontend` runs
   on `127.0.0.1:3000` and `splash-api` runs on `127.0.0.1:8080`

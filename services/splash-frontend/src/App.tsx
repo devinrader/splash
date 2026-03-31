@@ -11,6 +11,7 @@ import {
   fetchProtocolBundles,
   fetchProtocolPrompts,
   requestRemoteLayoutPage,
+  sendRawProtocolFrame,
   requestPumpSpeed
 } from "./api";
 import { useFrontendStore } from "./store";
@@ -43,6 +44,7 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bundleLabel, setBundleLabel] = useState("");
   const [remoteLayoutPageIndex, setRemoteLayoutPageIndex] = useState("0");
+  const [rawFrameHex, setRawFrameHex] = useState("ff00ffa5011022e1010001ba");
   const [recentFrames, setRecentFrames] = useState<ProtocolFrameEvent[]>([]);
   const [bundles, setBundles] = useState<ProtocolBundleSummary[]>([]);
   const [baselineBundleId, setBaselineBundleId] = useState("");
@@ -213,6 +215,30 @@ export default function App() {
         command_id: response.data.command_id,
         status: response.data.status,
         detail: `Manual Remote Layout request for page ${pageIndex} accepted.`
+      });
+    } catch (error) {
+      setExplorerError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleRawFrameSend(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const bytesHex = rawFrameHex.trim();
+    if (!/^[0-9a-f]+$/.test(bytesHex) || bytesHex.length % 2 !== 0) {
+      setExplorerError("Enter even-length lowercase hex bytes for the raw frame.");
+      return;
+    }
+
+    try {
+      setExplorerError(null);
+      const response = await sendRawProtocolFrame({
+        protocolName: "pentair_easytouch",
+        bytesHex
+      });
+      applyCommandResult({
+        command_id: response.data.command_id,
+        status: response.data.status,
+        detail: `Manual raw frame send accepted for ${bytesHex}.`
       });
     } catch (error) {
       setExplorerError(error instanceof Error ? error.message : String(error));
@@ -403,6 +429,16 @@ export default function App() {
                 onChange={(event) => setRemoteLayoutPageIndex(event.target.value)}
               />
               <button type="submit">Request page</button>
+            </form>
+            <form className="inline-form" onSubmit={(event) => void handleRawFrameSend(event)}>
+              <label htmlFor="raw-frame-hex">Raw frame hex</label>
+              <input
+                id="raw-frame-hex"
+                value={rawFrameHex}
+                onChange={(event) => setRawFrameHex(event.target.value)}
+                placeholder="ff00ffa5011022e1010001ba"
+              />
+              <button type="submit">Send raw frame</button>
             </form>
           </div>
         </div>

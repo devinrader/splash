@@ -36,6 +36,14 @@ export interface RemoteLayoutRequestResponse {
   error: unknown;
 }
 
+export interface RawFrameSendResponse {
+  data: {
+    command_id: string;
+    status: string;
+  };
+  error: unknown;
+}
+
 export interface CommandResultEvent {
   command_id?: string;
   status?: string;

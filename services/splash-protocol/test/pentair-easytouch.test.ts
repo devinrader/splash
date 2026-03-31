@@ -328,6 +328,54 @@ test("pentairEasyTouchPlugin encodes a manual Remote Layout page request", () =>
   assert.equal(encoded.correlation?.kind, "transport_ack");
 });
 
+test("pentairEasyTouchPlugin encodes a manual raw frame send without rewriting bytes", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-raw-frame",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {},
+      command_type: "send_raw_frame",
+      arguments: {
+        bytes_hex: "ff00ffa5011022e1010001ba"
+      },
+      dry_run: false
+    },
+    {}
+  );
+
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0].bytesHex, "ff00ffa5011022e1010001ba");
+  assert.equal(encoded.correlation?.kind, "transport_ack");
+});
+
+test("pentairEasyTouchPlugin rejects malformed manual raw frame hex", () => {
+  assert.throws(
+    () =>
+      pentairEasyTouchPlugin.encodeCommand(
+        {
+          pool_id: "pool-1",
+          command_id: "command-raw-frame",
+          requested_at: "2026-03-30T00:00:00Z",
+          protocol_name: "pentair_easytouch",
+          target: {},
+          command_type: "send_raw_frame",
+          arguments: {
+            bytes_hex: "FF"
+          },
+          dry_run: false
+        },
+        {}
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof ProtocolCommandError);
+      assert.equal(error.errorCode, "invalid_raw_bytes_hex");
+      return true;
+    }
+  );
+});
+
 test("pentairEasyTouchPlugin rejects unsupported initial command targets", () => {
   assert.throws(
     () =>
