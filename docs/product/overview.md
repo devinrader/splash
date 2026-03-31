@@ -116,6 +116,12 @@ The application uses a persistent left sidebar on desktop and a collapsed or bot
 3. Remaining v1 features: maintenance reminders, seasonal checklists, task list, predictive rules, cover tracking, SLAM workflow, Protocol Explorer, and rainfall tracking
 4. Future roadmap: dosing recommendations, usage-based maintenance, autonomous automation, predictive fault detection, energy optimization, dark mode, and virtual or mock pool simulation for hardware-free testing and demos
 
+Developer-note:
+
+- narrow Protocol Explorer tooling may still appear earlier than the broader
+  product-facing Protocol Explorer screen when that tooling is needed to
+  complete reverse-engineering work for the initial milestone
+
 ## Primary technical risks
 
 - RS-485 decoding varies by vendor and firmware version

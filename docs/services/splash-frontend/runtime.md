@@ -15,6 +15,11 @@ The initial milestone runtime is intentionally narrow:
 3. open SSE for live updates
 4. submit pump-speed control requests through the REST API
 5. reflect command lifecycle state in the browser
+6. expose a narrow Protocol Explorer panel that:
+   - streams `GET /protocol/frames`
+   - creates saved bundles
+   - compares saved bundles
+   - reads and creates annotations and prompts
 
 ## Data flow
 
@@ -27,6 +32,15 @@ The initial milestone runtime is intentionally narrow:
 6. operator submits a pump-speed change
 7. frontend sends `POST /equipment/:id/control`
 8. frontend shows pending state until `command.result` resolves the action
+
+Protocol Explorer flow:
+
+1. browser opens `GET /protocol/frames`
+2. frontend shows recent raw and decoded frame events
+3. operator saves one or more frame bundles through `POST /protocol/bundles`
+4. frontend compares saved bundles through `POST /protocol/bundles/compare`
+5. frontend reads or creates annotations and prompts through
+   `/protocol/annotations` and `/protocol/prompts`
 
 ## Event handling rules
 
@@ -55,3 +69,16 @@ The initial milestone runtime is intentionally narrow:
 - `command.result` should clear pending state and show success or failure
 - if no matching completion arrives before the API reports timeout or failure,
   the UI should show the latest command state without guessing success
+
+## Explorer UX rules
+
+- the first frontend Protocol Explorer slice may be secondary to the milestone
+  dashboard rather than a top-level navigation destination
+- the Explorer should distinguish:
+  - live protocol events
+  - saved bundles
+  - bundle diffs
+  - annotations
+  - operator-needed prompts
+- the first slice may stay intentionally developer-oriented and does not need
+  the full long-term product navigation treatment yet

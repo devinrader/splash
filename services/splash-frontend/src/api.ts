@@ -1,4 +1,15 @@
-import type { CommandAcceptedResponse, EquipmentResponse, HealthResponse } from "./types";
+import type {
+  CommandAcceptedResponse,
+  EquipmentResponse,
+  HealthResponse,
+  ProtocolAnnotationConfidence,
+  ProtocolAnnotationResponse,
+  ProtocolBundleComparisonResponse,
+  ProtocolBundleCreatedResponse,
+  ProtocolBundleSummaryResponse,
+  ProtocolPromptInputType,
+  ProtocolPromptResponse
+} from "./types";
 
 const apiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
@@ -45,6 +56,136 @@ export async function requestPumpSpeed(input: { equipmentId: string; rpm: number
   }
 
   return (await response.json()) as CommandAcceptedResponse;
+}
+
+export async function fetchProtocolBundles(): Promise<ProtocolBundleSummaryResponse> {
+  const response = await fetch(buildApiUrl("/protocol/bundles"));
+  if (!response.ok) {
+    throw new Error(`Protocol bundles request failed with HTTP ${response.status}.`);
+  }
+  return (await response.json()) as ProtocolBundleSummaryResponse;
+}
+
+export async function createProtocolBundle(input: { label: string | null }): Promise<ProtocolBundleCreatedResponse> {
+  const response = await fetch(buildApiUrl("/protocol/bundles"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      label: input.label
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Protocol bundle creation failed with HTTP ${response.status}.`);
+  }
+
+  return (await response.json()) as ProtocolBundleCreatedResponse;
+}
+
+export async function compareProtocolBundles(input: {
+  baselineBundleId: string;
+  comparisonBundleId: string;
+}): Promise<ProtocolBundleComparisonResponse> {
+  const response = await fetch(buildApiUrl("/protocol/bundles/compare"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      baseline_bundle_id: input.baselineBundleId,
+      comparison_bundle_id: input.comparisonBundleId
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Protocol bundle comparison failed with HTTP ${response.status}.`);
+  }
+
+  return (await response.json()) as ProtocolBundleComparisonResponse;
+}
+
+export async function fetchProtocolAnnotations(bundleId: string): Promise<ProtocolAnnotationResponse> {
+  const response = await fetch(buildApiUrl(`/protocol/annotations?bundle_id=${encodeURIComponent(bundleId)}`));
+  if (!response.ok) {
+    throw new Error(`Protocol annotations request failed with HTTP ${response.status}.`);
+  }
+  return (await response.json()) as ProtocolAnnotationResponse;
+}
+
+export async function createProtocolAnnotation(input: {
+  bundleId: string;
+  frameIndex: number;
+  fieldName: string;
+  byteStart: number;
+  byteEnd: number;
+  confidence: ProtocolAnnotationConfidence;
+  label: string;
+  notes: string | null;
+}): Promise<{ data: unknown; error: unknown }> {
+  const response = await fetch(buildApiUrl("/protocol/annotations"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      bundle_id: input.bundleId,
+      frame_index: input.frameIndex,
+      field_name: input.fieldName,
+      byte_start: input.byteStart,
+      byte_end: input.byteEnd,
+      confidence: input.confidence,
+      label: input.label,
+      notes: input.notes
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Protocol annotation creation failed with HTTP ${response.status}.`);
+  }
+
+  return (await response.json()) as { data: unknown; error: unknown };
+}
+
+export async function fetchProtocolPrompts(bundleId: string): Promise<ProtocolPromptResponse> {
+  const response = await fetch(buildApiUrl(`/protocol/prompts?bundle_id=${encodeURIComponent(bundleId)}`));
+  if (!response.ok) {
+    throw new Error(`Protocol prompts request failed with HTTP ${response.status}.`);
+  }
+  return (await response.json()) as ProtocolPromptResponse;
+}
+
+export async function createProtocolPrompt(input: {
+  bundleId: string;
+  frameIndex: number;
+  fieldName: string | null;
+  prompt: string;
+  why: string;
+  inputType: ProtocolPromptInputType;
+  operatorResponse: string | null;
+}): Promise<{ data: unknown; error: unknown }> {
+  const response = await fetch(buildApiUrl("/protocol/prompts"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      bundle_id: input.bundleId,
+      frame_index: input.frameIndex,
+      field_name: input.fieldName,
+      prompt: input.prompt,
+      why: input.why,
+      input_type: input.inputType,
+      operator_response: input.operatorResponse
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Protocol prompt creation failed with HTTP ${response.status}.`);
+  }
+
+  return (await response.json()) as { data: unknown; error: unknown };
 }
 
 function normalizeBaseUrl(value: string | undefined): string {

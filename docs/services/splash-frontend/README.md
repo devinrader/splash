@@ -27,6 +27,8 @@ It should:
 - render the milestone-1 latest-state surface
 - submit pump-speed commands through `POST /equipment/:id/control`
 - surface command pending, completion, and failure state to the operator
+- expose a narrow developer-facing Protocol Explorer view that consumes the
+  shared `splash-api` protocol endpoints without bypassing the documented API
 
 It should not:
 
@@ -43,6 +45,8 @@ It should not:
   product docs: calm, clear, trustworthy, and responsive
 - the initial slice may rely on the milestone-1 `splash-api` equipment bridge
   rather than the future repository-backed equipment inventory
+- the first frontend Protocol Explorer slice may be a developer-oriented
+  secondary panel rather than the full long-term standalone screen
 
 ## Primary references
 

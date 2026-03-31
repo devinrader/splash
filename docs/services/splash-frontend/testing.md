@@ -15,6 +15,10 @@ coverage to validate the browser read and control slice without a live backend.
 - submit pump-speed control through `POST /equipment/:id/control`
 - disable repeat submission while a command is pending
 - surface API or command failures in the UI
+- render a narrow Protocol Explorer panel from mocked protocol frame and bundle
+  APIs
+- create bundle comparison, annotation, and prompt requests through the
+  documented API endpoints
 
 ## Preferred tooling
 

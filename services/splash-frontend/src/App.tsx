@@ -1,7 +1,26 @@
-import { startTransition, useEffect, useState } from "react";
-import { fetchEquipment, fetchHealth, requestPumpSpeed, buildApiUrl } from "./api";
+import { startTransition, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  buildApiUrl,
+  compareProtocolBundles,
+  createProtocolAnnotation,
+  createProtocolBundle,
+  createProtocolPrompt,
+  fetchEquipment,
+  fetchHealth,
+  fetchProtocolAnnotations,
+  fetchProtocolBundles,
+  fetchProtocolPrompts,
+  requestPumpSpeed
+} from "./api";
 import { useFrontendStore } from "./store";
-import type { EquipmentRecord } from "./types";
+import type {
+  EquipmentRecord,
+  ProtocolAnnotation,
+  ProtocolBundleComparison,
+  ProtocolBundleSummary,
+  ProtocolFrameEvent,
+  ProtocolPrompt
+} from "./types";
 import "./styles.css";
 
 export default function App() {
@@ -21,9 +40,40 @@ export default function App() {
 
   const [rpmInput, setRpmInput] = useState("2800");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [bundleLabel, setBundleLabel] = useState("");
+  const [recentFrames, setRecentFrames] = useState<ProtocolFrameEvent[]>([]);
+  const [bundles, setBundles] = useState<ProtocolBundleSummary[]>([]);
+  const [baselineBundleId, setBaselineBundleId] = useState("");
+  const [comparisonBundleId, setComparisonBundleId] = useState("");
+  const [bundleComparison, setBundleComparison] = useState<ProtocolBundleComparison | null>(null);
+  const [selectedBundleId, setSelectedBundleId] = useState("");
+  const [annotations, setAnnotations] = useState<ProtocolAnnotation[]>([]);
+  const [prompts, setPrompts] = useState<ProtocolPrompt[]>([]);
+  const [annotationLabel, setAnnotationLabel] = useState("");
+  const [annotationNotes, setAnnotationNotes] = useState("");
+  const [annotationFieldName, setAnnotationFieldName] = useState("payload_hex");
+  const [annotationFrameIndex, setAnnotationFrameIndex] = useState("0");
+  const [annotationByteStart, setAnnotationByteStart] = useState("0");
+  const [annotationByteEnd, setAnnotationByteEnd] = useState("0");
+  const [annotationConfidence, setAnnotationConfidence] = useState<"known" | "inferred" | "unknown">("inferred");
+  const [promptQuestion, setPromptQuestion] = useState("");
+  const [promptWhy, setPromptWhy] = useState("");
+  const [promptFieldName, setPromptFieldName] = useState("payload_hex");
+  const [promptFrameIndex, setPromptFrameIndex] = useState("0");
+  const [promptInputType, setPromptInputType] = useState<"controller_menu_state" | "equipment_behavior" | "circuit_name" | "configured_rpm">(
+    "controller_menu_state"
+  );
+  const [explorerError, setExplorerError] = useState<string | null>(null);
 
   useEffect(() => {
     void loadInitialState({ setEquipment, setHealthStatus, setErrorMessage });
+    void refreshBundles({
+      setBundles,
+      setBaselineBundleId,
+      setComparisonBundleId,
+      setSelectedBundleId,
+      setExplorerError
+    });
   }, [setEquipment, setErrorMessage, setHealthStatus]);
 
   useEffect(() => {
@@ -64,6 +114,36 @@ export default function App() {
     };
   }, [applyCommandResult, applyEquipmentStateEvent, applyPumpStateEvent, setEquipment, setErrorMessage, setHealthStatus, setSseStatus]);
 
+  useEffect(() => {
+    const source = new EventSource(buildApiUrl("/protocol/frames"));
+
+    source.addEventListener("protocol.frame.raw", (event) => {
+      appendFrame(setRecentFrames, "protocol.frame.raw", parseEventPayload(event));
+    });
+
+    source.addEventListener("protocol.frame.decoded", (event) => {
+      appendFrame(setRecentFrames, "protocol.frame.decoded", parseEventPayload(event));
+    });
+
+    source.onerror = () => {
+      setExplorerError((current) => current ?? "Protocol frame stream disconnected.");
+    };
+
+    return () => {
+      source.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedBundleId) {
+      setAnnotations([]);
+      setPrompts([]);
+      return;
+    }
+
+    void refreshExplorerMetadata(selectedBundleId, setAnnotations, setPrompts, setExplorerError);
+  }, [selectedBundleId]);
+
   const controller = equipment["controller-main"];
   const pump = equipment["pump-main"];
   const chlorinator = equipment["chlorinator-main"];
@@ -90,6 +170,95 @@ export default function App() {
     }
   }
 
+  async function handleBundleSave(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    try {
+      setExplorerError(null);
+      await createProtocolBundle({ label: bundleLabel.trim().length > 0 ? bundleLabel.trim() : null });
+      setBundleLabel("");
+      await refreshBundles({
+        setBundles,
+        setBaselineBundleId,
+        setComparisonBundleId,
+        setSelectedBundleId,
+        setExplorerError
+      });
+    } catch (error) {
+      setExplorerError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleBundleCompare(): Promise<void> {
+    if (!baselineBundleId || !comparisonBundleId) {
+      setExplorerError("Select both a baseline and comparison bundle.");
+      return;
+    }
+
+    try {
+      setExplorerError(null);
+      const response = await compareProtocolBundles({
+        baselineBundleId,
+        comparisonBundleId
+      });
+      setBundleComparison(response.data);
+    } catch (error) {
+      setExplorerError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleAnnotationSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!selectedBundleId) {
+      setExplorerError("Select a bundle before creating an annotation.");
+      return;
+    }
+
+    try {
+      setExplorerError(null);
+      await createProtocolAnnotation({
+        bundleId: selectedBundleId,
+        frameIndex: Number.parseInt(annotationFrameIndex, 10),
+        fieldName: annotationFieldName,
+        byteStart: Number.parseInt(annotationByteStart, 10),
+        byteEnd: Number.parseInt(annotationByteEnd, 10),
+        confidence: annotationConfidence,
+        label: annotationLabel,
+        notes: annotationNotes.trim().length > 0 ? annotationNotes.trim() : null
+      });
+      setAnnotationLabel("");
+      setAnnotationNotes("");
+      await refreshExplorerMetadata(selectedBundleId, setAnnotations, setPrompts, setExplorerError);
+    } catch (error) {
+      setExplorerError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handlePromptSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!selectedBundleId) {
+      setExplorerError("Select a bundle before creating a prompt.");
+      return;
+    }
+
+    try {
+      setExplorerError(null);
+      await createProtocolPrompt({
+        bundleId: selectedBundleId,
+        frameIndex: Number.parseInt(promptFrameIndex, 10),
+        fieldName: promptFieldName.trim().length > 0 ? promptFieldName.trim() : null,
+        prompt: promptQuestion,
+        why: promptWhy,
+        inputType: promptInputType,
+        operatorResponse: null
+      });
+      setPromptQuestion("");
+      setPromptWhy("");
+      await refreshExplorerMetadata(selectedBundleId, setAnnotations, setPrompts, setExplorerError);
+    } catch (error) {
+      setExplorerError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   return (
     <main className="page-shell">
       <section className="hero">
@@ -97,7 +266,7 @@ export default function App() {
           <p className="eyebrow">Milestone 1</p>
           <h1>Pool equipment read and control</h1>
           <p className="hero-copy">
-            Live temperatures, salt, and pump RPM with a direct browser control path for variable-speed pump changes.
+            Live temperatures, salt, and pump RPM with a controller-facing browser control path and a developer Protocol Explorer for reverse engineering.
           </p>
         </div>
         <div className="status-cluster" aria-label="service status">
@@ -120,31 +289,17 @@ export default function App() {
         </section>
       ) : null}
 
+      {explorerError ? (
+        <section className="notice notice-error" role="alert">
+          {explorerError}
+        </section>
+      ) : null}
+
       <section className="dashboard-grid">
-        <MetricCard
-          label="Air Temperature"
-          value={readMetric(controller?.latest_state.air_temp_f)}
-          unit="°F"
-          accent="sky"
-        />
-        <MetricCard
-          label="Water Temperature"
-          value={readMetric(controller?.latest_state.water_temp_f)}
-          unit="°F"
-          accent="water"
-        />
-        <MetricCard
-          label="Salt Level"
-          value={readMetric(chlorinator?.latest_state.salt_ppm)}
-          unit="ppm"
-          accent="sand"
-        />
-        <MetricCard
-          label="Pump Speed"
-          value={readMetric(pump?.latest_state.rpm)}
-          unit="RPM"
-          accent="pump"
-        />
+        <MetricCard label="Air Temperature" value={readMetric(controller?.latest_state.air_temp_f)} unit="°F" accent="sky" />
+        <MetricCard label="Water Temperature" value={readMetric(controller?.latest_state.water_temp_f)} unit="°F" accent="water" />
+        <MetricCard label="Salt Level" value={readMetric(chlorinator?.latest_state.salt_ppm)} unit="ppm" accent="sand" />
+        <MetricCard label="Pump Speed" value={readMetric(pump?.latest_state.rpm)} unit="RPM" accent="pump" />
       </section>
 
       <section className="control-panel">
@@ -152,7 +307,7 @@ export default function App() {
           <p className="panel-kicker">Pump control</p>
           <h2>{pump?.display_name ?? "Main Pump"}</h2>
           <p className="panel-copy">
-            The initial command path writes a direct Pentair pump RPM change and waits for a matching live pump-state confirmation.
+            The milestone command path stays on the production control loop while the Explorer below helps decode controller traffic and config writes.
           </p>
           <dl className="detail-grid">
             <div>
@@ -185,6 +340,229 @@ export default function App() {
           </button>
           <p className="form-caption">Pump speed changes remain disabled while the prior command is unresolved.</p>
         </form>
+      </section>
+
+      <section className="explorer-shell">
+        <div className="explorer-header">
+          <div>
+            <p className="panel-kicker">Protocol Explorer</p>
+            <h2>Live frames and collaborative decoding</h2>
+            <p className="panel-copy">
+              This panel is developer-facing on purpose. It helps capture controlled experiments, compare bundles, and record what still needs operator input.
+            </p>
+          </div>
+          <form className="inline-form" onSubmit={(event) => void handleBundleSave(event)}>
+            <label htmlFor="bundle-label">Bundle label</label>
+            <input
+              id="bundle-label"
+              value={bundleLabel}
+              onChange={(event) => setBundleLabel(event.target.value)}
+              placeholder="pool-high-before-change"
+            />
+            <button type="submit">Save frame bundle</button>
+          </form>
+        </div>
+
+        <div className="explorer-grid">
+          <article className="explorer-card">
+            <h3>Live frame stream</h3>
+            <p className="card-copy">Recent raw and decoded frame events from `/protocol/frames`.</p>
+            <div className="frame-list">
+              {recentFrames.length === 0 ? <p className="empty-state">Waiting for protocol frames...</p> : null}
+              {recentFrames.map((frame, index) => (
+                <div className="frame-item" key={`${frame.event}-${index}`}>
+                  <div className="frame-meta">
+                    <strong>{frame.event}</strong>
+                    <span>{summarizeFrame(frame.payload)}</span>
+                  </div>
+                  <pre>{JSON.stringify(frame.payload, null, 2)}</pre>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="explorer-card">
+            <h3>Saved bundles</h3>
+            <p className="card-copy">Capture recent traffic windows for baseline and comparison experiments.</p>
+            <div className="bundle-list">
+              {bundles.map((bundle) => (
+                <button
+                  className={`bundle-chip ${selectedBundleId === bundle.id ? "bundle-chip-active" : ""}`}
+                  key={bundle.id}
+                  type="button"
+                  onClick={() => setSelectedBundleId(bundle.id)}
+                >
+                  <strong>{bundle.label ?? "Untitled bundle"}</strong>
+                  <span>{bundle.frame_count} frames</span>
+                </button>
+              ))}
+              {bundles.length === 0 ? <p className="empty-state">No saved bundles yet.</p> : null}
+            </div>
+
+            <div className="compare-controls">
+              <label>
+                Baseline bundle
+                <select value={baselineBundleId} onChange={(event) => setBaselineBundleId(event.target.value)}>
+                  <option value="">Select baseline</option>
+                  {bundles.map((bundle) => (
+                    <option key={bundle.id} value={bundle.id}>
+                      {bundle.label ?? bundle.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Comparison bundle
+                <select value={comparisonBundleId} onChange={(event) => setComparisonBundleId(event.target.value)}>
+                  <option value="">Select comparison</option>
+                  {bundles.map((bundle) => (
+                    <option key={bundle.id} value={bundle.id}>
+                      {bundle.label ?? bundle.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" onClick={() => void handleBundleCompare()}>
+                Compare bundles
+              </button>
+            </div>
+          </article>
+
+          <article className="explorer-card explorer-card-wide">
+            <h3>Bundle diff</h3>
+            <p className="card-copy">Positional byte-level changes for `bytes_hex` and `payload_hex` fields.</p>
+            {bundleComparison ? (
+              <div className="diff-list">
+                {bundleComparison.frame_pairs.map((pair) => (
+                  <div className="diff-item" key={pair.index}>
+                    <div className="frame-meta">
+                      <strong>Frame {pair.index}</strong>
+                      <span>
+                        {pair.baseline_event ?? "missing"} → {pair.comparison_event ?? "missing"}
+                      </span>
+                    </div>
+                    {pair.changed_fields.length === 0 ? (
+                      <p className="empty-state">No byte-level hex changes for this frame pair.</p>
+                    ) : (
+                      pair.changed_fields.map((field) => (
+                        <div key={`${pair.index}-${field.field}`}>
+                          <p className="field-heading">{field.field}</p>
+                          <ul className="byte-change-list">
+                            {field.byte_changes.map((change) => (
+                              <li key={`${pair.index}-${field.field}-${change.byte_index}`}>
+                                byte {change.byte_index}: <code>{change.baseline || "--"}</code> →{" "}
+                                <code>{change.comparison || "--"}</code>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="empty-state">Select two bundles and run a comparison.</p>
+            )}
+          </article>
+
+          <article className="explorer-card">
+            <h3>Annotations</h3>
+            <p className="card-copy">Confidence-aware byte-range notes for the selected bundle.</p>
+            <form className="stack-form" onSubmit={(event) => void handleAnnotationSubmit(event)}>
+              <label>
+                Frame index
+                <input value={annotationFrameIndex} onChange={(event) => setAnnotationFrameIndex(event.target.value)} />
+              </label>
+              <label>
+                Field name
+                <input value={annotationFieldName} onChange={(event) => setAnnotationFieldName(event.target.value)} />
+              </label>
+              <label>
+                Byte start
+                <input value={annotationByteStart} onChange={(event) => setAnnotationByteStart(event.target.value)} />
+              </label>
+              <label>
+                Byte end
+                <input value={annotationByteEnd} onChange={(event) => setAnnotationByteEnd(event.target.value)} />
+              </label>
+              <label>
+                Confidence
+                <select value={annotationConfidence} onChange={(event) => setAnnotationConfidence(event.target.value as typeof annotationConfidence)}>
+                  <option value="known">known</option>
+                  <option value="inferred">inferred</option>
+                  <option value="unknown">unknown</option>
+                </select>
+              </label>
+              <label>
+                Label
+                <input value={annotationLabel} onChange={(event) => setAnnotationLabel(event.target.value)} />
+              </label>
+              <label>
+                Notes
+                <textarea value={annotationNotes} onChange={(event) => setAnnotationNotes(event.target.value)} />
+              </label>
+              <button type="submit">Save annotation</button>
+            </form>
+            <div className="record-list">
+              {annotations.map((annotation) => (
+                <div className="record-card" key={annotation.id}>
+                  <strong>{annotation.label}</strong>
+                  <span>
+                    {annotation.field_name} bytes {annotation.byte_start}-{annotation.byte_end} · {annotation.confidence}
+                  </span>
+                  {annotation.notes ? <p>{annotation.notes}</p> : null}
+                </div>
+              ))}
+              {selectedBundleId && annotations.length === 0 ? <p className="empty-state">No annotations for this bundle yet.</p> : null}
+            </div>
+          </article>
+
+          <article className="explorer-card">
+            <h3>Operator prompts</h3>
+            <p className="card-copy">Questions that need controller or equipment context from the operator.</p>
+            <form className="stack-form" onSubmit={(event) => void handlePromptSubmit(event)}>
+              <label>
+                Frame index
+                <input value={promptFrameIndex} onChange={(event) => setPromptFrameIndex(event.target.value)} />
+              </label>
+              <label>
+                Field name
+                <input value={promptFieldName} onChange={(event) => setPromptFieldName(event.target.value)} />
+              </label>
+              <label>
+                Prompt
+                <input value={promptQuestion} onChange={(event) => setPromptQuestion(event.target.value)} />
+              </label>
+              <label>
+                Why it matters
+                <textarea value={promptWhy} onChange={(event) => setPromptWhy(event.target.value)} />
+              </label>
+              <label>
+                Expected input type
+                <select value={promptInputType} onChange={(event) => setPromptInputType(event.target.value as typeof promptInputType)}>
+                  <option value="controller_menu_state">controller_menu_state</option>
+                  <option value="equipment_behavior">equipment_behavior</option>
+                  <option value="circuit_name">circuit_name</option>
+                  <option value="configured_rpm">configured_rpm</option>
+                </select>
+              </label>
+              <button type="submit">Save prompt</button>
+            </form>
+            <div className="record-list">
+              {prompts.map((prompt) => (
+                <div className="record-card" key={prompt.id}>
+                  <strong>{prompt.prompt}</strong>
+                  <span>
+                    {prompt.input_type} · {prompt.status}
+                  </span>
+                  <p>{prompt.why}</p>
+                </div>
+              ))}
+              {selectedBundleId && prompts.length === 0 ? <p className="empty-state">No prompts for this bundle yet.</p> : null}
+            </div>
+          </article>
+        </div>
       </section>
     </main>
   );
@@ -265,6 +643,61 @@ async function refreshHealth(
   }
 }
 
+async function refreshBundles({
+  setBundles,
+  setBaselineBundleId,
+  setComparisonBundleId,
+  setSelectedBundleId,
+  setExplorerError
+}: {
+  setBundles: (bundles: ProtocolBundleSummary[]) => void;
+  setBaselineBundleId: (value: string) => void;
+  setComparisonBundleId: (value: string) => void;
+  setSelectedBundleId: (value: string) => void;
+  setExplorerError: (value: string | null) => void;
+}): Promise<void> {
+  try {
+    const response = await fetchProtocolBundles();
+    const nextBundles = response.data;
+    setBundles(nextBundles);
+    setExplorerError(null);
+    if (nextBundles.length > 0) {
+      setSelectedBundleId(nextBundles[0]?.id || "");
+      setBaselineBundleId(nextBundles[0]?.id || "");
+      setComparisonBundleId(nextBundles[1]?.id || nextBundles[0]?.id || "");
+    }
+  } catch (error) {
+    setExplorerError(error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function refreshExplorerMetadata(
+  bundleId: string,
+  setAnnotations: (value: ProtocolAnnotation[]) => void,
+  setPrompts: (value: ProtocolPrompt[]) => void,
+  setExplorerError: (value: string | null) => void
+): Promise<void> {
+  try {
+    const [annotationResponse, promptResponse] = await Promise.all([
+      fetchProtocolAnnotations(bundleId),
+      fetchProtocolPrompts(bundleId)
+    ]);
+    setAnnotations(annotationResponse.data);
+    setPrompts(promptResponse.data);
+    setExplorerError(null);
+  } catch (error) {
+    setExplorerError(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function appendFrame(
+  setRecentFrames: Dispatch<SetStateAction<ProtocolFrameEvent[]>>,
+  event: string,
+  payload: Record<string, unknown>
+): void {
+  setRecentFrames((current) => [{ event, payload }, ...current].slice(0, 12));
+}
+
 function parseEventPayload(event: MessageEvent<string>): Record<string, unknown> {
   return JSON.parse(event.data) as Record<string, unknown>;
 }
@@ -274,28 +707,42 @@ function readMetric(value: unknown): number | null {
 }
 
 function formatMetric(value: number | null, unit: string): string {
-  return value === null ? "Unavailable" : `${value} ${unit}`;
+  return value == null ? "Unavailable" : `${value} ${unit}`;
 }
 
 function formatBoolean(value: unknown): string {
-  return typeof value === "boolean" ? (value ? "Running" : "Stopped") : "Unavailable";
+  if (typeof value !== "boolean") {
+    return "Unavailable";
+  }
+
+  return value ? "Yes" : "No";
 }
 
 function formatCommandStatus(status: string | null): string {
   switch (status) {
-    case "accepted":
-      return "Command accepted";
-    case "encoded":
-      return "Command encoded";
-    case "transmitted":
-      return "Command transmitted";
     case "completed":
       return "Command completed";
-    case "timed_out":
-      return "Command timed out";
     case "failed":
       return "Command failed";
+    case "timed_out":
+      return "Command timed out";
+    case "transmitted":
+      return "Command transmitted";
+    case "encoded":
+      return "Command encoded";
+    case "accepted":
+      return "Command accepted";
     default:
-      return "Command idle";
+      return "Command update";
   }
+}
+
+function summarizeFrame(payload: Record<string, unknown>): string {
+  if (typeof payload.action_code === "string") {
+    return payload.action_code;
+  }
+  if (typeof payload.frame_id === "string") {
+    return payload.frame_id;
+  }
+  return "frame";
 }
