@@ -357,6 +357,17 @@ Current working `0x02` controller-mode mapping hypothesis:
   so Splash should currently surface this byte diagnostically rather than
   treating the working bit meanings as authoritative
 
+Updated working bit meanings for payload byte `9`:
+
+- `0x01`: service mode
+- `0x04`: Celsius mode
+- `0x08`: freeze protection active
+- `0x80`: timeout mode or panel timeout override
+
+ASSUMPTION: this updated `payload[9]` bit model is stronger than the earlier
+`0x10` timeout hypothesis, but it still requires live controller validation
+before Splash derives authoritative normalized flags from it.
+
 Current working `0x02` heater-status mapping hypothesis:
 
 - payload byte `10` appears to carry heater on or off status on EasyTouch
@@ -370,6 +381,82 @@ Current working `0x02` heater-status mapping hypothesis:
 - recent live captures with the heater off have shown payload byte `10` as
   `0x00`, so Splash should currently surface this byte diagnostically rather
   than treating the working values as authoritative
+
+Updated working interpretation for payload byte `10`:
+
+- payload byte `10` may be a broader valve or body-routing state field rather
+  than a simple heater on or off field
+- observed values include:
+  - `0x03`: `pool`
+  - `0x0f`: `spa`
+  - `0x30`: heater-related state
+  - `0x33`: solar-related state
+
+ASSUMPTION: until controlled pool, spa, heater, and solar experiments confirm
+these meanings, Splash should continue to expose payload byte `10`
+diagnostically rather than applying normalized valve or heater semantics.
+
+Current working `0x02` field notes for payload bytes `11` through `22`:
+
+- payload byte `11`: unknown
+- payload byte `12`: likely a delayed or protected-state bitfield
+  - `0x00`: no delays active
+  - `0x40`: generic delay active
+  - `0x41` to `0x7f`: likely condition-specific or circuit-specific delay flags
+  - `0x80+`: likely rare, extended, or firmware-dependent delay flags
+- payload byte `13`: unknown
+- payload byte `14`: believed to be pool water temperature
+  - if the controller is configured for Fahrenheit, use the raw value
+  - if the controller is configured for Celsius, convert from the encoded
+    Fahrenheit value
+- payload byte `15`: believed to be spa water temperature
+  - if the controller is configured for Fahrenheit, use the raw value
+  - if the controller is configured for Celsius, convert from the encoded
+    Fahrenheit value
+- payload byte `15` is also reported in some notes as `heater active`
+  - `0x00`: off
+  - `0x20`: on
+  - this conflicts with the pool or spa water-temperature interpretation and
+    therefore remains unresolved
+- payload byte `16`: may be a firmware major version value
+  - examples noted: `0x01` on `1.0`, `0x02` on `2.070`
+- payload byte `17`: may be a firmware minor version value
+  - examples noted: `0x01` on `1.0`, `0x02` on `2.070`
+- payload byte `18`: believed to be air temperature in Fahrenheit
+- payload byte `19`: believed to be solar temperature in Fahrenheit
+- payload byte `20`: unknown
+- payload byte `21`: unknown
+- payload byte `22`: believed to be a heat-setting field
+  - low-order two bits are pool heat setting:
+    - `0`: off
+    - `1`: heater
+    - `2`: solar preferred
+    - `3`: solar
+  - next two bits are spa heat setting:
+    - `0`: off
+    - `4`: heater
+    - `8`: solar preferred
+    - `12`: solar
+
+ASSUMPTION: payload bytes `11` through `22` remain a mixed set of promising
+reverse-engineering clues rather than confirmed EasyTouch `0x02` semantics.
+They must be validated against controlled live experiments before Splash
+promotes any of them into authoritative decoded or normalized fields.
+
+Current implementation note:
+
+- Splash currently uses the latest working hypothesis for selected EasyTouch
+  `0x02` fields in a provisional way
+- normalized controller temperatures currently use:
+  - payload byte `14` as pool water temperature
+  - payload byte `18` as air temperature
+  - payload byte `19` as solar temperature
+- diagnostic decoded fields also expose the current working values for
+  controller flags, delay byte, firmware bytes, valve-state byte, and heat
+  setting byte
+- the normalized contract continues to treat `*_f` values as Fahrenheit; if the
+  Celsius-mode hypothesis is later confirmed, Splash should preserve the
+  Fahrenheit-based normalized contract unless the contract itself is revised
 
 Until the real temperature bytes are mapped, Splash should surface `hour_24`
 and `minute` as decoded diagnostic fields and publish `water_temp_f` and

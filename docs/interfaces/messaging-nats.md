@@ -147,8 +147,19 @@ Allowed `status` values:
     "hour_24": 21,
     "minute": 35,
     "circuits_byte": 32,
-    "controller_mode_byte": 4,
-    "heater_status_byte": 3
+    "controller_mode_byte": 8,
+    "celsius_mode": false,
+    "freeze_protection_active": true,
+    "timeout_mode": false,
+    "valve_state_byte": 3,
+    "delay_byte": 64,
+    "pool_water_temp_f": 63,
+    "spa_water_temp_f": 0,
+    "firmware_major": 1,
+    "firmware_minor": 2,
+    "air_temp_f": 73,
+    "solar_temp_f": 32,
+    "heat_setting_byte": 6
   },
   "unknown_fields": []
 }

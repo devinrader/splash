@@ -9,7 +9,14 @@
 - QUESTION: On EasyTouch specifically, does live circuit state stop at payload byte `3`, with payload bytes `4+` usually unused for live circuit status, and what controlled controller experiments are needed to verify byte `3` assignments?
 - QUESTION: Is zero-based payload byte `9` in Pentair `0x02` the controller mode field on EasyTouch, and what are the exact observed values for idle, pool, spa, and active feature-circuit states?
 - QUESTION: For the EasyTouch `0x02` mode byte at zero-based payload index `9`, are the current working flags complete: `0x01` run mode, `0x04` temp unit, `0x08` freeze protection, and `0x10` timeout?
+- QUESTION: For the EasyTouch `0x02` mode byte at zero-based payload index `9`, are the updated working flags correct: `0x01` service mode, `0x04` Celsius mode, `0x08` freeze protection active, and `0x80` timeout mode?
 - QUESTION: Is zero-based payload byte `10` in Pentair `0x02` the heater on or off status field on EasyTouch, and beyond the current working values `0x03` off and `0x0f` on, are there any additional heater-state values for heating, cooldown, or fault conditions?
+- QUESTION: Is zero-based payload byte `10` in Pentair `0x02` actually a broader valve or body-routing state field with observed values such as `0x03` pool, `0x0f` spa, `0x30` heater-related, and `0x33` solar-related?
+- QUESTION: Is zero-based payload byte `12` in Pentair `0x02` a delayed or protected-state bitfield, and what exact conditions correspond to values such as `0x40` and higher?
+- QUESTION: Are zero-based payload bytes `14` and `15` pool and spa water temperature on EasyTouch, and if so how does that interact with separate notes claiming payload byte `15` can represent heater active state?
+- QUESTION: Are zero-based payload bytes `16` and `17` EasyTouch firmware major and minor version indicators?
+- QUESTION: Are zero-based payload bytes `18` and `19` air temperature and solar temperature in Fahrenheit?
+- QUESTION: Is zero-based payload byte `22` the EasyTouch pool and spa heat-setting field with low two bits for pool and next two bits for spa?
 - QUESTION: Should controller type be auto-detected from bus framing, or remain an explicit configuration choice in v1?
 - QUESTION: What is the exact production path and timeline for Hayward support?
 - QUESTION: What is the exact production path and timeline for Jandy support?

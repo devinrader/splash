@@ -28,6 +28,44 @@ const CONTROLLER_CIRCUIT_BITS = [
 
 type ControllerMode = "pool" | "spa" | "pool_spa" | "aux_only" | "idle";
 
+function decodePoolHeatMode(heatSettingByte: number | null): "off" | "heater" | "solar_preferred" | "solar" | null {
+  if (heatSettingByte === null) {
+    return null;
+  }
+
+  switch (heatSettingByte & 0x03) {
+    case 0:
+      return "off";
+    case 1:
+      return "heater";
+    case 2:
+      return "solar_preferred";
+    case 3:
+      return "solar";
+    default:
+      return null;
+  }
+}
+
+function decodeSpaHeatMode(heatSettingByte: number | null): "off" | "heater" | "solar_preferred" | "solar" | null {
+  if (heatSettingByte === null) {
+    return null;
+  }
+
+  switch (heatSettingByte & 0x0c) {
+    case 0x00:
+      return "off";
+    case 0x04:
+      return "heater";
+    case 0x08:
+      return "solar_preferred";
+    case 0x0c:
+      return "solar";
+    default:
+      return null;
+  }
+}
+
 function decodeCircuitStates(circuitsByte: number): Record<string, boolean> {
   return Object.fromEntries(
     CONTROLLER_CIRCUIT_BITS.map(({ key, mask }) => [key, (circuitsByte & mask) !== 0])
@@ -109,19 +147,32 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
       {
         const circuitsByte = payload[2] ?? 0;
         const controllerModeByte = payload[9] ?? null;
-        const heaterStatusByte = payload[10] ?? null;
+        const valveStateByte = payload[10] ?? null;
+        const delayByte = payload[12] ?? null;
+        const heatSettingByte = payload[22] ?? null;
         const circuits = decodeCircuitStates(circuitsByte);
         return {
           payload_hex: payloadHex,
           payload_length: payload.length,
           hour_24: payload[0] ?? null,
           minute: payload[1] ?? null,
-          water_temp_f: null,
-          air_temp_f: null,
-          solar_temp_f: null,
+          water_temp_f: payload[14] ?? null,
+          air_temp_f: payload[18] ?? null,
+          solar_temp_f: payload[19] ?? null,
           circuits_byte: circuitsByte,
           controller_mode_byte: controllerModeByte,
-          heater_status_byte: heaterStatusByte,
+          service_mode: controllerModeByte === null ? null : (controllerModeByte & 0x01) !== 0,
+          celsius_mode: controllerModeByte === null ? null : (controllerModeByte & 0x04) !== 0,
+          freeze_protection_active: controllerModeByte === null ? null : (controllerModeByte & 0x08) !== 0,
+          timeout_mode: controllerModeByte === null ? null : (controllerModeByte & 0x80) !== 0,
+          valve_state_byte: valveStateByte,
+          delay_byte: delayByte,
+          delay_active: delayByte === null ? null : delayByte !== 0,
+          firmware_major: payload[16] ?? null,
+          firmware_minor: payload[17] ?? null,
+          heat_setting_byte: heatSettingByte,
+          pool_heat_mode: decodePoolHeatMode(heatSettingByte),
+          spa_heat_mode: decodeSpaHeatMode(heatSettingByte),
           active_circuit_keys: decodeActiveCircuitKeys(circuitsByte),
           mode: decodeControllerMode(circuits),
           circuits
@@ -183,8 +234,8 @@ function decodeNormalizedEvents(
 
   switch (actionCode) {
     case 0x02: {
-      const statusByte = payload[3] ?? 0;
       const circuitsByte = payload[2] ?? 0;
+      const controllerModeByte = payload[9] ?? null;
       const circuits = decodeCircuitStates(circuitsByte);
       return [
         {
@@ -193,13 +244,13 @@ function decodeNormalizedEvents(
             event_id: null,
             occurred_at: occurredAt,
             source,
-            water_temp_f: null,
-            air_temp_f: null,
-            solar_temp_f: null,
+            water_temp_f: payload[14] ?? null,
+            air_temp_f: payload[18] ?? null,
+            solar_temp_f: payload[19] ?? null,
             heater: {
-              enabled: (statusByte & 0x01) !== 0
+              enabled: (payload[15] ?? 0) === 0x20
             },
-            freeze_protection: (statusByte & 0x02) !== 0,
+            freeze_protection: controllerModeByte === null ? false : (controllerModeByte & 0x08) !== 0,
             mode: decodeControllerMode(circuits),
             active_circuit_keys: decodeActiveCircuitKeys(circuitsByte),
             circuits
