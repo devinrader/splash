@@ -112,8 +112,10 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
         return {
           payload_hex: payloadHex,
           payload_length: payload.length,
-          water_temp_f: payload[0] ?? null,
-          air_temp_f: payload[1] ?? null,
+          hour_24: payload[0] ?? null,
+          minute: payload[1] ?? null,
+          water_temp_f: null,
+          air_temp_f: null,
           solar_temp_f: payload[2] ?? null,
           status_byte: payload[3] ?? null,
           circuits_byte: circuitsByte,
@@ -188,8 +190,8 @@ function decodeNormalizedEvents(
             event_id: null,
             occurred_at: occurredAt,
             source,
-            water_temp_f: payload[0] ?? null,
-            air_temp_f: payload[1] ?? null,
+            water_temp_f: null,
+            air_temp_f: null,
             solar_temp_f: payload[2] ?? null,
             heater: {
               enabled: (statusByte & 0x01) !== 0

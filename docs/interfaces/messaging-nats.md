@@ -144,8 +144,9 @@ Allowed `status` values:
   "destination_address": "0x0f",
   "checksum_status": "valid",
   "fields": {
-    "water_temp_f": 82,
-    "heater_on": false
+    "hour_24": 21,
+    "minute": 35,
+    "circuits_byte": 32
   },
   "unknown_fields": []
 }

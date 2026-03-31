@@ -234,7 +234,7 @@ Notes:
 
 | Measurement | Source | Key fields |
 | --- | --- | --- |
-| `equipment_state` | controller 0x02 broadcast every 2s | water temp, air temp, solar temp, heater state, circuit states, freeze protection, mode |
+| `equipment_state` | controller 0x02 broadcast every 2s | controller time, solar temp, heater state, circuit states, freeze protection, mode; air and water temp remain unresolved until mapped |
 | `pump_state` | pump 0x07 poll response | `running`, `watts`, `rpm` |
 | `chlorinator_state` | chlorinator broadcast | `salt_ppm`, `output_percent`, `status` |
 | `weather` | scheduler weather fetch | `temp_f`, `uv_index`, `humidity`, `condition`, `forecast_high_f`, `forecast_low_f`, `precip_chance_pct`, `actual_precip_in` |

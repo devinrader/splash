@@ -144,8 +144,8 @@ Profile resolution should prefer the most specific known profile in the catalog,
     "protocol_name": "pentair_easytouch",
     "frame_id": "uuid"
   },
-  "water_temp_f": 82,
-  "air_temp_f": 77,
+  "water_temp_f": null,
+  "air_temp_f": null,
   "solar_temp_f": 84,
   "heater": {
     "enabled": false,

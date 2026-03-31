@@ -313,6 +313,17 @@ ASSUMPTION: this byte-level mapping is currently trusted for active fixed and
 early feature-circuit state, even though the rest of the `0x02` payload,
 including temperature fields, remains only partially mapped.
 
+Current trusted `0x02` time mapping:
+
+- payload byte `0` is the controller hour in 24-hour representation
+- payload byte `1` is the controller minute
+- these bytes must not be treated as water or air temperature
+
+Until the real temperature bytes are mapped, Splash should surface `hour_24`
+and `minute` as decoded diagnostic fields and publish `water_temp_f` and
+`air_temp_f` as `null` in normalized controller state rather than emitting
+incorrect values.
+
 ### Command notes
 
 - commands are written when the bus is idle

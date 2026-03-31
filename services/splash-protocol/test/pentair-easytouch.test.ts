@@ -45,8 +45,10 @@ test("decodePentairFrame validates checksum and decodes controller status identi
   assert.deepEqual(decoded.fields, {
     payload_hex: "524d200100",
     payload_length: 5,
-    water_temp_f: 0x52,
-    air_temp_f: 0x4d,
+    hour_24: 0x52,
+    minute: 0x4d,
+    water_temp_f: null,
+    air_temp_f: null,
     solar_temp_f: 0x20,
     status_byte: 0x01,
     circuits_byte: 0x20,
@@ -102,7 +104,8 @@ test("decodePentairFrame emits partial normalized events for trusted message fam
   });
 
   assert.equal(controller.normalizedEvents?.[0].subject, "equipment.state.controller");
-  assert.equal(controller.normalizedEvents?.[0].payload.water_temp_f, 82);
+  assert.equal(controller.normalizedEvents?.[0].payload.water_temp_f, null);
+  assert.equal(controller.normalizedEvents?.[0].payload.air_temp_f, null);
   assert.equal(controller.normalizedEvents?.[0].payload.freeze_protection, true);
   assert.equal(controller.normalizedEvents?.[0].payload.mode, "pool");
   assert.deepEqual(controller.normalizedEvents?.[0].payload.active_circuit_keys, ["pool", "aux1"]);

@@ -65,5 +65,8 @@ test("processor publishes protocol.frame.raw, protocol.frame.decoded, and normal
   assert.equal(publisher.messages[1].subject, "protocol.frame.decoded");
   assert.equal(publisher.messages[2].subject, "equipment.state.controller");
   assert.equal(publisher.messages[1].payload.message_type, "controller_status");
-  assert.equal(publisher.messages[2].payload.water_temp_f, 82);
+  const decodedFields = publisher.messages[1].payload.fields as Record<string, unknown>;
+  assert.equal(decodedFields.hour_24, 82);
+  assert.equal(decodedFields.minute, 77);
+  assert.equal(publisher.messages[2].payload.water_temp_f, null);
 });
