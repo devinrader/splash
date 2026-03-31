@@ -20,10 +20,20 @@ const CONTROLLER_CIRCUIT_BITS = [
   { key: "spa", mask: 0x01 },
   { key: "aux1", mask: 0x02 },
   { key: "aux2", mask: 0x04 },
-  { key: "aux3", mask: 0x08 },
-  { key: "feature1", mask: 0x10 },
-  { key: "feature2", mask: 0x40 },
-  { key: "feature3", mask: 0x80 }
+  { key: "aux3", mask: 0x08 }
+] as const;
+const CONTROLLER_CIRCUIT_BITS_2 = [
+  { key: "pool_low", mask: 0x04 },
+  { key: "pool_high", mask: 0x08 },
+  { key: "cleaner", mask: 0x10 },
+  { key: "feature4", mask: 0x20 },
+  { key: "feature5", mask: 0x40 },
+  { key: "feature6", mask: 0x80 }
+] as const;
+const CONTROLLER_CIRCUIT_BITS_3 = [
+  { key: "feature7", mask: 0x01 },
+  { key: "feature8", mask: 0x02 },
+  { key: "aux_extra", mask: 0x08 }
 ] as const;
 
 type ControllerMode = "pool" | "spa" | "pool_spa" | "aux_only" | "idle";
@@ -66,14 +76,20 @@ function decodeSpaHeatMode(heatSettingByte: number | null): "off" | "heater" | "
   }
 }
 
-function decodeCircuitStates(circuitsByte: number): Record<string, boolean> {
-  return Object.fromEntries(
-    CONTROLLER_CIRCUIT_BITS.map(({ key, mask }) => [key, (circuitsByte & mask) !== 0])
-  );
+function decodeCircuitStates(circuitsByte: number, circuitsByte2 = 0, circuitsByte3 = 0): Record<string, boolean> {
+  return Object.fromEntries([
+    ...CONTROLLER_CIRCUIT_BITS.map(({ key, mask }) => [key, (circuitsByte & mask) !== 0]),
+    ...CONTROLLER_CIRCUIT_BITS_2.map(({ key, mask }) => [key, (circuitsByte2 & mask) !== 0]),
+    ...CONTROLLER_CIRCUIT_BITS_3.map(({ key, mask }) => [key, (circuitsByte3 & mask) !== 0])
+  ]);
 }
 
-function decodeActiveCircuitKeys(circuitsByte: number): string[] {
-  return CONTROLLER_CIRCUIT_BITS.filter(({ mask }) => (circuitsByte & mask) !== 0).map(({ key }) => key);
+function decodeActiveCircuitKeys(circuitsByte: number, circuitsByte2 = 0, circuitsByte3 = 0): string[] {
+  return [
+    ...CONTROLLER_CIRCUIT_BITS.filter(({ mask }) => (circuitsByte & mask) !== 0).map(({ key }) => key),
+    ...CONTROLLER_CIRCUIT_BITS_2.filter(({ mask }) => (circuitsByte2 & mask) !== 0).map(({ key }) => key),
+    ...CONTROLLER_CIRCUIT_BITS_3.filter(({ mask }) => (circuitsByte3 & mask) !== 0).map(({ key }) => key)
+  ];
 }
 
 function decodeControllerMode(circuits: Record<string, boolean>): ControllerMode {
@@ -86,7 +102,20 @@ function decodeControllerMode(circuits: Record<string, boolean>): ControllerMode
   if (circuits.spa) {
     return "spa";
   }
-  if (circuits.aux1 || circuits.aux2 || circuits.aux3 || circuits.feature1 || circuits.feature2 || circuits.feature3) {
+  if (
+    circuits.aux1 ||
+    circuits.aux2 ||
+    circuits.aux3 ||
+    circuits.pool_low ||
+    circuits.pool_high ||
+    circuits.cleaner ||
+    circuits.feature4 ||
+    circuits.feature5 ||
+    circuits.feature6 ||
+    circuits.feature7 ||
+    circuits.feature8 ||
+    circuits.aux_extra
+  ) {
     return "aux_only";
   }
   return "idle";
@@ -146,11 +175,13 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
     case 0x02:
       {
         const circuitsByte = payload[2] ?? 0;
+        const circuitsByte2 = payload[3] ?? 0;
+        const circuitsByte3 = payload[4] ?? 0;
         const controllerModeByte = payload[9] ?? null;
         const valveStateByte = payload[10] ?? null;
         const delayByte = payload[12] ?? null;
         const heatSettingByte = payload[22] ?? null;
-        const circuits = decodeCircuitStates(circuitsByte);
+        const circuits = decodeCircuitStates(circuitsByte, circuitsByte2, circuitsByte3);
         return {
           payload_hex: payloadHex,
           payload_length: payload.length,
@@ -160,6 +191,8 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
           air_temp_f: payload[18] ?? null,
           solar_temp_f: payload[19] ?? null,
           circuits_byte: circuitsByte,
+          circuits_byte_2: circuitsByte2,
+          circuits_byte_3: circuitsByte3,
           controller_mode_byte: controllerModeByte,
           service_mode: controllerModeByte === null ? null : (controllerModeByte & 0x01) !== 0,
           celsius_mode: controllerModeByte === null ? null : (controllerModeByte & 0x04) !== 0,
@@ -173,7 +206,7 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
           heat_setting_byte: heatSettingByte,
           pool_heat_mode: decodePoolHeatMode(heatSettingByte),
           spa_heat_mode: decodeSpaHeatMode(heatSettingByte),
-          active_circuit_keys: decodeActiveCircuitKeys(circuitsByte),
+          active_circuit_keys: decodeActiveCircuitKeys(circuitsByte, circuitsByte2, circuitsByte3),
           mode: decodeControllerMode(circuits),
           circuits
         };
@@ -235,8 +268,10 @@ function decodeNormalizedEvents(
   switch (actionCode) {
     case 0x02: {
       const circuitsByte = payload[2] ?? 0;
+      const circuitsByte2 = payload[3] ?? 0;
+      const circuitsByte3 = payload[4] ?? 0;
       const controllerModeByte = payload[9] ?? null;
-      const circuits = decodeCircuitStates(circuitsByte);
+      const circuits = decodeCircuitStates(circuitsByte, circuitsByte2, circuitsByte3);
       return [
         {
           subject: "equipment.state.controller",
@@ -252,7 +287,7 @@ function decodeNormalizedEvents(
             },
             freeze_protection: controllerModeByte === null ? false : (controllerModeByte & 0x08) !== 0,
             mode: decodeControllerMode(circuits),
-            active_circuit_keys: decodeActiveCircuitKeys(circuitsByte),
+            active_circuit_keys: decodeActiveCircuitKeys(circuitsByte, circuitsByte2, circuitsByte3),
             circuits
           }
         }

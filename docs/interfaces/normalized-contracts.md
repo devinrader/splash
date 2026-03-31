@@ -161,9 +161,15 @@ Profile resolution should prefer the most specific known profile in the catalog,
     "aux1": false,
     "aux2": false,
     "aux3": false,
-    "feature1": false,
-    "feature2": false,
-    "feature3": false
+    "pool_low": false,
+    "pool_high": false,
+    "cleaner": false,
+    "feature4": false,
+    "feature5": false,
+    "feature6": false,
+    "feature7": false,
+    "feature8": false,
+    "aux_extra": false
   }
 }
 ```

@@ -458,10 +458,32 @@ Current implementation note:
   Celsius-mode hypothesis is later confirmed, Splash should preserve the
   Fahrenheit-based normalized contract unless the contract itself is revised
 
-Until the real temperature bytes are mapped, Splash should surface `hour_24`
-and `minute` as decoded diagnostic fields and publish `water_temp_f` and
-`air_temp_f` as `null` in normalized controller state rather than emitting
-incorrect values.
+Current validated EasyTouch `0x02` working model from controlled controller
+experiments:
+
+- payload byte `0`: hour in 24-hour time
+- payload byte `1`: minute
+- payload byte `2`: fixed and body circuit bitmask
+  - `0x01` = `spa`
+  - `0x02` = `aux1`
+  - `0x04` = `aux2`
+  - `0x08` = `aux3`
+  - `0x20` = `pool`
+- payload byte `3`: additional named circuit bitmask
+  - `0x04` = `pool_low`
+  - `0x08` = `pool_high`
+  - `0x10` = `cleaner`
+  - `0x20` = `feature4`
+  - `0x40` = `feature5`
+  - `0x80` = `feature6`
+- payload byte `4`: additional named circuit bitmask
+  - `0x01` = `feature7`
+  - `0x02` = `feature8`
+  - `0x08` = `aux_extra`
+
+These byte-`3` and byte-`4` mappings are validated on the observed EasyTouch 8
+controller only and should still be treated as installation-specific evidence
+until more controller variants are tested.
 
 ### Command notes
 

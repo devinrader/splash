@@ -147,6 +147,8 @@ Allowed `status` values:
     "hour_24": 21,
     "minute": 35,
     "circuits_byte": 32,
+    "circuits_byte_2": 4,
+    "circuits_byte_3": 0,
     "controller_mode_byte": 8,
     "celsius_mode": false,
     "freeze_protection_active": true,
