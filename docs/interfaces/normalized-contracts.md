@@ -159,7 +159,11 @@ Profile resolution should prefer the most specific known profile in the catalog,
     "pool": true,
     "spa": false,
     "aux1": false,
-    "aux2": false
+    "aux2": false,
+    "aux3": false,
+    "feature1": false,
+    "feature2": false,
+    "feature3": false
   }
 }
 ```

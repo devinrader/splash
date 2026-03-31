@@ -33,7 +33,7 @@ function buildPentairFrameWithAddresses(
 }
 
 test("decodePentairFrame validates checksum and decodes controller status identity", () => {
-  const frame = buildPentairFrame(0x02, [0x52, 0x4d, 0x00, 0x01, 0x00]);
+  const frame = buildPentairFrame(0x02, [0x52, 0x4d, 0x20, 0x01, 0x00]);
   const decoded = decodePentairFrame(frame);
 
   assert.equal(decoded.protocolName, "pentair_easytouch");
@@ -43,20 +43,24 @@ test("decodePentairFrame validates checksum and decodes controller status identi
   assert.equal(decoded.destinationAddress, "0x0f");
   assert.equal(decoded.checksumStatus, "valid");
   assert.deepEqual(decoded.fields, {
-    payload_hex: "524d000100",
+    payload_hex: "524d200100",
     payload_length: 5,
     water_temp_f: 0x52,
     air_temp_f: 0x4d,
-    solar_temp_f: 0x00,
+    solar_temp_f: 0x20,
     status_byte: 0x01,
-    circuits_byte: 0x00,
-    active_circuit_keys: [],
-    mode: "idle",
+    circuits_byte: 0x20,
+    active_circuit_keys: ["pool"],
+    mode: "pool",
     circuits: {
-      pool: false,
+      pool: true,
       spa: false,
       aux1: false,
-      aux2: false
+      aux2: false,
+      aux3: false,
+      feature1: false,
+      feature2: false,
+      feature3: false
     }
   });
 });
@@ -81,7 +85,7 @@ test("decodePentairFrame rejects invalid checksum", () => {
 });
 
 test("decodePentairFrame emits partial normalized events for trusted message families", () => {
-  const controller = decodePentairFrame(buildPentairFrame(0x02, [82, 77, 84, 0x03, 0x05]), {
+  const controller = decodePentairFrame(buildPentairFrame(0x02, [82, 77, 0x22, 0x03, 0x05]), {
     frameId: "frame-1",
     occurredAt: "2026-03-30T00:00:00Z"
   });
@@ -106,7 +110,11 @@ test("decodePentairFrame emits partial normalized events for trusted message fam
     pool: true,
     spa: false,
     aux1: true,
-    aux2: false
+    aux2: false,
+    aux3: false,
+    feature1: false,
+    feature2: false,
+    feature3: false
   });
 
   assert.equal(pump.normalizedEvents?.[0].subject, "equipment.state.pump");
@@ -130,16 +138,41 @@ test("decodePentairFrame does not emit normalized pump state for controller poll
 });
 
 test("decodePentairFrame derives controller mode hints from trusted circuit bits", () => {
-  const spa = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0, 0x00, 0x02]));
-  const poolSpa = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0, 0x00, 0x03]));
-  const auxOnly = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0, 0x00, 0x08]));
+  const spa = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0x01, 0x00, 0x00]));
+  const poolSpa = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0x21, 0x00, 0x00]));
+  const auxOnly = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0x08, 0x00, 0x00]));
+  const featureOnly = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0x40, 0x00, 0x00]));
 
   assert.equal(spa.fields.mode, "spa");
   assert.deepEqual(spa.fields.active_circuit_keys, ["spa"]);
   assert.equal(poolSpa.fields.mode, "pool_spa");
   assert.deepEqual(poolSpa.fields.active_circuit_keys, ["pool", "spa"]);
   assert.equal(auxOnly.fields.mode, "aux_only");
-  assert.deepEqual(auxOnly.fields.active_circuit_keys, ["aux2"]);
+  assert.deepEqual(auxOnly.fields.active_circuit_keys, ["aux3"]);
+  assert.equal(featureOnly.fields.mode, "aux_only");
+  assert.deepEqual(featureOnly.fields.active_circuit_keys, ["feature2"]);
+});
+
+test("decodePentairFrame decodes live 0x02 pool-only and pool-plus-0x08 circuit bytes", () => {
+  const poolOnly = decodePentairFrame(
+    buildPentairFrame(0x02, [
+      0x15, 0x21, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x80, 0x3f, 0x3f, 0x00, 0x00, 0x3e, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0xab, 0xbb, 0x03, 0x0d
+    ])
+  );
+  const poolPlus08 = decodePentairFrame(
+    buildPentairFrame(0x02, [
+      0x15, 0x23, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x80, 0x3f, 0x3f, 0x00, 0x00, 0x3e, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0xab, 0xbb, 0x03, 0x0d
+    ])
+  );
+
+  assert.deepEqual(poolOnly.fields.active_circuit_keys, ["pool"]);
+  assert.equal(poolOnly.fields.circuits_byte, 0x20);
+  assert.deepEqual(poolPlus08.fields.active_circuit_keys, ["pool", "aux3"]);
+  assert.equal(poolPlus08.fields.circuits_byte, 0x28);
 });
 
 test("decodePentairFrame classifies observed 0x9b traffic as controller remote interaction", () => {

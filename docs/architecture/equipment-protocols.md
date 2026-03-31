@@ -296,6 +296,23 @@ with diagnostic value but no normalized state meaning.
 - several fields remain incompletely decoded
 - pump and chlorinator payloads are sufficiently understood to support normalized state and control paths in the intended design
 
+Current trusted `0x02` controller-circuit mapping:
+
+- use payload byte `2` as the current controller circuit bitfield
+- current trusted bit meanings for that byte are:
+  - `0x01`: `spa`
+  - `0x02`: `aux1`
+  - `0x04`: `aux2`
+  - `0x08`: `aux3`
+  - `0x10`: `feature1`
+  - `0x20`: `pool`
+  - `0x40`: `feature2`
+  - `0x80`: `feature3`
+
+ASSUMPTION: this byte-level mapping is currently trusted for active fixed and
+early feature-circuit state, even though the rest of the `0x02` payload,
+including temperature fields, remains only partially mapped.
+
 ### Command notes
 
 - commands are written when the bus is idle

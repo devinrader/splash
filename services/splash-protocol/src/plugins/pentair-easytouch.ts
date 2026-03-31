@@ -16,10 +16,14 @@ const SPLASH_REMOTE_ADDRESS = 0x21;
 const DEFAULT_IDLE_MS = 50;
 const PUMP_PROGRAM_1 = 0x27;
 const CONTROLLER_CIRCUIT_BITS = [
-  { key: "pool", mask: 0x01 },
-  { key: "spa", mask: 0x02 },
-  { key: "aux1", mask: 0x04 },
-  { key: "aux2", mask: 0x08 }
+  { key: "pool", mask: 0x20 },
+  { key: "spa", mask: 0x01 },
+  { key: "aux1", mask: 0x02 },
+  { key: "aux2", mask: 0x04 },
+  { key: "aux3", mask: 0x08 },
+  { key: "feature1", mask: 0x10 },
+  { key: "feature2", mask: 0x40 },
+  { key: "feature3", mask: 0x80 }
 ] as const;
 
 type ControllerMode = "pool" | "spa" | "pool_spa" | "aux_only" | "idle";
@@ -44,7 +48,7 @@ function decodeControllerMode(circuits: Record<string, boolean>): ControllerMode
   if (circuits.spa) {
     return "spa";
   }
-  if (circuits.aux1 || circuits.aux2) {
+  if (circuits.aux1 || circuits.aux2 || circuits.aux3 || circuits.feature1 || circuits.feature2 || circuits.feature3) {
     return "aux_only";
   }
   return "idle";
@@ -103,7 +107,7 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
   switch (actionCode) {
     case 0x02:
       {
-        const circuitsByte = payload[4] ?? 0;
+        const circuitsByte = payload[2] ?? 0;
         const circuits = decodeCircuitStates(circuitsByte);
         return {
           payload_hex: payloadHex,
@@ -175,7 +179,7 @@ function decodeNormalizedEvents(
   switch (actionCode) {
     case 0x02: {
       const statusByte = payload[3] ?? 0;
-      const circuitsByte = payload[4] ?? 0;
+      const circuitsByte = payload[2] ?? 0;
       const circuits = decodeCircuitStates(circuitsByte);
       return [
         {
