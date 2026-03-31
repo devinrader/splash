@@ -232,6 +232,81 @@ test("app saves protocol frame bundles from recent observed frame traffic", asyn
   ]);
 });
 
+test("watch sessions capture live explorer frames after explicit start", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC"
+    },
+    logger: noopLogger
+  }) as unknown as {
+    startProtocolWatchSession(input: { label: string | null }): {
+      id: string;
+      status: "active" | "stopped";
+      frame_count: number;
+    };
+    getProtocolWatchSession(id: string): {
+      id: string;
+      status: "active" | "stopped";
+      frame_count: number;
+      frames: Array<{ event: string; payload: Record<string, unknown> }>;
+    } | null;
+    stopProtocolWatchSession(id: string): {
+      id: string;
+      status: "active" | "stopped";
+      frame_count: number;
+      stopped_at: string | null;
+    } | null;
+    runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
+  };
+
+  const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+  const session: MessagingSession & {
+    emit(subject: string, payload: Record<string, unknown>): Promise<void>;
+  } = {
+    async publish() {},
+    subscribe(subject, handler) {
+      const list = handlers.get(subject) ?? [];
+      list.push(handler);
+      handlers.set(subject, list);
+    },
+    async emit(subject, payload) {
+      for (const handler of handlers.get(subject) ?? []) {
+        await handler(payload);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  const running = app.runNatsSession(session, controller.signal);
+
+  await session.emit("protocol.frame.raw", { frame_id: "before", bytes_hex: "ff00ffa5" });
+  const watch = app.startProtocolWatchSession({ label: "watch test" });
+  await session.emit("protocol.frame.decoded", { frame_id: "after-1", action_code: "0x02" });
+  await session.emit("serial.tx.raw", { command_id: "after-2", write_result: "ok", bytes_hex: "ff00ffa5" });
+
+  const active = app.getProtocolWatchSession(watch.id);
+  const stopped = app.stopProtocolWatchSession(watch.id);
+
+  controller.abort();
+  await running;
+
+  assert.ok(active);
+  assert.equal(active?.status, "active");
+  assert.equal(active?.frame_count, 2);
+  assert.deepEqual(
+    active?.frames.map((frame) => frame.event),
+    ["protocol.frame.decoded", "serial.tx.raw"]
+  );
+  assert.ok(stopped);
+  assert.equal(stopped?.status, "stopped");
+  assert.equal(stopped?.frame_count, 2);
+  assert.ok(stopped?.stopped_at);
+});
+
 test("bundle store compares saved bundles with byte-level hex diffs", () => {
   const baselineStore = new ProtocolFrameBundleStore();
   baselineStore.recordFrame("protocol.frame.raw", { frame_id: "frame-1", bytes_hex: "ff00ffa50010" });

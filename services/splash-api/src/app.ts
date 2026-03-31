@@ -20,7 +20,9 @@ import {
   type ProtocolBundleComparison,
   ProtocolFrameBundleStore,
   type ProtocolFrameBundle,
-  type ProtocolFrameBundleSummary
+  type ProtocolFrameBundleSummary,
+  type ProtocolWatchSession,
+  type ProtocolWatchSessionSummary
 } from "./protocol-bundles.js";
 import { LatestStateProjection } from "./state.js";
 
@@ -79,6 +81,18 @@ export class App {
 
   getProtocolFrameBundle(id: string): ProtocolFrameBundle | null {
     return this.protocolFrameBundles.getBundle(id);
+  }
+
+  startProtocolWatchSession(input: { label: string | null }): ProtocolWatchSessionSummary {
+    return this.protocolFrameBundles.startWatchSession(input.label);
+  }
+
+  getProtocolWatchSession(id: string): ProtocolWatchSession | null {
+    return this.protocolFrameBundles.getWatchSession(id);
+  }
+
+  stopProtocolWatchSession(id: string): ProtocolWatchSessionSummary | null {
+    return this.protocolFrameBundles.stopWatchSession(id);
   }
 
   compareProtocolFrameBundles(input: {
@@ -181,6 +195,9 @@ export class App {
         listProtocolFrameBundles: () => this.listProtocolFrameBundles(),
         createProtocolFrameBundle: ({ label }) => this.createProtocolFrameBundle({ label }),
         getProtocolFrameBundle: (id) => this.getProtocolFrameBundle(id),
+        startProtocolWatchSession: ({ label }) => this.startProtocolWatchSession({ label }),
+        getProtocolWatchSession: (id) => this.getProtocolWatchSession(id),
+        stopProtocolWatchSession: (id) => this.stopProtocolWatchSession(id),
         compareProtocolFrameBundles: ({ baselineBundleId, comparisonBundleId }) =>
           this.compareProtocolFrameBundles({ baselineBundleId, comparisonBundleId }),
         listProtocolAnnotations: (bundleId) => this.listProtocolAnnotations(bundleId),

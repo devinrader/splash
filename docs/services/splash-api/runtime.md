@@ -58,6 +58,10 @@ For the first browser milestone, `splash-api` should:
     - publishing a diagnostic `protocol.command.intent`
     - keeping the flow explicitly Explorer-only rather than normal automation
       or dashboard control
+13. expose a first watch-session slice by:
+    - starting an explicit capture window
+    - recording all live Explorer frame events into that watch session
+    - stopping and returning the captured frame set for later inspection
 
 ## Initial equipment catalog bridge
 
@@ -108,6 +112,9 @@ The first slice should at least support:
 - `POST /protocol/bundles`
 - `GET /protocol/bundles/:id`
 - `POST /protocol/bundles/compare`
+- `POST /protocol/watch-sessions`
+- `GET /protocol/watch-sessions/:id`
+- `POST /protocol/watch-sessions/:id/stop`
 - `GET /protocol/annotations`
 - `POST /protocol/annotations`
 - `GET /protocol/prompts`
@@ -136,6 +143,8 @@ Rules:
 - the first manual raw-frame send slice may remain a thin API-to-NATS bridge as
   long as it is explicitly scoped to Protocol Explorer diagnostics and does not
   silently rewrite the operator-provided bytes
+- the first watch-session slice may stay API-local and in-memory before a
+  broader persistent capture model exists
 - the API should allow browser-origin requests from the frontend deployment
   origin, including the local milestone topology where `splash-frontend` runs
   on `127.0.0.1:3000` and `splash-api` runs on `127.0.0.1:8080`

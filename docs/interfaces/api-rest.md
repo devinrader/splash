@@ -53,6 +53,9 @@
 | `/protocol/bundles` | `GET`, `POST` | Saved Protocol Explorer frame bundles |
 | `/protocol/bundles/:id` | `GET` | One saved Protocol Explorer frame bundle |
 | `/protocol/bundles/compare` | `POST` | Compare two saved Protocol Explorer frame bundles |
+| `/protocol/watch-sessions` | `POST` | Start a live Protocol Explorer watch session |
+| `/protocol/watch-sessions/:id` | `GET` | Read one watch session and its captured frames |
+| `/protocol/watch-sessions/:id/stop` | `POST` | Stop a live Protocol Explorer watch session |
 | `/protocol/decode` | `POST` | Decode a raw frame |
 | `/protocol/annotations` | `GET`, `POST` | Protocol annotations |
 | `/protocol/prompts` | `GET`, `POST` | Operator-assisted decoding prompts |
@@ -111,6 +114,9 @@
 - the first manual raw-frame send slice may expose one Explorer-only route that
   accepts explicit lowercase hex bytes and forwards them through
   `splash-protocol` without rewriting checksums or other frame fields
+- the first watch-session slice may expose explicit start and stop routes so a
+  controlled “watch live frames” capture window can be preserved and later
+  displayed without relying on the rolling recent-frame buffer
 - `/protocol/frames` may include outbound diagnostic traffic such as
   `protocol.command.encoded` and `serial.tx.raw` so Explorer can show the exact
   request bytes that were written, not only received bus frames
@@ -267,6 +273,77 @@ Request:
 {
   "baseline_bundle_id": "d4d9ec0e-8295-43be-9bcf-f6c1c6cc9b5f",
   "comparison_bundle_id": "ad7c11db-e6bb-4a8b-b986-1e7bb30bc0f3"
+}
+```
+
+### `POST /protocol/watch-sessions`
+
+Request:
+
+```json
+{
+  "label": "watch remote layout response"
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "0fdd95b9-e0f3-47c6-89bd-542b9584ecf9",
+    "label": "watch remote layout response",
+    "status": "active",
+    "frame_count": 0,
+    "created_at": "2026-03-31T03:45:00Z",
+    "stopped_at": null
+  },
+  "error": null
+}
+```
+
+### `GET /protocol/watch-sessions/:id`
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "0fdd95b9-e0f3-47c6-89bd-542b9584ecf9",
+    "label": "watch remote layout response",
+    "status": "stopped",
+    "frame_count": 3,
+    "created_at": "2026-03-31T03:45:00Z",
+    "stopped_at": "2026-03-31T03:45:08Z",
+    "frames": [
+      {
+        "event": "protocol.command.encoded",
+        "captured_at": "2026-03-31T03:45:02Z",
+        "payload": {
+          "bytes_hex": "ff00ffa5011022e1010001ba"
+        }
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+### `POST /protocol/watch-sessions/:id/stop`
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "0fdd95b9-e0f3-47c6-89bd-542b9584ecf9",
+    "label": "watch remote layout response",
+    "status": "stopped",
+    "frame_count": 3,
+    "created_at": "2026-03-31T03:45:00Z",
+    "stopped_at": "2026-03-31T03:45:08Z"
+  },
+  "error": null
 }
 ```
 

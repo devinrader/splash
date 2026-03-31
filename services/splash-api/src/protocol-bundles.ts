@@ -43,24 +43,48 @@ export interface ProtocolBundleComparison {
   frame_pairs: ProtocolFramePairDiff[];
 }
 
+export interface ProtocolWatchSessionSummary {
+  id: string;
+  label: string | null;
+  status: "active" | "stopped";
+  frame_count: number;
+  created_at: string;
+  stopped_at: string | null;
+}
+
+export interface ProtocolWatchSession extends ProtocolWatchSessionSummary {
+  frames: CapturedProtocolFrame[];
+}
+
 export class ProtocolFrameBundleStore {
   private readonly recentFrames: CapturedProtocolFrame[] = [];
   private readonly bundles: ProtocolFrameBundle[] = [];
+  private readonly watchSessions: ProtocolWatchSession[] = [];
 
   constructor(
     private readonly maxRecentFrames = 200,
-    private readonly maxBundles = 20
+    private readonly maxBundles = 20,
+    private readonly maxWatchSessions = 10
   ) {}
 
   recordFrame(event: string, payload: Record<string, unknown>): void {
-    this.recentFrames.push({
+    const frame = {
       event,
       captured_at: new Date().toISOString(),
       payload: structuredClone(payload)
-    });
+    };
+    this.recentFrames.push(frame);
 
     while (this.recentFrames.length > this.maxRecentFrames) {
       this.recentFrames.shift();
+    }
+
+    for (const session of this.watchSessions) {
+      if (session.status !== "active") {
+        continue;
+      }
+      session.frames.push(structuredClone(frame));
+      session.frame_count = session.frames.length;
     }
   }
 
@@ -88,6 +112,41 @@ export class ProtocolFrameBundleStore {
   getBundle(id: string): ProtocolFrameBundle | null {
     const bundle = this.bundles.find((candidate) => candidate.id === id);
     return bundle ? structuredClone(bundle) : null;
+  }
+
+  startWatchSession(label: string | null): ProtocolWatchSessionSummary {
+    const session: ProtocolWatchSession = {
+      id: randomUUID(),
+      label,
+      status: "active",
+      frame_count: 0,
+      created_at: new Date().toISOString(),
+      stopped_at: null,
+      frames: []
+    };
+    this.watchSessions.unshift(session);
+    while (this.watchSessions.length > this.maxWatchSessions) {
+      this.watchSessions.pop();
+    }
+    return this.toWatchSummary(session);
+  }
+
+  getWatchSession(id: string): ProtocolWatchSession | null {
+    const session = this.watchSessions.find((candidate) => candidate.id === id);
+    return session ? structuredClone(session) : null;
+  }
+
+  stopWatchSession(id: string): ProtocolWatchSessionSummary | null {
+    const session = this.watchSessions.find((candidate) => candidate.id === id);
+    if (!session) {
+      return null;
+    }
+    if (session.status === "active") {
+      session.status = "stopped";
+      session.stopped_at = new Date().toISOString();
+    }
+    session.frame_count = session.frames.length;
+    return this.toWatchSummary(session);
   }
 
   compareBundles(baselineId: string, comparisonId: string): ProtocolBundleComparison | null {
@@ -125,6 +184,17 @@ export class ProtocolFrameBundleStore {
       label: bundle.label,
       frame_count: bundle.frame_count,
       created_at: bundle.created_at
+    };
+  }
+
+  private toWatchSummary(session: ProtocolWatchSession): ProtocolWatchSessionSummary {
+    return {
+      id: session.id,
+      label: session.label,
+      status: session.status,
+      frame_count: session.frame_count,
+      created_at: session.created_at,
+      stopped_at: session.stopped_at
     };
   }
 }

@@ -6,7 +6,9 @@ import type { ProtocolPrompt, ProtocolPromptInput } from "./protocol-prompts.js"
 import type {
   ProtocolBundleComparison,
   ProtocolFrameBundle,
-  ProtocolFrameBundleSummary
+  ProtocolFrameBundleSummary,
+  ProtocolWatchSession,
+  ProtocolWatchSessionSummary
 } from "./protocol-bundles.js";
 
 export interface HttpServer {
@@ -23,6 +25,9 @@ export interface HttpHandlers {
   listProtocolFrameBundles(): ProtocolFrameBundleSummary[];
   createProtocolFrameBundle(input: { label: string | null }): ProtocolFrameBundleSummary;
   getProtocolFrameBundle(id: string): ProtocolFrameBundle | null;
+  startProtocolWatchSession(input: { label: string | null }): ProtocolWatchSessionSummary;
+  getProtocolWatchSession(id: string): ProtocolWatchSession | null;
+  stopProtocolWatchSession(id: string): ProtocolWatchSessionSummary | null;
   compareProtocolFrameBundles(input: {
     baselineBundleId: string;
     comparisonBundleId: string;
@@ -114,6 +119,14 @@ export class LocalHttpServer implements HttpServer {
         return json(req, res, 201, { data: result, error: null });
       }
 
+      if (req.method === "POST" && req.url === "/protocol/watch-sessions") {
+        const body = await readJsonBody(req);
+        const result = this.handlers.startProtocolWatchSession({
+          label: readOptionalLabel(body)
+        });
+        return json(req, res, 201, { data: result, error: null });
+      }
+
       if (req.method === "POST" && req.url === "/protocol/bundles/compare") {
         const body = await readJsonBody(req);
         const result = this.handlers.compareProtocolFrameBundles(readBundleCompareRequest(body));
@@ -168,6 +181,24 @@ export class LocalHttpServer implements HttpServer {
           return json(req, res, 404, { data: null, error: "Protocol frame bundle not found." });
         }
         return json(req, res, 200, { data: bundle, error: null });
+      }
+
+      const watchMatch = req.url?.match(/^\/protocol\/watch-sessions\/([^/]+)$/);
+      if (req.method === "GET" && watchMatch) {
+        const session = this.handlers.getProtocolWatchSession(decodeURIComponent(watchMatch[1]));
+        if (!session) {
+          return json(req, res, 404, { data: null, error: "Protocol watch session not found." });
+        }
+        return json(req, res, 200, { data: session, error: null });
+      }
+
+      const watchStopMatch = req.url?.match(/^\/protocol\/watch-sessions\/([^/]+)\/stop$/);
+      if (req.method === "POST" && watchStopMatch) {
+        const result = this.handlers.stopProtocolWatchSession(decodeURIComponent(watchStopMatch[1]));
+        if (!result) {
+          return json(req, res, 404, { data: null, error: "Protocol watch session not found." });
+        }
+        return json(req, res, 200, { data: result, error: null });
       }
 
       const controlMatch = req.url?.match(/^\/equipment\/([^/]+)\/control$/);

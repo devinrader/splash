@@ -205,6 +205,23 @@ Initial implementation note:
 - decode, annotation, diff, and simulator tooling may follow after the live
   stream is available for protocol discovery
 
+### Watch session
+
+1. the operator or assistant starts a watch session explicitly
+2. Splash records all live Explorer frame events into that session from that
+   point forward
+3. the operator performs one controller or equipment action
+4. the operator or assistant stops the watch session
+5. Splash returns the exact captured frame set so it can be displayed,
+   summarized, or compared later
+
+Rules:
+
+- watch sessions should capture receive-side and outbound Explorer events
+- watch sessions should not depend on the rolling recent-frame buffer after they
+  start
+- the first slice may remain in-memory and local to `splash-api`
+
 ### Manual Remote Layout request
 
 - the operator chooses a page index in Protocol Explorer
