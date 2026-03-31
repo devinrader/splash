@@ -103,6 +103,9 @@
 - later Protocol Explorer API slices should support collaborative decoding by
   exposing annotation confidence, saved frame comparisons, and operator-needed
   prompts without bypassing the shared protocol engine
+- browser-facing API routes should emit CORS headers compatible with the
+  frontend deployment origin, including the local developer topology where the
+  frontend and API run on different loopback ports
 
 ## Example payloads
 

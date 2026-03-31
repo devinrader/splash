@@ -42,6 +42,13 @@ Protocol Explorer flow:
 5. frontend reads or creates annotations and prompts through
    `/protocol/annotations` and `/protocol/prompts`
 
+Cross-origin local development rule:
+
+- when `splash-frontend` is served from a local Vite dev origin such as
+  `http://127.0.0.1:3000` and `splash-api` is served from
+  `http://127.0.0.1:8080`, the API must emit CORS headers so the browser can
+  use both REST and SSE successfully
+
 ## Event handling rules
 
 - initial state comes from REST, not SSE replay

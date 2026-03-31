@@ -118,3 +118,6 @@ Rules:
   repository-backed `protocol_annotations` model is implemented
 - the first operator-prompt slice may stay API-local and in-memory before a
   broader task or notification workflow exists
+- the API should allow browser-origin requests from the frontend deployment
+  origin, including the local milestone topology where `splash-frontend` runs
+  on `127.0.0.1:3000` and `splash-api` runs on `127.0.0.1:8080`

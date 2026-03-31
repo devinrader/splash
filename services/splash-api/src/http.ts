@@ -65,36 +65,40 @@ export class LocalHttpServer implements HttpServer {
   }
 
   private async route(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (req.method === "OPTIONS") {
+      return preflight(res, req);
+    }
+
     if (req.method === "GET" && req.url === "/equipment") {
-      return json(res, 200, { data: this.handlers.getEquipment(), error: null });
+      return json(req, res, 200, { data: this.handlers.getEquipment(), error: null });
     }
 
     if (req.method === "GET" && req.url === "/health") {
-      return json(res, 200, this.handlers.getHealth());
+      return json(req, res, 200, this.handlers.getHealth());
     }
 
     if (req.method === "GET" && req.url === "/events") {
-      return this.handleEvents(res, this.handlers.getEventBroker());
+      return this.handleEvents(req, res, this.handlers.getEventBroker());
     }
 
     if (req.method === "GET" && req.url === "/protocol/frames") {
-      return this.handleEvents(res, this.handlers.getProtocolFrameBroker());
+      return this.handleEvents(req, res, this.handlers.getProtocolFrameBroker());
     }
 
     if (req.method === "GET" && req.url === "/protocol/bundles") {
-      return json(res, 200, { data: this.handlers.listProtocolFrameBundles(), error: null });
+      return json(req, res, 200, { data: this.handlers.listProtocolFrameBundles(), error: null });
     }
 
     if (req.method === "GET" && req.url?.startsWith("/protocol/annotations")) {
       const url = new URL(req.url, "http://localhost");
       const bundleId = url.searchParams.get("bundle_id");
-      return json(res, 200, { data: this.handlers.listProtocolAnnotations(bundleId), error: null });
+      return json(req, res, 200, { data: this.handlers.listProtocolAnnotations(bundleId), error: null });
     }
 
     if (req.method === "GET" && req.url?.startsWith("/protocol/prompts")) {
       const url = new URL(req.url, "http://localhost");
       const bundleId = url.searchParams.get("bundle_id");
-      return json(res, 200, { data: this.handlers.listProtocolPrompts(bundleId), error: null });
+      return json(req, res, 200, { data: this.handlers.listProtocolPrompts(bundleId), error: null });
     }
 
     if (req.method === "POST" && req.url === "/protocol/bundles") {
@@ -102,37 +106,37 @@ export class LocalHttpServer implements HttpServer {
       const result = this.handlers.createProtocolFrameBundle({
         label: readOptionalLabel(body)
       });
-      return json(res, 201, { data: result, error: null });
+      return json(req, res, 201, { data: result, error: null });
     }
 
     if (req.method === "POST" && req.url === "/protocol/bundles/compare") {
       const body = await readJsonBody(req);
       const result = this.handlers.compareProtocolFrameBundles(readBundleCompareRequest(body));
       if (!result) {
-        return json(res, 404, { data: null, error: "One or both protocol frame bundles were not found." });
+        return json(req, res, 404, { data: null, error: "One or both protocol frame bundles were not found." });
       }
-      return json(res, 200, { data: result, error: null });
+      return json(req, res, 200, { data: result, error: null });
     }
 
     if (req.method === "POST" && req.url === "/protocol/annotations") {
       const body = await readJsonBody(req);
       const result = this.handlers.createProtocolAnnotation(readProtocolAnnotation(body));
-      return json(res, 201, { data: result, error: null });
+      return json(req, res, 201, { data: result, error: null });
     }
 
     if (req.method === "POST" && req.url === "/protocol/prompts") {
       const body = await readJsonBody(req);
       const result = this.handlers.createProtocolPrompt(readProtocolPrompt(body));
-      return json(res, 201, { data: result, error: null });
+      return json(req, res, 201, { data: result, error: null });
     }
 
     const bundleMatch = req.url?.match(/^\/protocol\/bundles\/([^/]+)$/);
     if (req.method === "GET" && bundleMatch) {
       const bundle = this.handlers.getProtocolFrameBundle(decodeURIComponent(bundleMatch[1]));
       if (!bundle) {
-        return json(res, 404, { data: null, error: "Protocol frame bundle not found." });
+        return json(req, res, 404, { data: null, error: "Protocol frame bundle not found." });
       }
-      return json(res, 200, { data: bundle, error: null });
+      return json(req, res, 200, { data: bundle, error: null });
     }
 
     const controlMatch = req.url?.match(/^\/equipment\/([^/]+)\/control$/);
@@ -143,7 +147,7 @@ export class LocalHttpServer implements HttpServer {
         equipmentId: decodeURIComponent(controlMatch[1]),
         rpm
       });
-      return json(res, 202, {
+      return json(req, res, 202, {
         data: {
           command_id: result.commandId,
           status: "accepted"
@@ -152,12 +156,13 @@ export class LocalHttpServer implements HttpServer {
       });
     }
 
-    res.writeHead(404);
+    res.writeHead(404, corsHeaders(req));
     res.end();
   }
 
-  private handleEvents(res: ServerResponse, broker: EventBroker): void {
+  private handleEvents(req: IncomingMessage, res: ServerResponse, broker: EventBroker): void {
     res.writeHead(200, {
+      ...corsHeaders(req),
       "content-type": "text/event-stream",
       "cache-control": "no-cache",
       connection: "keep-alive"
@@ -341,7 +346,25 @@ function readProtocolPrompt(body: Record<string, unknown>): ProtocolPromptInput 
   };
 }
 
-function json(res: ServerResponse, status: number, payload: Record<string, unknown>): void {
-  res.writeHead(status, { "content-type": "application/json" });
+function json(req: IncomingMessage, res: ServerResponse, status: number, payload: Record<string, unknown>): void {
+  res.writeHead(status, {
+    ...corsHeaders(req),
+    "content-type": "application/json"
+  });
   res.end(JSON.stringify(payload));
+}
+
+function preflight(res: ServerResponse, req: IncomingMessage): void {
+  res.writeHead(204, corsHeaders(req));
+  res.end();
+}
+
+export function corsHeaders(req: Pick<IncomingMessage, "headers">): Record<string, string> {
+  const origin = req.headers.origin;
+  return {
+    "access-control-allow-origin": typeof origin === "string" && origin.length > 0 ? origin : "*",
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "content-type",
+    vary: "Origin"
+  };
 }
