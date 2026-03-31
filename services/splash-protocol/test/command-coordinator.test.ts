@@ -187,3 +187,52 @@ test("command coordinator accepts live raw chunks as active stream evidence", as
   assert.ok(!results.includes("failed"));
   assert.equal(writes.length, 3);
 });
+
+test("command coordinator completes transport-ack diagnostic commands after write acknowledgement", async () => {
+  const session = new FakeSession();
+  const coordinator = new CommandCoordinator(noopLogger, 100);
+  coordinator.setActiveSelection(selection, pentairEasyTouchPlugin);
+  coordinator.attach(session);
+
+  await session.emit("serial.port.status", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    status: "connected",
+    reported_at: "2026-03-30T00:00:00Z"
+  });
+  await session.emit(
+    "protocol.command.intent",
+    commandIntent({
+      command_id: "command-remote-layout",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_remote_layout_page",
+      arguments: {
+        page_index: 5
+      }
+    })
+  );
+
+  const writes = session.published.filter((entry) => entry.subject === "serial.write.request");
+  assert.equal(writes.length, 1);
+
+  await session.emit("serial.tx.raw", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    command_id: "command-remote-layout",
+    written_at: "2026-03-30T00:00:01Z",
+    bytes_hex: writes[0]?.payload.bytes_hex,
+    byte_count: writes[0]?.payload.byte_count,
+    write_result: "ok",
+    error_code: null,
+    detail: null
+  });
+
+  const results = session.published
+    .filter((entry) => entry.subject === "command.result.command-remote-layout")
+    .map((entry) => entry.payload.status);
+  assert.ok(results.includes("transmitted"));
+  assert.ok(results.includes("completed"));
+});

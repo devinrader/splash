@@ -205,6 +205,19 @@ Initial implementation note:
 - decode, annotation, diff, and simulator tooling may follow after the live
   stream is available for protocol discovery
 
+### Manual Remote Layout request
+
+- the operator chooses a page index in Protocol Explorer
+- `splash-api` publishes a diagnostic `protocol.command.intent`
+- `splash-protocol` encodes a Pentair Remote Layout request:
+  - protocol byte `0x01`
+  - destination `0x10`
+  - action `0xe1`
+  - payload `[page_index]`
+- `splash-serial` writes the request to the bus
+- later controller `0x21` traffic is inspected through the live frame stream
+  and saved bundles
+
 ### Decoder
 
 - paste hex frame

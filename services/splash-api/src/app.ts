@@ -131,6 +131,27 @@ export class App {
     return { commandId };
   }
 
+  async publishRemoteLayoutRequest(input: { pageIndex: number }, session: MessagingSession): Promise<{ commandId: string }> {
+    const commandId = randomUUID();
+    await session.publish("protocol.command.intent", {
+      pool_id: this.config.poolId,
+      command_id: commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_remote_layout_page",
+      arguments: {
+        page_index: input.pageIndex
+      },
+      requested_by: "protocol_explorer",
+      dry_run: false
+    });
+    return { commandId };
+  }
+
   async run(signal: AbortSignal): Promise<void> {
     const httpServer =
       this.httpServer ??
@@ -148,6 +169,13 @@ export class App {
         createProtocolAnnotation: (input) => this.createProtocolAnnotation(input),
         listProtocolPrompts: (bundleId) => this.listProtocolPrompts(bundleId),
         createProtocolPrompt: (input) => this.createProtocolPrompt(input),
+        publishRemoteLayoutRequest: async ({ pageIndex }) => {
+          const session = this.currentSession;
+          if (!session) {
+            throw new Error("NATS session unavailable.");
+          }
+          return this.publishRemoteLayoutRequest({ pageIndex }, session);
+        },
         publishPumpSpeedCommand: async ({ equipmentId, rpm }) => {
           const session = this.currentSession;
           if (!session) {

@@ -267,6 +267,20 @@ Observed nuance:
   may also involve action identifiers such as `0xe1` and `0x21`, which must be
   validated independently from the observed `0x9b` traffic
 
+Current working request model for manual Protocol Explorer discovery:
+
+- Splash may emulate a Pentair remote or client address for Remote Layout
+  discovery
+- request protocol byte: `0x01`
+- request destination: controller `0x10`
+- request action: `0xe1`
+- request payload: one byte containing the requested page index
+- expected response family: controller action `0x21`
+- the first implementation should remain manual and Explorer-triggered rather
+  than background-polled
+- until response paging is fully mapped, this flow should be treated as
+  diagnostic configuration discovery rather than normalized state
+
 Current working model for `0x9b`:
 
 - `0x9b` is likely an extended pump-configuration command rather than part of

@@ -29,6 +29,7 @@ export interface HttpHandlers {
   createProtocolAnnotation(input: ProtocolAnnotationInput): ProtocolAnnotation;
   listProtocolPrompts(bundleId: string | null): ProtocolPrompt[];
   createProtocolPrompt(input: ProtocolPromptInput): ProtocolPrompt;
+  publishRemoteLayoutRequest(input: { pageIndex: number }): Promise<{ commandId: string }>;
   publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }): Promise<{ commandId: string }>;
 }
 
@@ -130,6 +131,20 @@ export class LocalHttpServer implements HttpServer {
       return json(req, res, 201, { data: result, error: null });
     }
 
+    if (req.method === "POST" && req.url === "/protocol/remote-layout/request") {
+      const body = await readJsonBody(req);
+      const result = await this.handlers.publishRemoteLayoutRequest({
+        pageIndex: readPageIndex(body)
+      });
+      return json(req, res, 202, {
+        data: {
+          command_id: result.commandId,
+          status: "accepted"
+        },
+        error: null
+      });
+    }
+
     const bundleMatch = req.url?.match(/^\/protocol\/bundles\/([^/]+)$/);
     if (req.method === "GET" && bundleMatch) {
       const bundle = this.handlers.getProtocolFrameBundle(decodeURIComponent(bundleMatch[1]));
@@ -217,6 +232,15 @@ function readRpm(body: Record<string, unknown>): number {
   }
 
   return rpm;
+}
+
+function readPageIndex(body: Record<string, unknown>): number {
+  const pageIndex = body.page_index;
+  if (typeof pageIndex !== "number" || !Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex > 255) {
+    throw new Error("Remote Layout request requires an integer page_index between 0 and 255.");
+  }
+
+  return pageIndex;
 }
 
 function readOptionalLabel(body: Record<string, unknown>): string | null {

@@ -13,6 +13,7 @@ import {
 
 const START_DELIMITER = [0xff, 0x00, 0xff, 0xa5];
 const SPLASH_REMOTE_ADDRESS = 0x21;
+const CONTROLLER_ADDRESS = 0x10;
 const DEFAULT_IDLE_MS = 50;
 const PUMP_PROGRAM_1 = 0x27;
 const CONTROLLER_CIRCUIT_BITS = [
@@ -406,16 +407,40 @@ function parseTargetRpm(intent: NormalizedCommandIntent): number {
   return rpm;
 }
 
-function buildPentairFrame(destination: number, source: number, actionCode: number, payload: number[]): Uint8Array {
-  const frame = [0xff, 0x00, 0xff, 0xa5, 0x00, destination, source, actionCode, payload.length, ...payload];
+function buildPentairFrame(protocolByte: number, destination: number, source: number, actionCode: number, payload: number[]): Uint8Array {
+  const frame = [0xff, 0x00, 0xff, 0xa5, protocolByte, destination, source, actionCode, payload.length, ...payload];
   const checksum = frame.slice(3).reduce((sum, byte) => (sum + byte) & 0xffff, 0);
   frame.push((checksum >> 8) & 0xff, checksum & 0xff);
   return Uint8Array.from(frame);
 }
 
 function encodePentairCommand(intent: NormalizedCommandIntent): CommandEncodingPlan {
+  if (intent.command_type === "request_remote_layout_page") {
+    const pageIndex = intent.arguments.page_index;
+    if (typeof pageIndex !== "number" || !Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex > 255) {
+      throw new ProtocolCommandError("Pentair Remote Layout requests require an integer page_index between 0 and 255.", "command_arguments_invalid");
+    }
+
+    const bytes = buildPentairFrame(0x01, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0xe1, [pageIndex]);
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "transport_ack"
+      }
+    };
+  }
+
   if (intent.command_type !== "set_speed") {
-    throw new ProtocolCommandError("pentair_easytouch only supports direct pump set_speed in the initial command slice.", "unsupported_command_encode");
+    throw new ProtocolCommandError("pentair_easytouch only supports direct pump set_speed and manual Remote Layout requests in the current command slice.", "unsupported_command_encode");
   }
 
   if (intent.target.equipment_type !== "pump") {
@@ -433,9 +458,9 @@ function encodePentairCommand(intent: NormalizedCommandIntent): CommandEncodingP
   const rpmLo = rpm & 0xff;
 
   const writes = [
-    buildPentairFrame(destination, SPLASH_REMOTE_ADDRESS, 0x04, [0xff]),
-    buildPentairFrame(destination, SPLASH_REMOTE_ADDRESS, 0x01, [0x03, PUMP_PROGRAM_1, rpmHi, rpmLo]),
-    buildPentairFrame(destination, SPLASH_REMOTE_ADDRESS, 0x04, [0x00])
+    buildPentairFrame(0x00, destination, SPLASH_REMOTE_ADDRESS, 0x04, [0xff]),
+    buildPentairFrame(0x00, destination, SPLASH_REMOTE_ADDRESS, 0x01, [0x03, PUMP_PROGRAM_1, rpmHi, rpmLo]),
+    buildPentairFrame(0x00, destination, SPLASH_REMOTE_ADDRESS, 0x04, [0x00])
   ].map((bytes) => ({
     bytes,
     bytesHex: bytesToHex(bytes),

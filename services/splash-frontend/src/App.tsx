@@ -10,6 +10,7 @@ import {
   fetchProtocolAnnotations,
   fetchProtocolBundles,
   fetchProtocolPrompts,
+  requestRemoteLayoutPage,
   requestPumpSpeed
 } from "./api";
 import { useFrontendStore } from "./store";
@@ -41,6 +42,7 @@ export default function App() {
   const [rpmInput, setRpmInput] = useState("2800");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bundleLabel, setBundleLabel] = useState("");
+  const [remoteLayoutPageIndex, setRemoteLayoutPageIndex] = useState("0");
   const [recentFrames, setRecentFrames] = useState<ProtocolFrameEvent[]>([]);
   const [bundles, setBundles] = useState<ProtocolBundleSummary[]>([]);
   const [baselineBundleId, setBaselineBundleId] = useState("");
@@ -182,6 +184,27 @@ export default function App() {
         setComparisonBundleId,
         setSelectedBundleId,
         setExplorerError
+      });
+    } catch (error) {
+      setExplorerError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleRemoteLayoutRequest(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const pageIndex = Number.parseInt(remoteLayoutPageIndex, 10);
+    if (Number.isNaN(pageIndex)) {
+      setExplorerError("Enter a valid Remote Layout page index.");
+      return;
+    }
+
+    try {
+      setExplorerError(null);
+      const response = await requestRemoteLayoutPage({ pageIndex });
+      applyCommandResult({
+        command_id: response.data.command_id,
+        status: response.data.status,
+        detail: `Manual Remote Layout request for page ${pageIndex} accepted.`
       });
     } catch (error) {
       setExplorerError(error instanceof Error ? error.message : String(error));
@@ -351,16 +374,29 @@ export default function App() {
               This panel is developer-facing on purpose. It helps capture controlled experiments, compare bundles, and record what still needs operator input.
             </p>
           </div>
-          <form className="inline-form" onSubmit={(event) => void handleBundleSave(event)}>
-            <label htmlFor="bundle-label">Bundle label</label>
-            <input
-              id="bundle-label"
-              value={bundleLabel}
-              onChange={(event) => setBundleLabel(event.target.value)}
-              placeholder="pool-high-before-change"
-            />
-            <button type="submit">Save frame bundle</button>
-          </form>
+          <div className="explorer-actions">
+            <form className="inline-form" onSubmit={(event) => void handleBundleSave(event)}>
+              <label htmlFor="bundle-label">Bundle label</label>
+              <input
+                id="bundle-label"
+                value={bundleLabel}
+                onChange={(event) => setBundleLabel(event.target.value)}
+                placeholder="pool-high-before-change"
+              />
+              <button type="submit">Save frame bundle</button>
+            </form>
+            <form className="inline-form" onSubmit={(event) => void handleRemoteLayoutRequest(event)}>
+              <label htmlFor="remote-layout-page-index">Remote Layout page</label>
+              <input
+                id="remote-layout-page-index"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={remoteLayoutPageIndex}
+                onChange={(event) => setRemoteLayoutPageIndex(event.target.value)}
+              />
+              <button type="submit">Request page</button>
+            </form>
+          </div>
         </div>
 
         <div className="explorer-grid">

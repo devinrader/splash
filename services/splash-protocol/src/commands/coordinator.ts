@@ -195,6 +195,9 @@ export class CommandCoordinator {
     pending.acknowledgedWrites += 1;
     if (pending.acknowledgedWrites === pending.encoded.writes.length) {
       await this.publishResult(pending.intent.pool_id, pending.intent.command_id, "transmitted", null, "transport_write_observed", "All command writes reached the transport layer.");
+      if (pending.encoded.correlation?.kind === "transport_ack") {
+        await this.completePending(commandId, "transport_write_observed", "Command completed after transport acknowledgement.");
+      }
     }
   }
 

@@ -47,6 +47,11 @@ For the first browser milestone, `splash-api` should:
     - accepting prompts tied to saved bundles and frame positions
     - preserving the prompt question, rationale, and expected input type
     - returning saved prompts through REST
+11. expose a first manual Remote Layout request slice by:
+    - accepting a single page index from Protocol Explorer
+    - publishing a diagnostic `protocol.command.intent`
+    - keeping the flow explicitly Explorer-only rather than normal automation
+      or dashboard control
 
 ## Initial equipment catalog bridge
 
@@ -101,6 +106,7 @@ The first slice should at least support:
 - `POST /protocol/annotations`
 - `GET /protocol/prompts`
 - `POST /protocol/prompts`
+- `POST /protocol/remote-layout/request`
 
 Rules:
 
@@ -118,6 +124,8 @@ Rules:
   repository-backed `protocol_annotations` model is implemented
 - the first operator-prompt slice may stay API-local and in-memory before a
   broader task or notification workflow exists
+- the first manual Remote Layout request slice may remain a thin API-to-NATS
+  bridge as long as it is explicitly scoped to Protocol Explorer diagnostics
 - the API should allow browser-origin requests from the frontend deployment
   origin, including the local milestone topology where `splash-frontend` runs
   on `127.0.0.1:3000` and `splash-api` runs on `127.0.0.1:8080`

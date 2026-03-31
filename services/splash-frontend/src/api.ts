@@ -8,7 +8,8 @@ import type {
   ProtocolBundleCreatedResponse,
   ProtocolBundleSummaryResponse,
   ProtocolPromptInputType,
-  ProtocolPromptResponse
+  ProtocolPromptResponse,
+  RemoteLayoutRequestResponse
 } from "./types";
 
 const apiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
@@ -186,6 +187,24 @@ export async function createProtocolPrompt(input: {
   }
 
   return (await response.json()) as { data: unknown; error: unknown };
+}
+
+export async function requestRemoteLayoutPage(input: { pageIndex: number }): Promise<RemoteLayoutRequestResponse> {
+  const response = await fetch(buildApiUrl("/protocol/remote-layout/request"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      page_index: input.pageIndex
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Remote Layout request failed with HTTP ${response.status}.`);
+  }
+
+  return (await response.json()) as RemoteLayoutRequestResponse;
 }
 
 function normalizeBaseUrl(value: string | undefined): string {

@@ -28,6 +28,14 @@ export interface CommandAcceptedResponse {
   error: unknown;
 }
 
+export interface RemoteLayoutRequestResponse {
+  data: {
+    command_id: string;
+    status: string;
+  };
+  error: unknown;
+}
+
 export interface CommandResultEvent {
   command_id?: string;
   status?: string;

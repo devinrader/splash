@@ -56,6 +56,7 @@
 | `/protocol/decode` | `POST` | Decode a raw frame |
 | `/protocol/annotations` | `GET`, `POST` | Protocol annotations |
 | `/protocol/prompts` | `GET`, `POST` | Operator-assisted decoding prompts |
+| `/protocol/remote-layout/request` | `POST` | Manual Pentair Remote Layout page request |
 | `/protocol/simulate` | `POST` | Dry-run or live-send protocol command |
 | `/settings` | `GET`, `PUT` | User preferences |
 | `/events` | `GET` as SSE | Main frontend event stream |
@@ -103,6 +104,9 @@
 - later Protocol Explorer API slices should support collaborative decoding by
   exposing annotation confidence, saved frame comparisons, and operator-needed
   prompts without bypassing the shared protocol engine
+- the first manual Remote Layout request slice may expose one Explorer-only
+  route that accepts a single page index and triggers a protocol-diagnostic
+  request through `splash-protocol`
 - browser-facing API routes should emit CORS headers compatible with the
   frontend deployment origin, including the local developer topology where the
   frontend and API run on different loopback ports

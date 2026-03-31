@@ -189,6 +189,14 @@ Allowed `status` values:
 }
 ```
 
+Diagnostic note:
+
+- Protocol Explorer may also publish diagnostic command intent through this same
+  subject for manual protocol-discovery actions such as Pentair Remote Layout
+  page requests
+- those diagnostic command types are not part of the normalized end-user
+  equipment-control vocabulary and should remain explicitly Explorer-scoped
+
 ### `protocol.command.encoded`
 
 ```json

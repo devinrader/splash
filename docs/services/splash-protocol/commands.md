@@ -26,6 +26,10 @@ The first live command supported by `splash-protocol` is:
 
 - Pentair controller-managed pump-circuit `set_speed`
 
+The first Explorer-only diagnostic command should be:
+
+- Pentair manual Remote Layout page request
+
 Initial scope rules:
 
 - target equipment type: `pump`
@@ -77,6 +81,26 @@ managed milestone slice:
 Those scenarios require separate frame capture, protocol design, and operator
 workflow decisions. They should not weaken the initial controller-managed
 command model.
+
+## Manual Remote Layout diagnostic request
+
+Protocol Explorer may trigger a manual Pentair Remote Layout request without
+pretending it is a normalized equipment-control action.
+
+Initial rules:
+
+- protocol plugin: `pentair_easytouch`
+- command type: `request_remote_layout_page`
+- destination: controller `0x10`
+- source: Splash remote or client address
+- frame:
+  - protocol byte `0x01`
+  - action `0xe1`
+  - payload `[page_index]`
+- initial completion rule:
+  - complete once the transport write is observed successfully
+  - later `0x21` response correlation is tracked separately as protocol mapping
+    work, not required for this first diagnostic slice
 
 ## Result stages
 

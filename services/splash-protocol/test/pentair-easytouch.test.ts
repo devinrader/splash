@@ -303,6 +303,31 @@ test("pentairEasyTouchPlugin encodes the initial direct pump set_speed sequence"
   assert.equal(encoded.correlation?.targetRpm, 2800);
 });
 
+test("pentairEasyTouchPlugin encodes a manual Remote Layout page request", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-remote-layout",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_remote_layout_page",
+      arguments: {
+        page_index: 5
+      },
+      dry_run: false
+    },
+    {}
+  );
+
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0].bytesHex, "ff00ffa5011021e1010501be");
+  assert.equal(encoded.correlation?.kind, "transport_ack");
+});
+
 test("pentairEasyTouchPlugin rejects unsupported initial command targets", () => {
   assert.throws(
     () =>
