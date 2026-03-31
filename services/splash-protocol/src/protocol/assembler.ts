@@ -64,18 +64,25 @@ export class StreamFrameAssembler {
     while (true) {
       const start = findDelimiter(this.buffer);
       if (start < 0) {
-        if (this.buffer.length > 0) {
+        const preservedSuffixLength = longestDelimiterPrefixSuffixLength(this.buffer);
+        const discardLength = this.buffer.length - preservedSuffixLength;
+        if (discardLength > 0) {
           unidentified.push({
             serialInstanceId: chunk.serialInstanceId,
             streamId: chunk.streamId,
             chunkId: chunk.chunkId,
             capturedAt: chunk.receivedAt,
-            bytes: this.buffer,
+            bytes: this.buffer.slice(0, discardLength) as Uint8Array,
             reason: "delimiter_noise"
           });
         }
-        this.buffer = new Uint8Array(0);
-        this.chunkIds = [];
+        this.buffer =
+          preservedSuffixLength > 0
+            ? (this.buffer.slice(discardLength) as Uint8Array)
+            : new Uint8Array(0);
+        if (this.buffer.length === 0) {
+          this.chunkIds = [];
+        }
         return { frames, unidentified };
       }
 
@@ -132,6 +139,25 @@ function findDelimiter(bytes: Uint8Array): number {
   }
 
   return -1;
+}
+
+function longestDelimiterPrefixSuffixLength(bytes: Uint8Array): number {
+  const maxLength = Math.min(bytes.length, PENTAIR_DELIMITER.length - 1);
+  for (let length = maxLength; length > 0; length -= 1) {
+    let valid = true;
+    for (let index = 0; index < length; index += 1) {
+      if (bytes[bytes.length - length + index] !== PENTAIR_DELIMITER[index]) {
+        valid = false;
+        break;
+      }
+    }
+
+    if (valid) {
+      return length;
+    }
+  }
+
+  return 0;
 }
 
 function concatBytes(left: Uint8Array, right: Uint8Array): Uint8Array {

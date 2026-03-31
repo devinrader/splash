@@ -73,3 +73,17 @@ test("assembler reports discarded leading bytes before a valid delimiter", () =>
   assert.equal(Buffer.from(result.unidentified[0]?.bytes ?? new Uint8Array()).toString("hex"), "ffff");
   assert.equal(result.unidentified[0]?.reason, "delimiter_noise");
 });
+
+test("assembler preserves a trailing partial delimiter prefix across chunk boundaries", () => {
+  const assembler = new StreamFrameAssembler();
+  const frameHex = buildPentairFrameHex(0x02, [0x52, 0x4d, 0x00, 0x01]);
+
+  const first = assembler.ingest(chunk("ffffffff00", { chunkId: "chunk-a" }));
+  const second = assembler.ingest(chunk(`ff${frameHex.slice(6)}`, { chunkId: "chunk-b" }));
+
+  assert.equal(first.frames.length, 0);
+  assert.equal(first.unidentified.length, 1);
+  assert.equal(Buffer.from(first.unidentified[0]?.bytes ?? new Uint8Array()).toString("hex"), "ffffff");
+  assert.equal(second.frames.length, 1);
+  assert.equal(Buffer.from(second.frames[0]?.frameBytes ?? new Uint8Array()).toString("hex"), frameHex);
+});
