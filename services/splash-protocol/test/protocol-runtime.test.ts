@@ -102,6 +102,29 @@ test("protocol runtime publishes unidentified byte diagnostics for discarded rec
   assert.equal(session.published[3]?.subject, "equipment.state.controller");
 });
 
+test("protocol runtime publishes buffered byte diagnostics for partial receive state", async () => {
+  const session = new FakeSession();
+  const runtime = new ProtocolRuntime(logger);
+  runtime.setActiveSelection("pool-1", pentairEasyTouchPlugin);
+  runtime.attach(session);
+
+  const frameHex = buildFrameHex();
+  await session.emit("serial.rx.raw", {
+    serial_instance_id: "serial-1",
+    stream_id: "stream-1",
+    chunk_id: "chunk-1",
+    port: "/dev/ttyUSB0",
+    received_at: "2026-03-30T00:00:00Z",
+    bytes_hex: frameHex.slice(0, 10),
+    byte_count: 5
+  });
+
+  assert.equal(session.published.length, 1);
+  assert.equal(session.published[0]?.subject, "protocol.frame.buffered");
+  assert.equal(session.published[0]?.payload.reason, "partial_frame");
+  assert.equal(session.published[0]?.payload.bytes_hex, frameHex.slice(0, 10));
+});
+
 test("protocol runtime reports the active stream id from live serial chunks", async () => {
   const session = new FakeSession();
   let activeStreamId: string | null = null;

@@ -42,7 +42,9 @@ test("assembler reconstructs a frame split across multiple chunks", () => {
 
   assert.equal(first.frames.length, 0);
   assert.equal(first.unidentified.length, 0);
+  assert.equal(first.buffered?.reason, "partial_frame");
   assert.equal(second.frames.length, 1);
+  assert.equal(second.buffered, null);
   assert.equal(Buffer.from(second.frames[0].frameBytes).toString("hex"), frameHex);
   assert.deepEqual(second.frames[0].sourceChunkIds, ["chunk-a", "chunk-b"]);
 });
@@ -60,6 +62,7 @@ test("assembler resets buffered state when stream id changes", () => {
   assert.deepEqual(result.frames[0].sourceChunkIds, ["chunk-b"]);
   assert.equal(result.unidentified.length, 1);
   assert.equal(result.unidentified[0]?.reason, "stream_reset");
+  assert.equal(result.buffered, null);
 });
 
 test("assembler reports discarded leading bytes before a valid delimiter", () => {
@@ -72,6 +75,7 @@ test("assembler reports discarded leading bytes before a valid delimiter", () =>
   assert.equal(result.unidentified.length, 1);
   assert.equal(Buffer.from(result.unidentified[0]?.bytes ?? new Uint8Array()).toString("hex"), "ffff");
   assert.equal(result.unidentified[0]?.reason, "delimiter_noise");
+  assert.equal(result.buffered, null);
 });
 
 test("assembler preserves a trailing partial delimiter prefix across chunk boundaries", () => {
@@ -84,6 +88,20 @@ test("assembler preserves a trailing partial delimiter prefix across chunk bound
   assert.equal(first.frames.length, 0);
   assert.equal(first.unidentified.length, 1);
   assert.equal(Buffer.from(first.unidentified[0]?.bytes ?? new Uint8Array()).toString("hex"), "ffffff");
+  assert.equal(first.buffered?.reason, "partial_frame");
   assert.equal(second.frames.length, 1);
+  assert.equal(second.buffered, null);
   assert.equal(Buffer.from(second.frames[0]?.frameBytes ?? new Uint8Array()).toString("hex"), frameHex);
+});
+
+test("assembler identifies an intellichlor frame family", () => {
+  const assembler = new StreamFrameAssembler();
+  const intellichlorHex = "100250111e911003";
+
+  const result = assembler.ingest(chunk(intellichlorHex, { chunkId: "chunk-a" }));
+
+  assert.equal(result.frames.length, 1);
+  assert.equal(result.frames[0]?.frameFamily, "intellichlor");
+  assert.equal(result.buffered, null);
+  assert.equal(Buffer.from(result.frames[0]?.frameBytes ?? new Uint8Array()).toString("hex"), intellichlorHex);
 });

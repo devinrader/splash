@@ -63,6 +63,14 @@ Splash should reason about protocol specifications in three layers:
 3. Normalized mapping
    The translation from protocol-specific meaning into Splash-level events, capabilities, and commands.
 
+Decoder invariant:
+
+- a frame decoder must not silently discard receive-side bytes
+- bytes must remain traceable as exactly one of:
+  - part of a known frame definition
+  - buffered pending more data
+  - unknown data that does not match any known frame definition
+
 ## Classification model
 
 Protocol identity should not be modeled as vendor-only.
@@ -227,6 +235,26 @@ Pentair EasyTouch and IntelliTouch are the primary v1 protocol targets. Communit
   - payload bytes
   - checksum
 - checksum: 2-byte big-endian sum from `0xA5` through end of payload
+
+Observed nuance:
+
+- the same physical Pentair-family RS-485 installation may carry more than one
+  frame family on the wire
+- controller and pump traffic uses the `FF 00 FF A5` family
+- Intellichlor chlorinator traffic may also appear as a separate framed family
+  using:
+  - start delimiter `10 02`
+  - end delimiter `10 03`
+- Splash should therefore treat frame assembly as multi-family for Pentair
+  installations rather than assuming the entire stream uses only one delimiter
+  format
+- until Intellichlor checksum and field semantics are fully mapped, Splash may
+  decode only:
+  - destination
+  - command
+  - payload bytes
+  - checksum byte
+  while keeping source and richer semantics unresolved
 
 ### Addressing notes
 

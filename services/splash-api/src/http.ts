@@ -311,6 +311,7 @@ function readOptionalLabel(body: Record<string, unknown>): string | null {
 
 const ALLOWED_WATCH_EVENTS = [
   "protocol.frame.raw",
+  "protocol.frame.buffered",
   "protocol.frame.unidentified",
   "protocol.frame.decoded",
   "protocol.command.encoded",

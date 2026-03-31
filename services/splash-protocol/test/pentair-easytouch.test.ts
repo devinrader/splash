@@ -274,6 +274,23 @@ test("decodePentairFrame classifies observed 0x9b traffic as controller remote i
   assert.equal(decoded.fields.destination_is_controller, true);
 });
 
+test("decodePentairFrame classifies intellichlor framed traffic generically", () => {
+  const decoded = decodePentairFrame(Uint8Array.from([0x10, 0x02, 0x50, 0x11, 0x1e, 0x91, 0x10, 0x03]));
+
+  assert.equal(decoded.frameFamily, "intellichlor");
+  assert.equal(decoded.messageType, "intellichlor_frame");
+  assert.equal(decoded.actionCode, "0x11");
+  assert.equal(decoded.sourceAddress, "unknown");
+  assert.equal(decoded.destinationAddress, "0x50");
+  assert.equal(decoded.checksumStatus, "unknown");
+  assert.deepEqual(decoded.fields, {
+    payload_hex: "1e",
+    payload_length: 1,
+    checksum_byte: 0x91
+  });
+  assert.deepEqual(decoded.normalizedEvents, []);
+});
+
 test("pentairEasyTouchPlugin encodes the initial direct pump set_speed sequence", () => {
   const encoded = pentairEasyTouchPlugin.encodeCommand(
     {

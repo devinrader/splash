@@ -12,6 +12,8 @@ import {
 } from "../protocol/types.js";
 
 const START_DELIMITER = [0xff, 0x00, 0xff, 0xa5];
+const INTELLICHLOR_START_DELIMITER = [0x10, 0x02];
+const INTELLICHLOR_END_DELIMITER = [0x10, 0x03];
 const SPLASH_REMOTE_ADDRESS = 0x21;
 const CONTROLLER_ADDRESS = 0x10;
 const DEFAULT_IDLE_MS = 50;
@@ -131,6 +133,13 @@ function expectStartDelimiter(frame: Uint8Array): void {
   if (!valid) {
     throw new ProtocolDecodeError("Frame does not use the Pentair start delimiter.", "frame_delimiter_invalid");
   }
+}
+
+function hasDelimiter(frame: Uint8Array, delimiter: number[], offset = 0): boolean {
+  if (frame.length < offset + delimiter.length) {
+    return false;
+  }
+  return delimiter.every((byte, index) => frame[offset + index] === byte);
 }
 
 function calculateChecksum(bytes: Uint8Array): number {
@@ -345,6 +354,29 @@ export function decodePentairFrame(
   frame: Uint8Array,
   context: { frameId?: string; occurredAt?: string } = {}
 ): DecodedProtocolFrame {
+  if (hasDelimiter(frame, INTELLICHLOR_START_DELIMITER) && hasDelimiter(frame, INTELLICHLOR_END_DELIMITER, frame.length - 2)) {
+    const destination = frame[2] ?? 0;
+    const command = frame[3] ?? 0;
+    const checksumByte = frame[frame.length - 3] ?? null;
+    const payload = frame.slice(4, frame.length - 3);
+    return {
+      protocolName: "pentair_easytouch",
+      frameFamily: "intellichlor",
+      messageType: "intellichlor_frame",
+      actionCode: `0x${command.toString(16).padStart(2, "0")}`,
+      sourceAddress: "unknown",
+      destinationAddress: `0x${destination.toString(16).padStart(2, "0")}`,
+      checksumStatus: "unknown",
+      fields: {
+        payload_hex: bytesToHex(payload),
+        payload_length: payload.length,
+        checksum_byte: checksumByte
+      },
+      unknownFields: decodeUnknownFields(payload),
+      normalizedEvents: []
+    };
+  }
+
   expectStartDelimiter(frame);
 
   const payloadLength = frame[8];
@@ -368,6 +400,7 @@ export function decodePentairFrame(
 
   return {
     protocolName: "pentair_easytouch",
+    frameFamily: "pentair",
     messageType: decodeMessageType(actionCode),
     actionCode: `0x${actionCode.toString(16).padStart(2, "0")}`,
     sourceAddress: `0x${frame[6].toString(16).padStart(2, "0")}`,

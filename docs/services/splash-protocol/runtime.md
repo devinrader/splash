@@ -142,7 +142,8 @@ Explorer rules:
 Rules:
 
 - frame assembly state is scoped to one active `stream_id`
-- when `stream_id` changes, all partial frame buffers from the old stream must be discarded
+- when `stream_id` changes, all partial frame buffers from the old stream must be
+  reclassified as unknown data for that old stream rather than silently dropped
 - command correlation state targeting the old stream must be marked stale or failed
 - live decode must not combine bytes from different streams
 
@@ -162,10 +163,23 @@ Live decode flow:
 1. consume `serial.rx.raw`
 2. route the chunk to the active plugin runtime for the selected pool and stream
 3. reconstruct frames from native transport chunk boundaries
+   - frame assembly may need to recognize multiple frame families on the same
+     RS-485 stream, such as Pentair controller/pump frames and Intellichlor
+     chlorinator frames
 4. validate framing and checksum rules
 5. publish `protocol.frame.raw`
-6. publish `protocol.frame.decoded`
-7. publish normalized `equipment.state.*` events when the decoded frame maps to normalized state
+6. publish `protocol.frame.buffered` for bytes still retained in the decode buffer
+7. publish `protocol.frame.unidentified` for bytes classified as unknown
+8. publish `protocol.frame.decoded`
+9. publish normalized `equipment.state.*` events when the decoded frame maps to normalized state
+
+Decoder invariant:
+
+- `splash-protocol` must not silently drop or ignore receive-side bytes
+- every received byte must be represented as one of:
+  - a known assembled frame
+  - buffered bytes awaiting more input
+  - unknown bytes
 
 Minimum normalized outputs in the initial service design:
 

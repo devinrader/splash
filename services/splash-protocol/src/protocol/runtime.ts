@@ -66,6 +66,20 @@ export class ProtocolRuntime {
           });
         }
 
+        if (assembly.buffered) {
+          await session.publish("protocol.frame.buffered", {
+            pool_id: this.activePoolId,
+            stream_id: assembly.buffered.streamId,
+            serial_instance_id: assembly.buffered.serialInstanceId,
+            chunk_id: assembly.buffered.chunkId,
+            protocol_name: this.activePlugin.id,
+            captured_at: assembly.buffered.capturedAt,
+            bytes_hex: bytesToHex(assembly.buffered.bytes),
+            byte_count: assembly.buffered.bytes.length,
+            reason: assembly.buffered.reason
+          });
+        }
+
         const frames = assembly.frames;
         if (frames.length === 0) {
           return;

@@ -28,6 +28,7 @@ export class ProtocolProcessor {
         frame_id: frameId,
         source_chunk_ids: frame.sourceChunkIds,
         protocol_name: this.plugin.id,
+        frame_family: frame.frameFamily,
         captured_at: frame.capturedAt,
         bytes_hex: bytesToHex(frame.frameBytes),
         framing_status: "valid"
@@ -42,6 +43,7 @@ export class ProtocolProcessor {
         stream_id: chunk.streamId,
         frame_id: frameId,
         protocol_name: decoded.protocolName,
+        frame_family: decoded.frameFamily ?? frame.frameFamily,
         decoded_at: frame.capturedAt,
         message_type: decoded.messageType,
         action_code: decoded.actionCode,

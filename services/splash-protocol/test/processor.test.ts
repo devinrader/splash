@@ -52,6 +52,7 @@ test("processor publishes protocol.frame.raw, protocol.frame.decoded, and normal
     {
       serialInstanceId: "serial-1",
       streamId: "stream-1",
+      frameFamily: "pentair",
       frameBytes: buildFrame(),
       sourceChunkIds: ["chunk-1"],
       capturedAt: "2026-03-29T00:00:00Z"
@@ -64,6 +65,8 @@ test("processor publishes protocol.frame.raw, protocol.frame.decoded, and normal
   assert.equal(publisher.messages[0].subject, "protocol.frame.raw");
   assert.equal(publisher.messages[1].subject, "protocol.frame.decoded");
   assert.equal(publisher.messages[2].subject, "equipment.state.controller");
+  assert.equal(publisher.messages[0].payload.frame_family, "pentair");
+  assert.equal(publisher.messages[1].payload.frame_family, "pentair");
   assert.equal(publisher.messages[1].payload.message_type, "controller_status");
   const decodedFields = publisher.messages[1].payload.fields as Record<string, unknown>;
   assert.equal(decodedFields.hour_24, 82);

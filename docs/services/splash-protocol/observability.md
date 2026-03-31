@@ -135,7 +135,8 @@ Initial stable event names should include:
 - `plugin.selection.failed`
 - `stream.reset`
 - `frame.assembled`
-- `frame.discarded`
+- `frame.buffered`
+- `frame.unknown_classified`
 - `frame.decoded`
 - `frame.decode_failed`
 - `event.normalized_published`

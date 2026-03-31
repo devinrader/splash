@@ -10,6 +10,7 @@
 | `serial.tx.raw` | Core NATS | `splash-serial` |
 | `serial.port.status` | Core NATS | `splash-serial` |
 | `protocol.frame.raw` | Core NATS | `splash-protocol` |
+| `protocol.frame.buffered` | Core NATS | `splash-protocol` |
 | `protocol.frame.unidentified` | Core NATS | `splash-protocol` |
 | `protocol.frame.decoded` | Core NATS | `splash-protocol` |
 | `equipment.state.controller` | Core NATS | `splash-protocol` |
@@ -124,11 +125,51 @@ Allowed `status` values:
   "frame_id": "uuid",
   "source_chunk_ids": ["uuid"],
   "protocol_name": "pentair_easytouch",
+  "frame_family": "pentair",
   "captured_at": "2026-03-26T20:00:02Z",
   "bytes_hex": "ff00ffa5...",
   "framing_status": "valid"
 }
 ```
+
+Rules:
+
+- `frame_family` identifies the assembled frame envelope used on the wire
+- initial values may include:
+  - `pentair`
+  - `intellichlor`
+
+### `protocol.frame.buffered`
+
+```json
+{
+  "pool_id": "uuid",
+  "stream_id": "uuid",
+  "serial_instance_id": "uuid",
+  "chunk_id": "uuid",
+  "protocol_name": "pentair_easytouch",
+  "captured_at": "2026-03-26T20:00:02Z",
+  "bytes_hex": "ff00ff",
+  "byte_count": 3,
+  "reason": "partial_delimiter"
+}
+```
+
+Allowed `reason` values in the first slice:
+
+- `partial_delimiter`
+- `partial_frame`
+
+Rules:
+
+- `protocol.frame.buffered` is a derived receive-side diagnostic snapshot
+- it represents bytes currently retained in the decoder buffer because they may
+  still become part of a later valid frame
+- it may repeat previously buffered bytes across multiple chunks until those
+  bytes resolve into either:
+  - a known frame
+  - an unknown classification
+- Splash must not silently drop buffered bytes during normal decode flow
 
 ### `protocol.frame.unidentified`
 
@@ -154,12 +195,17 @@ Allowed `reason` values in the first slice:
 Rules:
 
 - `protocol.frame.unidentified` is a derived receive-side diagnostic event
-- it must only represent bytes that `splash-protocol` definitively discarded and
-  could not use as part of an assembled frame
+- it must only represent bytes that `splash-protocol` classified as unknown
+  receive-side data and could not associate with any known frame family
 - it must not be used for partial bytes still buffered for a future frame
 - it complements `serial.rx.raw`; it does not replace the transport-truth view
 - it must not be confused with `protocol.frame.raw`, which remains reserved for
   successfully assembled frames only
+- decoder implementations must not silently throw away or ignore bytes; every
+  received byte must be represented as:
+  - part of a known frame
+  - part of the current buffer
+  - unknown data via `protocol.frame.unidentified`
 
 ### `protocol.frame.decoded`
 
@@ -170,6 +216,7 @@ Rules:
   "frame_id": "uuid",
   "protocol_name": "pentair_easytouch",
   "decoded_at": "2026-03-26T20:00:02Z",
+  "frame_family": "pentair",
   "message_type": "controller_status",
   "action_code": "0x02",
   "source_address": "0x10",
@@ -198,6 +245,11 @@ Rules:
   "unknown_fields": []
 }
 ```
+
+`checksum_status` may be:
+
+- `valid`
+- `unknown`
 
 ### `protocol.command.intent`
 

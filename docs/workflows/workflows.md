@@ -192,8 +192,10 @@ Caption: Guided SLAM workflow for raising FC to SLAM level, maintaining it, and 
 - show decoded and raw fields
 - filter, pause, and export
 - optionally surface transport chunk boundaries for advanced debugging, but frame-level data remains the primary view
-- surface discarded receive-side byte segments separately when the protocol
-  layer can prove they were not part of any valid frame
+- surface buffered receive-side bytes separately when they may still become part
+  of a valid frame
+- surface unknown receive-side byte segments separately when the protocol layer
+  can prove they were not part of any known valid frame
 - clearly distinguish:
   - known fields
   - inferred fields

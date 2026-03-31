@@ -126,8 +126,11 @@
   request bytes that were written, not only received bus frames
 - `/protocol/frames` may also include derived receive-side diagnostic events
   such as `protocol.frame.unidentified` so Explorer can show bytes that were
-  discarded during frame assembly without mislabeling them as valid protocol
-  frames
+  classified as unknown during frame assembly without mislabeling them as valid
+  protocol frames
+- `/protocol/frames` may also include `protocol.frame.buffered` so Explorer can
+  show bytes still retained by the decoder buffer rather than implying that
+  they were ignored
 - browser-facing API routes should emit CORS headers compatible with the
   frontend deployment origin, including the local developer topology where the
   frontend and API run on different loopback ports

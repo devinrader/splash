@@ -1,10 +1,11 @@
 export interface DecodedProtocolFrame {
   protocolName: string;
+  frameFamily?: string;
   messageType: string;
   actionCode: string;
   sourceAddress: string;
   destinationAddress: string;
-  checksumStatus: "valid";
+  checksumStatus: "valid" | "unknown";
   fields: Record<string, unknown>;
   unknownFields: string[];
   normalizedEvents?: NormalizedEvent[];
