@@ -14,41 +14,46 @@ The goal is to ensure:
 
 ## Source of Truth
 
-All system design decisions are defined in the `/docs` directory.
+The primary system design authority for Splash is the repository's Gitea wiki.
 
-These documents are the **authoritative specification** for:
+The Gitea wiki is the **authoritative specification** for:
+- Product requirements
 - Architecture
 - Data models
 - APIs
 - Workflows
-- Requirements
+- Protocol reference and reverse-engineering findings
 
-Code is an implementation of these documents — not the source of truth.
+This repository-local `/docs` directory is retained only for:
+- Codex and agent operating contract material
+- minimal implementation-facing guardrails that must remain available in the
+  workspace even when the wiki is not cloned locally
+- pointers into the canonical wiki structure
+
+Code is an implementation of the design authority — not the source of truth.
 
 ---
 
 ## Design Documents
 
-The `/docs` directory includes (but is not limited to):
+The canonical design corpus lives in the Splash Gitea wiki.
 
-- `product/overview.md`
-- `product/requirements.md`
-- `architecture/architecture.md`
-- `architecture/data-model.md`
-- `interfaces/api-design.md`
-- `workflows/workflows.md`
-- `product/decisions.md`
-- `product/assumptions.md`
-- `product/open-questions.md`
+Repository-local `/docs` should remain intentionally small and contain only:
 
-All design-relevant information must live in these documents.
+- `CONTRACT.md`
+- `README.md`
+- any other minimal local agent-contract or implementation-guardrail documents
+  explicitly kept for workspace use
+
+All broader design-relevant material should migrate to and be maintained in the
+wiki.
 
 ---
 
 ## Core Principles
 
 1. **Design First**
-   - All meaningful changes begin in `/docs`
+   - All meaningful changes begin in the Gitea wiki
    - Code follows design, not the reverse
 
 2. **Explicitness Over Assumption**
@@ -58,19 +63,21 @@ All design-relevant information must live in these documents.
    - Maintaining system integrity is more important than fast implementation
 
 4. **Single Source of Truth**
-   - Do not duplicate design logic outside `/docs`
+   - Do not duplicate canonical design logic outside the wiki unless a local
+     Codex/agent contract requires a minimal copy
 
 ---
 
 ## Implementation Rules
 
-1. All code MUST align with `/docs`
+1. All code MUST align with the canonical design authority in the wiki plus the
+   local agent contract in `/docs`
 2. Do NOT implement behavior that is:
    - Undefined in the docs
    - In conflict with the docs
 
 3. If a request introduces new behavior:
-   - Propose updates to the appropriate document(s)
+   - Propose updates to the appropriate wiki page(s)
    - Wait for approval before implementing
 
 4. If documentation is unclear or incomplete:
@@ -87,7 +94,7 @@ When a conflict is detected:
 1. STOP implementation immediately
 
 2. Identify and cite the conflict:
-   - File name (e.g., `architecture.md`)
+   - File name or wiki page
    - Section or concept (e.g., "Service Boundaries")
 
 3. Explain:
@@ -122,16 +129,14 @@ When a request introduces new functionality:
 
 For any meaningful change:
 
-1. Update relevant `/docs` files
-2. Ensure consistency across all documents
-3. Add or update:
-   - Requirements
-   - Architecture
-   - Data model
-   - APIs (if applicable)
-
+1. Update the relevant wiki pages
+2. Ensure consistency across the authoritative wiki content
+3. Update repository-local `/docs` only when:
+   - the local Codex/agent contract changes
+   - local workspace guidance must be kept in-repo
+   - wiki authority or migration pointers need adjustment
 4. Only after documentation is updated:
-   - Proceed to implementation
+   - proceed to implementation
 
 ---
 
@@ -158,7 +163,7 @@ When encountering ambiguity:
 ## Decision Tracking
 
 All significant design decisions must be recorded in:
-`decisions.md`
+the design-decision section or page in the wiki
 
 Each decision should include:
 - Context
@@ -171,7 +176,7 @@ Each decision should include:
 ## Open Questions
 
 All unresolved items must be tracked in:
-`product/open-questions.md`
+the open-questions section or page in the wiki
 
 This file is a required checkpoint before major implementation work.
 
@@ -201,8 +206,9 @@ If any request violates these rules:
 
 ## Summary
 
-- `/docs` is the system design authority
-- Documentation precedes implementation
+- the Gitea wiki is the primary system design authority
+- local `/docs` is a minimal Codex and agent contract, not the full design set
+- documentation precedes implementation
 - Conflicts must be surfaced, not ignored
 - Ambiguity must be made explicit
 - Consistency is mandatory

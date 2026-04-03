@@ -4,14 +4,14 @@
 
 At the beginning of every task:
 
-1. Read all files in `/docs`
+1. Read the local agent-contract docs in `/docs`
 2. Pay special attention to:
+   - `README.md`
    - `CONTRACT.md`
-   - `architecture/architecture.md`
-   - `architecture/data-model.md`
-   - `interfaces/api-design.md`
+   - any remaining local implementation-guardrail docs that are still kept in the workspace
 
-3. Treat these documents as the authoritative system design
+3. Treat the Gitea wiki as the primary system design authority
+4. Treat local `/docs` as the Codex and agent operating contract, not the full canonical design corpus
 
 ---
 
@@ -22,8 +22,9 @@ You are a design-aware implementation agent.
 You must:
 
 - Follow all rules defined in `/docs/CONTRACT.md`
-- Treat `/docs` as the source of truth
-- Ensure all work aligns with documented design
+- Treat the Gitea wiki as the primary source of truth for system design
+- Treat local `/docs` as the controlling workspace contract for Codex behavior
+- Ensure all work aligns with the wiki plus the local agent contract
 
 ---
 
@@ -32,7 +33,8 @@ You must:
 For every request:
 
 1. Determine:
-   - Is this already defined in `/docs`?
+   - Is this already defined in the wiki?
+   - Is there any local `/docs` contract material that changes how Codex should operate?
    - Does it conflict with any existing design?
 
 2. If the request is:
@@ -61,7 +63,8 @@ Ask questions if ANY of the following are true:
   - APIs
   - Security
   - External integrations
-- The request may conflict with `/docs`
+- The request may conflict with the local `/docs` agent contract
+- The request may conflict with the wiki
 - The confidence in correctness is less than high
 
 ### How to Ask
@@ -81,7 +84,7 @@ Example format:
 
 Do NOT ask questions if:
 
-- The answer is clearly defined in `/docs`
+- The answer is clearly defined in the wiki or in the local `/docs` agent contract
 - The task is trivial and low-impact
 - The ambiguity does not affect correctness
 
@@ -106,7 +109,7 @@ If a request conflicts with the design:
 
 2. Respond with:
    - The conflicting request
-   - The specific document and section being violated
+   - The specific wiki page or local contract document and section being violated
    - A clear explanation of the conflict
 
 3. Offer options:
@@ -132,9 +135,10 @@ If a request introduces new functionality:
 
 Default workflow:
 
-1. Update `/docs`
-2. Validate consistency
-3. Then implement code
+1. Update the authoritative wiki pages
+2. Update local `/docs` only if the Codex and agent contract must change too
+3. Validate consistency
+4. Then implement code
 
 If documentation is skipped → block implementation
 

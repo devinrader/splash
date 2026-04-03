@@ -1,107 +1,56 @@
-# Splash Design System
+# Splash Local Agent Docs
 
-This directory is the canonical design system and platform specification for Splash, derived from `splash.docx` and normalized for ongoing development by humans and AI agents.
+This repository-local `/docs` directory is no longer the full canonical design
+set for Splash.
 
-## Organization
+The primary design authority now lives in the Splash repository's Gitea wiki.
 
-The documentation is grouped by role so related material stays together:
+This local `/docs` directory is retained for:
 
-- `product/`
-  Product intent, requirements, decisions, assumptions, and unresolved questions
-- `architecture/`
-  System structure, data model, and pool-equipment communication protocol references
-- `interfaces/`
-  REST, SSE, NATS, and normalized application-level contracts
-- `services/`
-  Service-specific design docs for implementation-facing component behavior
-- `workflows/`
-  User, automation, operational, and protocol-driven flows
-- `images/`
-  Extracted diagrams used by the markdown docs
+- Codex and agent operating contract material
+- minimal implementation guardrails that should remain available in the local
+  workspace
+- migration notes and pointers to the canonical wiki content
 
-## Recommended reading order
+## Local authority
 
-1. Start with [Product Overview](./product/overview.md) for the platform vision and scope.
-2. Read [Product Requirements](./product/requirements.md) for functional and non-functional expectations.
-3. Read [System Architecture](./architecture/architecture.md) for service boundaries, deployment topology, and protocol ownership.
-4. Read [Data Model](./architecture/data-model.md) and [Equipment Protocol Reference](./architecture/equipment-protocols.md) for persistence and device communication design.
-5. Read [Interface Design](./interfaces/api-design.md) and the linked contract documents for REST, SSE, NATS, and normalized contracts.
-6. Read [Splash NATS Service](./services/splash-nats/README.md) for the event-backbone service design and durability rules.
-7. Read [Splash Serial Service](./services/splash-serial/README.md) for the transport-service design that sits under the protocol layer.
-8. Read [Splash Protocol Service](./services/splash-protocol/README.md) for the decode, normalize, and command-correlation layer that sits above transport.
-9. Read [Workflows](./workflows/workflows.md) for end-to-end behavior across onboarding, automation, SLAM, and degraded states.
+Repository-local docs that remain authoritative in-workspace:
 
-## Document index
+- [Design Authority Contract](./CONTRACT.md)
+  Local governance for Codex and implementation work
+- [Wiki Migration Plan](./WIKI-MIGRATION.md)
+  Temporary local plan for moving the broader design corpus into the Gitea wiki
 
-### Product
+Additional local docs may remain temporarily during migration, but they should
+be treated as secondary unless they are explicitly identified as local
+Codex/agent-contract material.
 
-- [Product Overview](./product/overview.md)
-  Product vision, scope, users, roadmap, and UX direction.
-- [Platform Glossary](./product/glossary.md)
-  Shared reference vocabulary for platform, equipment, protocol, sensor, chemistry, and workflow terms.
-- [Product Requirements](./product/requirements.md)
-  Functional requirements, non-functional requirements, constraints, risks, and dependencies.
-- [Design Decisions](./product/decisions.md)
-  Explicit decisions, tradeoffs, and architectural positioning.
-- [Assumptions and Constraints](./product/assumptions.md)
-  Working assumptions, operating constraints, and known limitations.
-- [Open Questions](./product/open-questions.md)
-  Unresolved design questions, spikes, and follow-up items.
+## Reading order for Codex
 
-### Architecture
+1. Read [Design Authority Contract](./CONTRACT.md).
+2. Read any remaining local implementation-guardrail docs that are explicitly
+   required by [AGENTS.md](../AGENTS.md).
+3. Use the Gitea wiki as the canonical source for broader product,
+   architecture, interface, protocol, and workflow design.
 
-- [System Architecture](./architecture/architecture.md)
-  Service structure, deployment model, plugin loading, resilience, testing, and operational guidance.
-- [Deployment Architecture](./architecture/deployment.md)
-  Host layout, runtime placement, configuration loading, and external integration placement.
-- [Resilience and Health](./architecture/resilience.md)
-  Failure handling, degraded states, and recovery expectations.
-- [Operations and Verification](./architecture/operations.md)
-  Testing strategy, logging, metrics, backup/recovery, and operational guidance.
-- [Data Model](./architecture/data-model.md)
-  PostgreSQL entities, InfluxDB measurements, chemistry thresholds, and persistence rules.
-- [Equipment Protocol Reference](./architecture/equipment-protocols.md)
-  Pool-equipment communication protocols, vendor comparisons, frame characteristics, and reverse-engineering status.
-- [Protocol Libraries](./architecture/protocol-libraries.md)
-  Library-layer boundaries between the `splash-protocol` service, protocol core logic, and vendor-specific plugins.
+## Migration guidance
 
-### Interfaces
+As documentation moves to the wiki:
 
-- [Interface Design Overview](./interfaces/api-design.md)
-  Entry point for interface contracts and contract boundaries.
-- [REST API Contract](./interfaces/api-rest.md)
-  REST resources, envelope rules, health behavior, and request/response examples.
-- [SSE Event Contract](./interfaces/api-events.md)
-  Browser-facing live event types and reconnect behavior.
-- [NATS Messaging Contract](./interfaces/messaging-nats.md)
-  Internal messaging subjects, payloads, and ownership rules.
-- [Normalized Domain Contract](./interfaces/normalized-contracts.md)
-  Normalized equipment events and command vocabulary above the protocol layer.
-
-### Services
-
-- [Splash NATS Service](./services/splash-nats/README.md)
-  Service-specific design index for the platform message backbone on `splash-core`.
-- [Splash Serial Service](./services/splash-serial/README.md)
-  Service-specific design index for the RS-485 transport daemon on `splash-zero`.
-- [Splash Protocol Service](./services/splash-protocol/README.md)
-  Service-specific design index for the protocol decode, normalize, and command service on `splash-core`.
-- [Splash API Service](./services/splash-api/README.md)
-  Service-specific design index for the browser-facing REST and SSE service on `splash-core`.
-- [Splash Frontend Service](./services/splash-frontend/README.md)
-  Service-specific design index for the React web UI on `splash-core`.
-
-### Workflows
-
-- [Platform Workflows](./workflows/workflows.md)
-  Onboarding, maintenance, seasonal, automation, protocol, and degraded-state workflows.
-
-## Supporting artifacts
-
-- `docs/images/` contains all diagrams extracted from the Word document and referenced from the relevant markdown files.
+1. the wiki should be treated as canonical
+2. repo-local copies should be reduced or removed unless they are needed for:
+   - Codex and agent rules
+   - local implementation guardrails
+   - migration pointers
+3. if a local doc and the wiki diverge, the wiki wins unless the local doc is a
+   declared Codex/agent-contract exception
 
 ## Editing conventions
 
-- Preserve stable terminology: `splash-core`, `splash-zero`, `Splash API`, `Protocol Explorer`, `SLAM`, `WeatherProvider`, `ProtocolDecoder`, and `SensorProvider`.
-- When source information is incomplete, add `TODO:`, `ASSUMPTION:`, or `QUESTION:` rather than inventing behavior.
-- Prefer updating the focused document that owns the topic instead of adding new standalone design notes.
+- Preserve stable terminology: `splash-core`, `splash-zero`, `Splash API`,
+  `Protocol Explorer`, `SLAM`, `WeatherProvider`, `ProtocolDecoder`, and
+  `SensorProvider`.
+- When source information is incomplete, add `TODO:`, `ASSUMPTION:`, or
+  `QUESTION:` rather than inventing behavior.
+- Prefer updating the canonical wiki page that owns the topic instead of adding
+  new standalone local design notes.
