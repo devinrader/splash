@@ -37,8 +37,26 @@ export interface HttpHandlers {
   listProtocolPrompts(bundleId: string | null): ProtocolPrompt[];
   createProtocolPrompt(input: ProtocolPromptInput): ProtocolPrompt;
   publishRemoteLayoutRequest(input: { pageIndex: number }): Promise<{ commandId: string }>;
+  publishPumpInfoRequest(input: { pumpSlot: number }): Promise<{ commandId: string }>;
+  publishPumpConfigWrite(input: PumpConfigWriteRequest): Promise<{ commandId: string }>;
   publishRawFrameCommand(input: { protocolName: string; bytesHex: string }): Promise<{ commandId: string }>;
-  publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }): Promise<{ commandId: string }>;
+  publishPumpSpeedCommand(input: { equipmentId: string; rpm: number; circuitKey?: string | null }): Promise<{ commandId: string }>;
+}
+
+export interface PumpConfigWriteSlot {
+  circuit_assignment: number;
+  rpm: number;
+}
+
+export interface PumpConfigWriteRequest {
+  pumpId: number;
+  pumpType: number;
+  primingTime: number;
+  unknown3: number;
+  unknown4: number;
+  slots: PumpConfigWriteSlot[];
+  primingSpeed: number;
+  trailingBytes: number[];
 }
 
 export class LocalHttpServer implements HttpServer {
@@ -160,6 +178,32 @@ export class LocalHttpServer implements HttpServer {
         });
       }
 
+      if (req.method === "POST" && req.url === "/protocol/pump-info/request") {
+        const body = await readJsonBody(req);
+        const result = await this.handlers.publishPumpInfoRequest({
+          pumpSlot: readPumpSlot(body)
+        });
+        return json(req, res, 202, {
+          data: {
+            command_id: result.commandId,
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      if (req.method === "POST" && req.url === "/protocol/pump-config/write") {
+        const body = await readJsonBody(req);
+        const result = await this.handlers.publishPumpConfigWrite(readPumpConfigWriteRequest(body));
+        return json(req, res, 202, {
+          data: {
+            command_id: result.commandId,
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
       if (req.method === "POST" && req.url === "/protocol/raw-frame/send") {
         const body = await readJsonBody(req);
         const result = await this.handlers.publishRawFrameCommand(readRawFrameRequest(body));
@@ -202,10 +246,11 @@ export class LocalHttpServer implements HttpServer {
       const controlMatch = req.url?.match(/^\/equipment\/([^/]+)\/control$/);
       if (req.method === "POST" && controlMatch) {
         const body = await readJsonBody(req);
-        const rpm = readRpm(body);
+        const controlRequest = readPumpControlRequest(body);
         const result = await this.handlers.publishPumpSpeedCommand({
           equipmentId: decodeURIComponent(controlMatch[1]),
-          rpm
+          rpm: controlRequest.rpm,
+          circuitKey: controlRequest.circuitKey
         });
         return json(req, res, 202, {
           data: {
@@ -271,7 +316,7 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
   return parsed as Record<string, unknown>;
 }
 
-function readRpm(body: Record<string, unknown>): number {
+function readPumpControlRequest(body: Record<string, unknown>): { rpm: number; circuitKey: string | null } {
   const commandType = body.command_type;
   const args = body.arguments;
   if (commandType !== "set_speed" || !args || typeof args !== "object" || Array.isArray(args)) {
@@ -283,7 +328,15 @@ function readRpm(body: Record<string, unknown>): number {
     throw new HttpRequestError("Pump speed control requires an integer rpm.");
   }
 
-  return rpm;
+  const circuitKey = body.circuit_key;
+  if (circuitKey != null && (typeof circuitKey !== "string" || circuitKey.trim().length === 0)) {
+    throw new HttpRequestError("Pump speed control circuit_key must be a non-empty string when provided.");
+  }
+
+  return {
+    rpm,
+    circuitKey: typeof circuitKey === "string" ? circuitKey.trim() : null
+  };
 }
 
 function readPageIndex(body: Record<string, unknown>): number {
@@ -293,6 +346,15 @@ function readPageIndex(body: Record<string, unknown>): number {
   }
 
   return pageIndex;
+}
+
+function readPumpSlot(body: Record<string, unknown>): number {
+  const pumpSlot = body.pump_slot;
+  if (typeof pumpSlot !== "number" || !Number.isInteger(pumpSlot) || pumpSlot < 1 || pumpSlot > 2) {
+    throw new HttpRequestError("Pump info request requires an integer pump_slot of 1 or 2.");
+  }
+
+  return pumpSlot;
 }
 
 function readOptionalLabel(body: Record<string, unknown>): string | null {
@@ -384,6 +446,57 @@ export function readRawFrameRequest(body: Record<string, unknown>): {
   return {
     protocolName: protocolName.trim(),
     bytesHex
+  };
+}
+
+function readByte(value: unknown, fieldName: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 255) {
+    throw new HttpRequestError(`${fieldName} must be an integer byte between 0 and 255.`);
+  }
+  return value;
+}
+
+function readRpmValue(value: unknown, fieldName: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 3450) {
+    throw new HttpRequestError(`${fieldName} must be an integer RPM between 0 and 3450.`);
+  }
+  return value;
+}
+
+export function readPumpConfigWriteRequest(body: Record<string, unknown>): PumpConfigWriteRequest {
+  const slotsValue = body.slots;
+  if (!Array.isArray(slotsValue) || slotsValue.length !== 8) {
+    throw new HttpRequestError("Pump config write requires slots as an array of 8 entries.");
+  }
+
+  const trailingBytesValue = body.trailing_bytes;
+  const trailingBytes =
+    trailingBytesValue == null
+      ? []
+      : Array.isArray(trailingBytesValue)
+        ? trailingBytesValue.map((value, index) => readByte(value, `trailing_bytes[${index}]`))
+        : (() => {
+            throw new HttpRequestError("Pump config write trailing_bytes must be an array of bytes when provided.");
+          })();
+
+  return {
+    pumpId: readByte(body.pump_id, "pump_id"),
+    pumpType: readByte(body.pump_type, "pump_type"),
+    primingTime: readByte(body.priming_time, "priming_time"),
+    unknown3: readByte(body.unknown_3, "unknown_3"),
+    unknown4: readByte(body.unknown_4, "unknown_4"),
+    slots: slotsValue.map((slotValue, index) => {
+      if (!slotValue || typeof slotValue !== "object" || Array.isArray(slotValue)) {
+        throw new HttpRequestError(`slots[${index}] must be an object.`);
+      }
+      const slot = slotValue as Record<string, unknown>;
+      return {
+        circuit_assignment: readByte(slot.circuit_assignment, `slots[${index}].circuit_assignment`),
+        rpm: readRpmValue(slot.rpm, `slots[${index}].rpm`)
+      };
+    }),
+    primingSpeed: readRpmValue(body.priming_speed, "priming_speed"),
+    trailingBytes
   };
 }
 

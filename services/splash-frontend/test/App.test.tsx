@@ -78,6 +78,8 @@ test("renders milestone equipment values from the API snapshot", async () => {
               display_name: "Main Pump",
               protocol_name: "pentair_easytouch",
               bus_address: "0x60",
+              control_circuit_keys: ["pool", "pool_low", "pool_high", "cleaner"],
+              default_control_circuit_key: "pool",
               latest_state: {
                 rpm: 2750,
                 running: true
@@ -149,6 +151,8 @@ test("merges SSE updates into the equipment cards", async () => {
               display_name: "Main Pump",
               protocol_name: "pentair_easytouch",
               bus_address: "0x60",
+              control_circuit_keys: ["pool", "pool_low", "pool_high", "cleaner"],
+              default_control_circuit_key: "pool",
               latest_state: {
                 rpm: 2600,
                 running: true
@@ -223,6 +227,8 @@ test("submits pump speed control and resolves the pending command from SSE", asy
               display_name: "Main Pump",
               protocol_name: "pentair_easytouch",
               bus_address: "0x60",
+              control_circuit_keys: ["pool", "pool_low", "pool_high", "cleaner"],
+              default_control_circuit_key: "pool",
               latest_state: {
                 rpm: 2600,
                 running: true
@@ -250,6 +256,14 @@ test("submits pump speed control and resolves the pending command from SSE", asy
       }
 
       if (input.includes("/equipment/pump-main/control")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          command_type?: string;
+          circuit_key?: string | null;
+          arguments?: { rpm?: number };
+        };
+        assert.equal(body.command_type, "set_speed");
+        assert.equal(body.circuit_key, "pool");
+        assert.equal(body.arguments?.rpm, 2800);
         return response({
           data: {
             command_id: "command-1",
@@ -309,6 +323,8 @@ test("captures explorer bundles and creates annotation and prompt records", asyn
               display_name: "Main Pump",
               protocol_name: "pentair_easytouch",
               bus_address: "0x60",
+              control_circuit_keys: ["pool", "pool_low", "pool_high", "cleaner"],
+              default_control_circuit_key: "pool",
               latest_state: {
                 rpm: 2600,
                 running: true

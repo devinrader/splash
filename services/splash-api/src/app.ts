@@ -136,10 +136,22 @@ export class App {
     return { commandId };
   }
 
-  async publishPumpSpeedCommand(input: { equipmentId: string; rpm: number }, session: MessagingSession): Promise<{ commandId: string }> {
+  async publishPumpSpeedCommand(
+    input: { equipmentId: string; rpm: number; circuitKey?: string | null },
+    session: MessagingSession
+  ): Promise<{ commandId: string }> {
     const equipment = this.bridge.get(input.equipmentId);
-    if (!equipment || equipment.equipmentType !== "pump" || !equipment.busAddress) {
+    if (!equipment || equipment.equipmentType !== "pump") {
       throw new Error("Unsupported equipment target.");
+    }
+
+    const circuitKey = input.circuitKey ?? equipment.defaultControlCircuitKey ?? null;
+    if (!circuitKey) {
+      throw new Error("No controller circuit is configured for pump speed changes.");
+    }
+
+    if (equipment.controlCircuitKeys && !equipment.controlCircuitKeys.includes(circuitKey)) {
+      throw new Error(`Unsupported controller circuit '${circuitKey}'.`);
     }
 
     const commandId = randomUUID();
@@ -150,8 +162,8 @@ export class App {
       protocol_name: equipment.protocolName,
       target: {
         equipment_id: equipment.id,
-        equipment_type: equipment.equipmentType,
-        bus_address: equipment.busAddress
+        equipment_type: "circuit",
+        circuit_key: circuitKey
       },
       command_type: "set_speed",
       arguments: {
@@ -177,6 +189,67 @@ export class App {
       command_type: "request_remote_layout_page",
       arguments: {
         page_index: input.pageIndex
+      },
+      requested_by: "protocol_explorer",
+      dry_run: false
+    });
+    return { commandId };
+  }
+
+  async publishPumpInfoRequest(input: { pumpSlot: number }, session: MessagingSession): Promise<{ commandId: string }> {
+    const commandId = randomUUID();
+    await session.publish("protocol.command.intent", {
+      pool_id: this.config.poolId,
+      command_id: commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_pump_info",
+      arguments: {
+        pump_slot: input.pumpSlot
+      },
+      requested_by: "protocol_explorer",
+      dry_run: false
+    });
+    return { commandId };
+  }
+
+  async publishPumpConfigWrite(
+    input: {
+      pumpId: number;
+      pumpType: number;
+      primingTime: number;
+      unknown3: number;
+      unknown4: number;
+      slots: Array<{ circuit_assignment: number; rpm: number }>;
+      primingSpeed: number;
+      trailingBytes: number[];
+    },
+    session: MessagingSession
+  ): Promise<{ commandId: string }> {
+    const commandId = randomUUID();
+    await session.publish("protocol.command.intent", {
+      pool_id: this.config.poolId,
+      command_id: commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "write_pump_config",
+      arguments: {
+        pump_id: input.pumpId,
+        pump_type: input.pumpType,
+        priming_time: input.primingTime,
+        unknown_3: input.unknown3,
+        unknown_4: input.unknown4,
+        slots: input.slots,
+        priming_speed: input.primingSpeed,
+        trailing_bytes: input.trailingBytes
       },
       requested_by: "protocol_explorer",
       dry_run: false
@@ -211,6 +284,20 @@ export class App {
           }
           return this.publishRemoteLayoutRequest({ pageIndex }, session);
         },
+        publishPumpInfoRequest: async ({ pumpSlot }) => {
+          const session = this.currentSession;
+          if (!session) {
+            throw new Error("NATS session unavailable.");
+          }
+          return this.publishPumpInfoRequest({ pumpSlot }, session);
+        },
+        publishPumpConfigWrite: async (input) => {
+          const session = this.currentSession;
+          if (!session) {
+            throw new Error("NATS session unavailable.");
+          }
+          return this.publishPumpConfigWrite(input, session);
+        },
         publishRawFrameCommand: async ({ protocolName, bytesHex }) => {
           const session = this.currentSession;
           if (!session) {
@@ -218,12 +305,12 @@ export class App {
           }
           return this.publishRawFrameCommand({ protocolName, bytesHex }, session);
         },
-        publishPumpSpeedCommand: async ({ equipmentId, rpm }) => {
+        publishPumpSpeedCommand: async ({ equipmentId, rpm, circuitKey }) => {
           const session = this.currentSession;
           if (!session) {
             throw new Error("NATS session unavailable.");
           }
-          return this.publishPumpSpeedCommand({ equipmentId, rpm }, session);
+          return this.publishPumpSpeedCommand({ equipmentId, rpm, circuitKey }, session);
         }
       });
 

@@ -39,7 +39,11 @@ export async function fetchHealth(): Promise<HealthResponse> {
   return (await response.json()) as HealthResponse;
 }
 
-export async function requestPumpSpeed(input: { equipmentId: string; rpm: number }): Promise<CommandAcceptedResponse> {
+export async function requestPumpSpeed(input: {
+  equipmentId: string;
+  rpm: number;
+  circuitKey?: string | null;
+}): Promise<CommandAcceptedResponse> {
   const response = await fetch(buildApiUrl(`/equipment/${encodeURIComponent(input.equipmentId)}/control`), {
     method: "POST",
     headers: {
@@ -47,6 +51,7 @@ export async function requestPumpSpeed(input: { equipmentId: string; rpm: number
     },
     body: JSON.stringify({
       command_type: "set_speed",
+      circuit_key: input.circuitKey ?? null,
       arguments: {
         rpm: input.rpm
       }

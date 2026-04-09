@@ -4,6 +4,8 @@ export interface EquipmentBridgeEntry {
   displayName: string;
   protocolName: string;
   busAddress: string | null;
+  controlCircuitKeys?: string[];
+  defaultControlCircuitKey?: string | null;
 }
 
 export class EquipmentBridge {
@@ -20,7 +22,9 @@ export class EquipmentBridge {
       equipmentType: "pump",
       displayName: "Main Pump",
       protocolName: "pentair_easytouch",
-      busAddress: "0x60"
+      busAddress: "0x60",
+      controlCircuitKeys: ["pool", "pool_low", "pool_high", "cleaner"],
+      defaultControlCircuitKey: "pool"
     },
     {
       id: "chlorinator-main",

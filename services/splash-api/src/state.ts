@@ -102,6 +102,8 @@ export class LatestStateProjection {
             display_name: entry.displayName,
             protocol_name: entry.protocolName,
             bus_address: entry.busAddress,
+            control_circuit_keys: entry.controlCircuitKeys ?? [],
+            default_control_circuit_key: entry.defaultControlCircuitKey ?? null,
             latest_state: {
               rpm: this.pump.rpm,
               running: this.pump.running,

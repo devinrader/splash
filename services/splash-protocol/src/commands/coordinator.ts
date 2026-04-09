@@ -1,5 +1,9 @@
 import type { Logger } from "../logger.js";
 import type { MessagingSession } from "../messaging.js";
+import {
+  encodePentairPumpConfigWriteFromBaseline,
+  encodePentairPumpInfoRequest
+} from "../plugins/pentair-easytouch.js";
 import type { ProtocolPlugin } from "../plugins/types.js";
 import type { SelectedProtocolConfig } from "../provider.js";
 import { ProtocolCommandError, type CommandEncodingPlan, type CommandResultStatus, type NormalizedCommandIntent } from "./types.js";
@@ -14,6 +18,15 @@ interface PendingCommand {
   encoded: CommandEncodingPlan;
   acknowledgedWrites: number;
   timeout: NodeJS.Timeout | null;
+  workflow:
+    | null
+    | {
+        kind: "controller_circuit_speed";
+        phase: "awaiting_baseline" | "awaiting_write_transport" | "awaiting_verification";
+        pumpSlot: number;
+        selectorValue: number;
+        targetRpm: number;
+      };
 }
 
 export class CommandCoordinator {
@@ -49,6 +62,7 @@ export class CommandCoordinator {
     session.subscribe("serial.rx.raw", (payload) => this.handleRawChunk(payload));
     session.subscribe("serial.tx.raw", (payload) => this.handleTransportResult(payload));
     session.subscribe("equipment.state.pump", (payload) => this.handlePumpState(payload));
+    session.subscribe("protocol.frame.decoded", (payload) => this.handleDecodedFrame(payload));
   }
 
   private async handleIntent(payload: Record<string, unknown>): Promise<void> {
@@ -104,6 +118,16 @@ export class CommandCoordinator {
         intent,
         encoded,
         acknowledgedWrites: 0,
+        workflow:
+          encoded.correlation?.kind === "controller_circuit_speed"
+            ? {
+                kind: "controller_circuit_speed",
+                phase: "awaiting_baseline",
+                pumpSlot: encoded.correlation.pumpSlot ?? 0,
+                selectorValue: encoded.correlation.selectorValue ?? 0,
+                targetRpm: encoded.correlation.targetRpm ?? 0
+              }
+            : null,
         timeout: setTimeout(() => {
           void this.endPending(
             intent.command_id,
@@ -194,9 +218,84 @@ export class CommandCoordinator {
 
     pending.acknowledgedWrites += 1;
     if (pending.acknowledgedWrites === pending.encoded.writes.length) {
+      if (pending.workflow?.kind === "controller_circuit_speed") {
+        await this.handleControllerCircuitTransportAck(commandId, pending);
+        return;
+      }
+
       await this.publishResult(pending.intent.pool_id, pending.intent.command_id, "transmitted", null, "transport_write_observed", "All command writes reached the transport layer.");
       if (pending.encoded.correlation?.kind === "transport_ack") {
         await this.completePending(commandId, "transport_write_observed", "Command completed after transport acknowledgement.");
+      }
+    }
+  }
+
+  private async handleDecodedFrame(payload: Record<string, unknown>): Promise<void> {
+    const messageType = readString(payload, "message_type");
+    if (messageType !== "pump_info") {
+      return;
+    }
+
+    const fields = readObject(payload, "fields");
+    const pumpSlot = readNumber(fields, "pump_slot");
+
+    for (const [commandId, pending] of this.pending.entries()) {
+      const workflow = pending.workflow;
+      if (!workflow || workflow.kind !== "controller_circuit_speed" || workflow.pumpSlot !== pumpSlot) {
+        continue;
+      }
+
+      if (workflow.phase === "awaiting_baseline") {
+        const encoded = encodePentairPumpConfigWriteFromBaseline({
+          poolId: pending.intent.pool_id,
+          commandId,
+          targetRpm: workflow.targetRpm,
+          selectorValue: workflow.selectorValue,
+          pumpSlot: workflow.pumpSlot,
+          fields
+        });
+        pending.encoded = encoded;
+        pending.acknowledgedWrites = 0;
+        pending.workflow = {
+          ...workflow,
+          phase: "awaiting_write_transport"
+        };
+
+        for (const [index, write] of encoded.writes.entries()) {
+          await this.publishEncoded(pending.intent, encoded, write, index);
+        }
+        await this.publishResult(
+          pending.intent.pool_id,
+          pending.intent.command_id,
+          "encoded",
+          null,
+          "controller_config_write_encoded",
+          "Controller pump config write encoded from a fresh live baseline."
+        );
+        for (const [index, write] of encoded.writes.entries()) {
+          await this.publishWriteRequest(pending.intent, encoded, write, index);
+        }
+        continue;
+      }
+
+      if (workflow.phase === "awaiting_verification") {
+        const slotsValue = fields.slots;
+        if (!Array.isArray(slotsValue)) {
+          continue;
+        }
+
+        const matched = slotsValue.some((slot) => {
+          if (!slot || typeof slot !== "object" || Array.isArray(slot)) {
+            return false;
+          }
+
+          const record = slot as Record<string, unknown>;
+          return readNumber(record, "circuit_assignment") === workflow.selectorValue && readNumber(record, "rpm") === workflow.targetRpm;
+        });
+
+        if (matched) {
+          await this.completePending(commandId, "command_completed", "Verified controller pump config reflects the requested RPM.");
+        }
       }
     }
   }
@@ -320,6 +419,50 @@ export class CommandCoordinator {
     }
     this.pending.delete(commandId);
     await this.publishResult(pending.intent.pool_id, pending.intent.command_id, "completed", null, stage, detail);
+  }
+
+  private async handleControllerCircuitTransportAck(commandId: string, pending: PendingCommand): Promise<void> {
+    const workflow = pending.workflow;
+    if (!workflow || workflow.kind !== "controller_circuit_speed") {
+      return;
+    }
+
+    if (workflow.phase === "awaiting_baseline") {
+      return;
+    }
+
+    if (workflow.phase === "awaiting_write_transport") {
+      const verificationPlan = encodePentairPumpInfoRequest({
+        poolId: pending.intent.pool_id,
+        commandId,
+        pumpSlot: workflow.pumpSlot
+      });
+      pending.encoded = verificationPlan;
+      pending.acknowledgedWrites = 0;
+      pending.workflow = {
+        ...workflow,
+        phase: "awaiting_verification"
+      };
+
+      for (const [index, write] of verificationPlan.writes.entries()) {
+        await this.publishEncoded(pending.intent, verificationPlan, write, index);
+      }
+      for (const [index, write] of verificationPlan.writes.entries()) {
+        await this.publishWriteRequest(pending.intent, verificationPlan, write, index);
+      }
+      return;
+    }
+
+    if (workflow.phase === "awaiting_verification") {
+      await this.publishResult(
+        pending.intent.pool_id,
+        pending.intent.command_id,
+        "transmitted",
+        null,
+        "transport_write_observed",
+        "Controller config write and verification request reached the transport layer."
+      );
+    }
   }
 }
 

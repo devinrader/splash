@@ -41,6 +41,7 @@ export default function App() {
   const applyPumpStateEvent = useFrontendStore((state) => state.applyPumpStateEvent);
 
   const [rpmInput, setRpmInput] = useState("2800");
+  const [circuitKeyInput, setCircuitKeyInput] = useState("pool");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bundleLabel, setBundleLabel] = useState("");
   const [remoteLayoutPageIndex, setRemoteLayoutPageIndex] = useState("0");
@@ -161,6 +162,15 @@ export default function App() {
   const chlorinator = equipment["chlorinator-main"];
   const pendingCommand = isSubmitting || command.commandId !== null;
 
+  useEffect(() => {
+    if (!pump) {
+      return;
+    }
+
+    const defaultCircuitKey = pump.default_control_circuit_key ?? pump.control_circuit_keys?.[0] ?? "pool";
+    setCircuitKeyInput(defaultCircuitKey);
+  }, [pump]);
+
   async function handlePumpSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const rpm = Number.parseInt(rpmInput, 10);
@@ -173,7 +183,11 @@ export default function App() {
     setIsSubmitting(true);
 
     try {
-      const response = await requestPumpSpeed({ equipmentId: pump.id, rpm });
+      const response = await requestPumpSpeed({
+        equipmentId: pump.id,
+        rpm,
+        circuitKey: circuitKeyInput
+      });
       beginPumpCommand({ commandId: response.data.command_id, rpm });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
@@ -383,6 +397,19 @@ export default function App() {
         </div>
 
         <form className="control-form" onSubmit={(event) => void handlePumpSubmit(event)}>
+          <label htmlFor="pump-circuit">Controller circuit</label>
+          <select
+            id="pump-circuit"
+            value={circuitKeyInput}
+            onChange={(event) => setCircuitKeyInput(event.target.value)}
+            disabled={pendingCommand || !pump}
+          >
+            {(pump?.control_circuit_keys ?? []).map((circuitKey) => (
+              <option key={circuitKey} value={circuitKey}>
+                {formatCircuitKey(circuitKey)}
+              </option>
+            ))}
+          </select>
           <label htmlFor="pump-rpm">Requested RPM</label>
           <input
             id="pump-rpm"
@@ -796,6 +823,13 @@ function formatBoolean(value: unknown): string {
   }
 
   return value ? "Yes" : "No";
+}
+
+function formatCircuitKey(value: string): string {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function formatCommandStatus(status: string | null): string {

@@ -4,6 +4,8 @@ export interface EquipmentRecord {
   display_name: string;
   protocol_name: string;
   bus_address?: string | null;
+  control_circuit_keys?: string[];
+  default_control_circuit_key?: string | null;
   latest_state: Record<string, unknown>;
 }
 

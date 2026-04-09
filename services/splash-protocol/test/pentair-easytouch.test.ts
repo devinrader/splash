@@ -14,12 +14,22 @@ function buildPentairFrameWithAddresses(
   actionCode: number,
   payload: number[]
 ): Uint8Array {
+  return buildPentairFrameWithProtocol(0x01, destination, source, actionCode, payload);
+}
+
+function buildPentairFrameWithProtocol(
+  protocolByte: number,
+  destination: number,
+  source: number,
+  actionCode: number,
+  payload: number[]
+): Uint8Array {
   const frame = [
     0xff,
     0x00,
     0xff,
     0xa5,
-    0x01,
+    protocolByte,
     destination,
     source,
     actionCode,
@@ -288,6 +298,55 @@ test("decodePentairFrame classifies observed 0x9b traffic as controller remote i
   assert.equal(decoded.fields.destination_role, "controller");
   assert.equal(decoded.fields.source_is_remote, true);
   assert.equal(decoded.fields.destination_is_controller, true);
+  assert.equal(decoded.fields.pump_id, 1);
+  assert.equal(decoded.fields.pump_type, 0x80);
+  assert.equal(decoded.fields.priming_time, 0x00);
+  assert.equal(decoded.fields.priming_speed, 0x03e8);
+  assert.deepEqual(decoded.fields.slots, [
+    { slot: 1, circuit_assignment: 0x06, speed_high: 0x03, speed_low: 0x84, rpm: 900 },
+    { slot: 2, circuit_assignment: 0x0b, speed_high: 0x04, speed_low: 0xe2, rpm: 1250 },
+    { slot: 3, circuit_assignment: 0x0c, speed_high: 0x0d, speed_low: 0x7a, rpm: 3450 },
+    { slot: 4, circuit_assignment: 0x0d, speed_high: 0x09, speed_low: 0x24, rpm: 2340 },
+    { slot: 5, circuit_assignment: 0x80, speed_high: 0x07, speed_low: 0x6c, rpm: 1900 },
+    { slot: 6, circuit_assignment: 0x00, speed_high: 0x00, speed_low: 0x00, rpm: 0 },
+    { slot: 7, circuit_assignment: 0x00, speed_high: 0x00, speed_low: 0x00, rpm: 0 },
+    { slot: 8, circuit_assignment: 0x00, speed_high: 0x00, speed_low: 0x00, rpm: 0 }
+  ]);
+});
+
+test("decodePentairFrame decodes observed 0x18 pump info for EasyTouch Pump #1", () => {
+  const payload = [
+    0x01, 0x80, 0x00, 0x02, 0x00, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+    0x1a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc2
+  ];
+  const decoded = decodePentairFrame(buildPentairFrameWithAddresses(0x10, 0x0f, 0x18, payload));
+
+  assert.equal(decoded.messageType, "pump_info");
+  assert.equal(decoded.fields.pump_slot, 1);
+  assert.equal(decoded.fields.pump_type, 0x80);
+  assert.equal(decoded.fields.likely_assigned_circuit, 2);
+  assert.equal(decoded.fields.slot_1_rpm_high, 4);
+  assert.equal(decoded.fields.slot_1_rpm_low, 0x1a);
+  assert.equal(decoded.fields.slot_1_rpm, 1050);
+  assert.equal(decoded.fields.trailing_config_byte, 0xc2);
+});
+
+test("decodePentairFrame decodes observed 0x18 pump info for EasyTouch Pump #2", () => {
+  const payload = [
+    0x02, 0x00, 0x0a, 0x02, 0x00, 0x00, 0x1e, 0x00, 0x1e, 0x00, 0x1e,
+    0x00, 0x1e, 0x00, 0x1e, 0x00, 0x1e, 0x00, 0x1e, 0x00, 0x1e, 0x00,
+    0x1e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  ];
+  const decoded = decodePentairFrame(buildPentairFrameWithAddresses(0x10, 0x0f, 0x18, payload));
+
+  assert.equal(decoded.messageType, "pump_info");
+  assert.equal(decoded.fields.pump_slot, 2);
+  assert.equal(decoded.fields.pump_type, 0x00);
+  assert.equal(decoded.fields.slot_1_rpm_high, 0x1e);
+  assert.equal(decoded.fields.slot_1_rpm_low, 0x1e);
+  assert.equal(decoded.fields.slot_1_rpm, 7710);
+  assert.equal(decoded.fields.trailing_config_byte, 0x00);
 });
 
 test("decodePentairFrame classifies intellichlor framed traffic generically", () => {
@@ -307,7 +366,7 @@ test("decodePentairFrame classifies intellichlor framed traffic generically", ()
   assert.deepEqual(decoded.normalizedEvents, []);
 });
 
-test("pentairEasyTouchPlugin encodes the initial direct pump set_speed sequence", () => {
+test("pentairEasyTouchPlugin encodes the milestone-1 controller circuit baseline request for set_speed", () => {
   const encoded = pentairEasyTouchPlugin.encodeCommand(
     {
       pool_id: "pool-1",
@@ -315,8 +374,8 @@ test("pentairEasyTouchPlugin encodes the initial direct pump set_speed sequence"
       requested_at: "2026-03-30T00:00:00Z",
       protocol_name: "pentair_easytouch",
       target: {
-        equipment_type: "pump",
-        bus_address: "0x60"
+        equipment_type: "circuit",
+        circuit_key: "pool_high"
       },
       command_type: "set_speed",
       arguments: {
@@ -327,13 +386,14 @@ test("pentairEasyTouchPlugin encodes the initial direct pump set_speed sequence"
     {}
   );
 
-  assert.equal(encoded.writes.length, 3);
-  assert.equal(encoded.writes[0].bytesHex, "ff00ffa50060210401ff022a");
-  assert.equal(encoded.writes[1].bytesHex, "ff00ffa5006021010403270af0024f");
-  assert.equal(encoded.writes[2].bytesHex, "ff00ffa5006021040100012b");
-  assert.equal(encoded.writes[1].busRequirements.requires_idle_ms, 50);
-  assert.equal(encoded.correlation?.kind, "pump_rpm");
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0].bytesHex, "ff00ffa5341021d8010101e4");
+  assert.equal(encoded.writes[0].busRequirements.requires_idle_ms, 50);
+  assert.equal(encoded.correlation?.kind, "controller_circuit_speed");
   assert.equal(encoded.correlation?.targetRpm, 2800);
+  assert.equal(encoded.correlation?.pumpSlot, 1);
+  assert.equal(encoded.correlation?.selectorValue, 0x0c);
+  assert.equal(encoded.correlation?.circuitKey, "pool_high");
 });
 
 test("pentairEasyTouchPlugin encodes a manual Remote Layout page request", () => {
@@ -358,6 +418,105 @@ test("pentairEasyTouchPlugin encodes a manual Remote Layout page request", () =>
 
   assert.equal(encoded.writes.length, 1);
   assert.equal(encoded.writes[0].bytesHex, "ff00ffa5011021e1010501be");
+  assert.equal(encoded.correlation?.kind, "transport_ack");
+});
+
+test("pentairEasyTouchPlugin encodes a manual pump info request for Pump #1", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-pump-info-1",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_pump_info",
+      arguments: {
+        pump_slot: 1
+      },
+      dry_run: false
+    },
+    {}
+  );
+
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0].bytesHex, "ff00ffa5341021d8010101e4");
+  assert.equal(encoded.correlation?.kind, "transport_ack");
+});
+
+test("pentairEasyTouchPlugin encodes a manual pump info request for Pump #2", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-pump-info-2",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_pump_info",
+      arguments: {
+        pump_slot: 2
+      },
+      dry_run: false
+    },
+    {}
+  );
+
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0].bytesHex, "ff00ffa5341021d8010201e5");
+  assert.equal(encoded.correlation?.kind, "transport_ack");
+});
+
+test("pentairEasyTouchPlugin encodes a structured manual pump config write", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-pump-config-write",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "write_pump_config",
+      arguments: {
+        pump_id: 1,
+        pump_type: 0x80,
+        priming_time: 0x00,
+        unknown_3: 0x02,
+        unknown_4: 0x00,
+        slots: [
+          { circuit_assignment: 0x06, rpm: 900 },
+          { circuit_assignment: 0x0b, rpm: 1250 },
+          { circuit_assignment: 0x0c, rpm: 3450 },
+          { circuit_assignment: 0x0d, rpm: 2340 },
+          { circuit_assignment: 0x80, rpm: 1900 },
+          { circuit_assignment: 0x00, rpm: 0 },
+          { circuit_assignment: 0x00, rpm: 0 },
+          { circuit_assignment: 0x00, rpm: 0 }
+        ],
+        priming_speed: 1000,
+        trailing_bytes: new Array(15).fill(0)
+      },
+      dry_run: false
+    },
+    {}
+  );
+
+  const expectedPayload = [
+    0x01, 0x80, 0x00, 0x02, 0x00, 0x06, 0x03, 0x0b, 0x04, 0x0c, 0x0d, 0x0d,
+    0x09, 0x80, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x84, 0xe2,
+    0x7a, 0x24, 0x6c, 0x00, 0x00, 0x00, 0xe8, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  ];
+  const expected = buildPentairFrameWithProtocol(0x34, 0x10, 0x21, 0x9b, expectedPayload);
+
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0].bytesHex, Buffer.from(expected).toString("hex"));
   assert.equal(encoded.correlation?.kind, "transport_ack");
 });
 

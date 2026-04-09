@@ -46,8 +46,8 @@ function commandIntent(overrides: Partial<MessagePayload> = {}): MessagePayload 
     requested_at: "2026-03-30T00:00:00Z",
     protocol_name: "pentair_easytouch",
     target: {
-      equipment_type: "pump",
-      bus_address: "0x60"
+      equipment_type: "circuit",
+      circuit_key: "pool_high"
     },
     command_type: "set_speed",
     arguments: {
@@ -77,28 +77,113 @@ test("command coordinator encodes, transmits, and completes the initial pump spe
   const writes = session.published.filter((entry) => entry.subject === "serial.write.request");
   const results = session.published.filter((entry) => entry.subject === "command.result.command-1");
 
-  assert.equal(encoded.length, 3);
-  assert.equal(writes.length, 3);
+  assert.equal(encoded.length, 1);
+  assert.equal(writes.length, 1);
   assert.equal(results[0]?.payload.status, "accepted");
   assert.equal(results[1]?.payload.status, "encoded");
 
-  for (let index = 0; index < 3; index += 1) {
-    await session.emit("serial.tx.raw", {
-      pool_id: "pool-1",
-      stream_id: "stream-1",
-      command_id: "command-1",
-      written_at: "2026-03-30T00:00:01Z",
-      bytes_hex: writes[index]?.payload.bytes_hex,
-      byte_count: writes[index]?.payload.byte_count,
-      write_result: "ok",
-      error_code: null,
-      detail: null
-    });
-  }
+  await session.emit("serial.tx.raw", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    command_id: "command-1",
+    written_at: "2026-03-30T00:00:01Z",
+    bytes_hex: writes[0]?.payload.bytes_hex,
+    byte_count: writes[0]?.payload.byte_count,
+    write_result: "ok",
+    error_code: null,
+    detail: null
+  });
 
-  await session.emit("equipment.state.pump", {
-    bus_address: "0x60",
-    rpm: 2800
+  await session.emit("protocol.frame.decoded", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    frame_id: "frame-baseline",
+    protocol_name: "pentair_easytouch",
+    frame_family: "pentair",
+    decoded_at: "2026-03-30T00:00:02Z",
+    message_type: "pump_info",
+    action_code: "0x18",
+    source_address: "0x0f",
+    destination_address: "0x10",
+    checksum_status: "valid",
+    fields: {
+      pump_slot: 1,
+      pump_type: 0x80,
+      priming_time: 0,
+      unknown_3: 0x02,
+      unknown_4: 0x00,
+      priming_speed: 1000,
+      trailing_bytes: new Array(15).fill(0),
+      slots: [
+        { circuit_assignment: 0x06, rpm: 900 },
+        { circuit_assignment: 0x0b, rpm: 1250 },
+        { circuit_assignment: 0x0c, rpm: 3450 },
+        { circuit_assignment: 0x0d, rpm: 2340 },
+        { circuit_assignment: 0x80, rpm: 1900 },
+        { circuit_assignment: 0x00, rpm: 0 },
+        { circuit_assignment: 0x00, rpm: 0 },
+        { circuit_assignment: 0x00, rpm: 0 }
+      ]
+    },
+    unknown_fields: []
+  });
+
+  const writePhaseWrites = session.published.filter((entry) => entry.subject === "serial.write.request");
+  assert.equal(writePhaseWrites.length, 2);
+
+  await session.emit("serial.tx.raw", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    command_id: "command-1",
+    written_at: "2026-03-30T00:00:03Z",
+    bytes_hex: writePhaseWrites[1]?.payload.bytes_hex,
+    byte_count: writePhaseWrites[1]?.payload.byte_count,
+    write_result: "ok",
+    error_code: null,
+    detail: null
+  });
+
+  const verifyPhaseWrites = session.published.filter((entry) => entry.subject === "serial.write.request");
+  assert.equal(verifyPhaseWrites.length, 3);
+
+  await session.emit("serial.tx.raw", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    command_id: "command-1",
+    written_at: "2026-03-30T00:00:04Z",
+    bytes_hex: verifyPhaseWrites[2]?.payload.bytes_hex,
+    byte_count: verifyPhaseWrites[2]?.payload.byte_count,
+    write_result: "ok",
+    error_code: null,
+    detail: null
+  });
+
+  await session.emit("protocol.frame.decoded", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    frame_id: "frame-verified",
+    protocol_name: "pentair_easytouch",
+    frame_family: "pentair",
+    decoded_at: "2026-03-30T00:00:05Z",
+    message_type: "pump_info",
+    action_code: "0x18",
+    source_address: "0x0f",
+    destination_address: "0x10",
+    checksum_status: "valid",
+    fields: {
+      pump_slot: 1,
+      slots: [
+        { circuit_assignment: 0x06, rpm: 900 },
+        { circuit_assignment: 0x0b, rpm: 1250 },
+        { circuit_assignment: 0x0c, rpm: 2800 },
+        { circuit_assignment: 0x0d, rpm: 2340 },
+        { circuit_assignment: 0x80, rpm: 1900 },
+        { circuit_assignment: 0x00, rpm: 0 },
+        { circuit_assignment: 0x00, rpm: 0 },
+        { circuit_assignment: 0x00, rpm: 0 }
+      ]
+    },
+    unknown_fields: []
   });
 
   const terminalResults = session.published
@@ -185,7 +270,7 @@ test("command coordinator accepts live raw chunks as active stream evidence", as
 
   assert.ok(results.includes("accepted"));
   assert.ok(!results.includes("failed"));
-  assert.equal(writes.length, 3);
+  assert.equal(writes.length, 1);
 });
 
 test("command coordinator completes transport-ack diagnostic commands after write acknowledgement", async () => {

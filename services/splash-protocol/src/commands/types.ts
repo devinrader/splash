@@ -34,9 +34,12 @@ export interface EncodedWrite {
 }
 
 export interface CommandCorrelationExpectation {
-  kind: "pump_rpm" | "transport_ack";
+  kind: "pump_rpm" | "transport_ack" | "controller_circuit_speed";
   targetRpm?: number;
   busAddress?: string;
+  pumpSlot?: number;
+  selectorValue?: number;
+  circuitKey?: string;
 }
 
 export interface CommandEncodingPlan {

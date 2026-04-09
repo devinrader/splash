@@ -18,6 +18,15 @@ const SPLASH_REMOTE_ADDRESS = 0x21;
 const CONTROLLER_ADDRESS = 0x10;
 const DEFAULT_IDLE_MS = 50;
 const PUMP_PROGRAM_1 = 0x27;
+const DEFAULT_CONTROLLER_CIRCUIT_SPEED_CONFIG = {
+  pumpSlot: 1,
+  circuitAssignments: {
+    pool: 0x06,
+    pool_low: 0x0b,
+    pool_high: 0x0c,
+    cleaner: 0x0d
+  }
+} as const;
 const CONTROLLER_CIRCUIT_BITS = [
   { key: "pool", mask: 0x20 },
   { key: "spa", mask: 0x01 },
@@ -38,6 +47,24 @@ const CONTROLLER_CIRCUIT_BITS_3 = [
   { key: "feature8", mask: 0x02 },
   { key: "aux_extra", mask: 0x08 }
 ] as const;
+
+function decodePumpConfigSlots(payload: Uint8Array): Array<Record<string, number | null>> {
+  return Array.from({ length: 8 }, (_, index) => {
+    const assignmentIndex = 5 + index * 2;
+    const speedHighIndex = 6 + index * 2;
+    const speedLowIndex = 22 + index;
+    const assignment = payload[assignmentIndex] ?? null;
+    const speedHigh = payload[speedHighIndex] ?? null;
+    const speedLow = payload[speedLowIndex] ?? null;
+    return {
+      slot: index + 1,
+      circuit_assignment: assignment,
+      speed_high: speedHigh,
+      speed_low: speedLow,
+      rpm: speedHigh === null || speedLow === null ? null : (speedHigh << 8) | speedLow
+    };
+  });
+}
 
 type ControllerMode = "pool" | "spa" | "pool_spa" | "aux_only" | "idle";
 
@@ -160,6 +187,8 @@ function decodeMessageType(actionCode: number): string {
   switch (actionCode) {
     case 0x02:
       return "controller_status";
+    case 0x18:
+      return "pump_info";
     case 0x07:
       return "pump_status";
     case 0x19:
@@ -251,10 +280,42 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
         output_percent: payload[2] ?? null,
         status_byte: payload[3] ?? null
       };
+    case 0x18:
+      return {
+        payload_hex: payloadHex,
+        payload_length: payload.length,
+        pump_slot: payload[0] ?? null,
+        pump_type: payload[1] ?? null,
+        priming_time: payload[2] ?? null,
+        likely_assigned_circuit: payload[3] ?? null,
+        unknown_3: payload[3] ?? null,
+        unknown_4: payload[4] ?? null,
+        slots: decodePumpConfigSlots(payload),
+        slot_1_rpm_high: payload[6] ?? null,
+        slot_1_rpm_low: payload[22] ?? null,
+        slot_1_rpm: payload.length > 22 ? (((payload[6] ?? 0) << 8) | (payload[22] ?? 0)) : null,
+        priming_flag_or_speed_hi: payload[21] ?? null,
+        priming_speed_high: payload[21] ?? null,
+        priming_speed_low: payload[30] ?? null,
+        priming_speed:
+          payload.length > 30 ? (((payload[21] ?? 0) << 8) | (payload[30] ?? 0)) : null,
+        trailing_bytes: payload.length > 31 ? [...payload.slice(31)] : [],
+        trailing_config_byte: payload[30] ?? null
+      };
     case 0x9b:
       return {
         payload_hex: payloadHex,
         payload_length: payload.length,
+        pump_id: payload[0] ?? null,
+        pump_type: payload[1] ?? null,
+        priming_time: payload[2] ?? null,
+        unknown_3: payload[3] ?? null,
+        unknown_4: payload[4] ?? null,
+        slots: decodePumpConfigSlots(payload),
+        priming_speed_high: payload[21] ?? null,
+        priming_speed_low: payload[30] ?? null,
+        priming_speed:
+          payload.length > 30 ? (((payload[21] ?? 0) << 8) | (payload[30] ?? 0)) : null,
         source_role: describeAddressRole(sourceAddress),
         destination_role: describeAddressRole(destinationAddress),
         source_is_remote: describeAddressRole(sourceAddress) === "remote",
@@ -470,7 +531,144 @@ function parseExactHex(bytesHex: string): Uint8Array {
   return bytes;
 }
 
-function encodePentairCommand(intent: NormalizedCommandIntent): CommandEncodingPlan {
+function parseByteArgument(value: unknown, fieldName: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 255) {
+    throw new ProtocolCommandError(`${fieldName} must be an integer byte between 0 and 255.`, "command_arguments_invalid");
+  }
+  return value;
+}
+
+function parseRpmArgument(value: unknown, fieldName: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 3450) {
+    throw new ProtocolCommandError(`${fieldName} must be an integer RPM between 0 and 3450.`, "command_arguments_invalid");
+  }
+  return value;
+}
+
+function buildPumpConfigPayload(argumentsValue: Record<string, unknown>): number[] {
+  const pumpId = parseByteArgument(argumentsValue.pump_id, "pump_id");
+  const pumpType = parseByteArgument(argumentsValue.pump_type, "pump_type");
+  const primingTime = parseByteArgument(argumentsValue.priming_time, "priming_time");
+  const unknown3 = parseByteArgument(argumentsValue.unknown_3, "unknown_3");
+  const unknown4 = parseByteArgument(argumentsValue.unknown_4, "unknown_4");
+  const primingSpeed = parseRpmArgument(argumentsValue.priming_speed, "priming_speed");
+
+  const slotsValue = argumentsValue.slots;
+  if (!Array.isArray(slotsValue) || slotsValue.length !== 8) {
+    throw new ProtocolCommandError("write_pump_config requires slots as an array of 8 entries.", "command_arguments_invalid");
+  }
+
+  const payload = new Array<number>(31).fill(0);
+  payload[0] = pumpId;
+  payload[1] = pumpType;
+  payload[2] = primingTime;
+  payload[3] = unknown3;
+  payload[4] = unknown4;
+
+  for (let index = 0; index < 8; index += 1) {
+    const slotValue = slotsValue[index];
+    if (!slotValue || typeof slotValue !== "object" || Array.isArray(slotValue)) {
+      throw new ProtocolCommandError(`slots[${index}] must be an object.`, "command_arguments_invalid");
+    }
+
+    const slot = slotValue as Record<string, unknown>;
+    const circuitAssignment = parseByteArgument(slot.circuit_assignment, `slots[${index}].circuit_assignment`);
+    const rpm = parseRpmArgument(slot.rpm, `slots[${index}].rpm`);
+    const speedHigh = (rpm >> 8) & 0xff;
+    const speedLow = rpm & 0xff;
+
+    payload[5 + index * 2] = circuitAssignment;
+    payload[6 + index * 2] = speedHigh;
+    payload[22 + index] = speedLow;
+  }
+
+  payload[21] = (primingSpeed >> 8) & 0xff;
+  payload[30] = primingSpeed & 0xff;
+
+  const trailingBytesValue = argumentsValue.trailing_bytes;
+  if (trailingBytesValue == null) {
+    return payload;
+  }
+
+  if (!Array.isArray(trailingBytesValue)) {
+    throw new ProtocolCommandError("trailing_bytes must be an array of bytes when provided.", "command_arguments_invalid");
+  }
+
+  return [
+    ...payload,
+    ...trailingBytesValue.map((value, index) => parseByteArgument(value, `trailing_bytes[${index}]`))
+  ];
+}
+
+function readProtocolConfigObject(value: unknown, fieldName: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ProtocolCommandError(`${fieldName} must be a JSON object when provided.`, "command_arguments_invalid");
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function resolveControllerCircuitSpeedConfig(protocolConfig: Record<string, unknown>): {
+  pumpSlot: number;
+  circuitAssignments: Record<string, number>;
+} {
+  const raw = protocolConfig.controller_circuit_speed;
+  if (raw == null) {
+    return {
+      pumpSlot: DEFAULT_CONTROLLER_CIRCUIT_SPEED_CONFIG.pumpSlot,
+      circuitAssignments: { ...DEFAULT_CONTROLLER_CIRCUIT_SPEED_CONFIG.circuitAssignments }
+    };
+  }
+
+  const config = readProtocolConfigObject(raw, "controller_circuit_speed");
+  const rawPumpSlot = config.pump_slot;
+  const pumpSlot =
+    rawPumpSlot == null
+      ? DEFAULT_CONTROLLER_CIRCUIT_SPEED_CONFIG.pumpSlot
+      : parseByteArgument(rawPumpSlot, "controller_circuit_speed.pump_slot");
+
+  const rawAssignments = config.circuit_assignments;
+  if (rawAssignments == null) {
+    return {
+      pumpSlot,
+      circuitAssignments: { ...DEFAULT_CONTROLLER_CIRCUIT_SPEED_CONFIG.circuitAssignments }
+    };
+  }
+
+  const assignments = readProtocolConfigObject(rawAssignments, "controller_circuit_speed.circuit_assignments");
+  return {
+    pumpSlot,
+    circuitAssignments: Object.fromEntries(
+      Object.entries(assignments).map(([key, value]) => [
+        key,
+        parseByteArgument(value, `controller_circuit_speed.circuit_assignments.${key}`)
+      ])
+    )
+  };
+}
+
+function toPumpConfigSlots(value: unknown): Array<{ circuit_assignment: number; rpm: number }> | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const slots: Array<{ circuit_assignment: number; rpm: number }> = [];
+  for (const [index, entry] of value.entries()) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new ProtocolCommandError(`slots[${index}] must be an object.`, "command_arguments_invalid");
+    }
+
+    const slot = entry as Record<string, unknown>;
+    slots.push({
+      circuit_assignment: parseByteArgument(slot.circuit_assignment, `slots[${index}].circuit_assignment`),
+      rpm: parseRpmArgument(slot.rpm, `slots[${index}].rpm`)
+    });
+  }
+
+  return slots;
+}
+
+function encodePentairCommand(intent: NormalizedCommandIntent, protocolConfig: Record<string, unknown>): CommandEncodingPlan {
   if (intent.command_type === "send_raw_frame") {
     const bytesHex = intent.arguments.bytes_hex;
     if (typeof bytesHex !== "string") {
@@ -519,48 +717,194 @@ function encodePentairCommand(intent: NormalizedCommandIntent): CommandEncodingP
     };
   }
 
+  if (intent.command_type === "request_pump_info") {
+    const pumpSlot = intent.arguments.pump_slot;
+    if (typeof pumpSlot !== "number" || !Number.isInteger(pumpSlot) || pumpSlot < 1 || pumpSlot > 2) {
+      throw new ProtocolCommandError("Pentair pump info requests require an integer pump_slot of 1 or 2.", "command_arguments_invalid");
+    }
+
+    const bytes = buildPentairFrame(0x34, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0xd8, [pumpSlot]);
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "transport_ack"
+      }
+    };
+  }
+
+  if (intent.command_type === "write_pump_config") {
+    const payload = buildPumpConfigPayload(intent.arguments);
+    const bytes = buildPentairFrame(0x34, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0x9b, payload);
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "transport_ack"
+      }
+    };
+  }
+
   if (intent.command_type !== "set_speed") {
     throw new ProtocolCommandError(
-      "pentair_easytouch only supports direct pump set_speed, manual Remote Layout requests, and Explorer raw frame sends in the current command slice.",
+      "pentair_easytouch only supports controller-circuit set_speed, manual pump info requests, manual pump config writes, manual Remote Layout requests, and Explorer raw frame sends in the current command slice.",
       "unsupported_command_encode"
     );
   }
 
-  if (intent.target.equipment_type !== "pump") {
-    throw new ProtocolCommandError("Pentair direct set_speed requires a pump target.", "command_target_invalid");
+  if (intent.target.equipment_type !== "circuit") {
+    throw new ProtocolCommandError("Pentair milestone-1 set_speed requires a controller circuit target.", "command_target_invalid");
   }
 
-  const busAddress = typeof intent.target.bus_address === "string" ? intent.target.bus_address : null;
-  if (!busAddress) {
-    throw new ProtocolCommandError("Pentair direct set_speed requires a target bus_address.", "command_target_invalid");
+  const circuitKey = typeof intent.target.circuit_key === "string" ? intent.target.circuit_key.trim() : "";
+  if (!circuitKey) {
+    throw new ProtocolCommandError("Pentair milestone-1 set_speed requires a target circuit_key.", "command_target_invalid");
   }
 
-  const destination = parseBusAddress(busAddress);
+  const controllerConfig = resolveControllerCircuitSpeedConfig(protocolConfig);
+  const selectorValue = controllerConfig.circuitAssignments[circuitKey];
+  if (typeof selectorValue !== "number") {
+    throw new ProtocolCommandError(`Pentair milestone-1 set_speed does not support circuit '${circuitKey}'.`, "command_target_invalid");
+  }
+
   const rpm = parseTargetRpm(intent);
-  const rpmHi = (rpm >> 8) & 0xff;
-  const rpmLo = rpm & 0xff;
-
-  const writes = [
-    buildPentairFrame(0x00, destination, SPLASH_REMOTE_ADDRESS, 0x04, [0xff]),
-    buildPentairFrame(0x00, destination, SPLASH_REMOTE_ADDRESS, 0x01, [0x03, PUMP_PROGRAM_1, rpmHi, rpmLo]),
-    buildPentairFrame(0x00, destination, SPLASH_REMOTE_ADDRESS, 0x04, [0x00])
-  ].map((bytes) => ({
-    bytes,
-    bytesHex: bytesToHex(bytes),
-    busRequirements: {
-      requires_idle_ms: DEFAULT_IDLE_MS
-    }
-  }));
+  const bytes = buildPentairFrame(0x34, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0xd8, [controllerConfig.pumpSlot]);
 
   return {
     protocolName: "pentair_easytouch",
-    writes,
+    writes: [
+      {
+        bytes,
+        bytesHex: bytesToHex(bytes),
+        busRequirements: {
+          requires_idle_ms: DEFAULT_IDLE_MS
+        }
+      }
+    ],
     correlation: {
-      kind: "pump_rpm",
+      kind: "controller_circuit_speed",
       targetRpm: rpm,
-      busAddress: busAddress.toLowerCase()
+      pumpSlot: controllerConfig.pumpSlot,
+      selectorValue,
+      circuitKey
     }
   };
+}
+
+export function encodePentairPumpConfigWriteFromBaseline(input: {
+  poolId: string;
+  commandId: string;
+  targetRpm: number;
+  selectorValue: number;
+  pumpSlot: number;
+  fields: Record<string, unknown>;
+}): CommandEncodingPlan {
+  const pumpType = parseByteArgument(input.fields.pump_type, "fields.pump_type");
+  const primingTime = parseByteArgument(input.fields.priming_time, "fields.priming_time");
+  const unknown3 = parseByteArgument(input.fields.unknown_3, "fields.unknown_3");
+  const unknown4 = parseByteArgument(input.fields.unknown_4, "fields.unknown_4");
+  const primingSpeed = parseRpmArgument(input.fields.priming_speed, "fields.priming_speed");
+  const slots = toPumpConfigSlots(input.fields.slots);
+  if (!slots || slots.length !== 8) {
+    throw new ProtocolCommandError("Pump info baseline must include 8 writable slots.", "command_baseline_invalid");
+  }
+
+  const slotIndex = slots.findIndex((slot) => slot.circuit_assignment === input.selectorValue);
+  if (slotIndex < 0) {
+    throw new ProtocolCommandError(
+      `Pump config baseline did not include selector value ${input.selectorValue}.`,
+      "command_target_invalid"
+    );
+  }
+
+  const trailingBytesValue = input.fields.trailing_bytes;
+  const trailingBytes = Array.isArray(trailingBytesValue)
+    ? trailingBytesValue.map((value, index) => parseByteArgument(value, `fields.trailing_bytes[${index}]`))
+    : [];
+
+  const nextSlots = slots.map((slot, index) =>
+    index === slotIndex ? { ...slot, rpm: input.targetRpm } : { ...slot }
+  );
+
+  return encodePentairCommand(
+    {
+      pool_id: input.poolId,
+      command_id: input.commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "write_pump_config",
+      arguments: {
+        pump_id: input.pumpSlot,
+        pump_type: pumpType,
+        priming_time: primingTime,
+        unknown_3: unknown3,
+        unknown_4: unknown4,
+        slots: nextSlots,
+        priming_speed: primingSpeed,
+        trailing_bytes: trailingBytes
+      },
+      dry_run: false
+    },
+    {}
+  );
+}
+
+export function encodePentairPumpInfoRequest(input: {
+  poolId: string;
+  commandId: string;
+  pumpSlot: number;
+}): CommandEncodingPlan {
+  return encodePentairCommand(
+    {
+      pool_id: input.poolId,
+      command_id: input.commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_pump_info",
+      arguments: {
+        pump_slot: input.pumpSlot
+      },
+      dry_run: false
+    },
+    {}
+  );
+}
+
+export function parsePentairPumpInfoFields(fields: Record<string, unknown>): {
+  pumpSlot: number;
+  slots: Array<{ circuit_assignment: number; rpm: number }>;
+} {
+  const pumpSlot = parseByteArgument(fields.pump_slot, "fields.pump_slot");
+  const slots = toPumpConfigSlots(fields.slots);
+  if (!slots || slots.length !== 8) {
+    throw new ProtocolCommandError("Pump info frame did not include 8 decoded slots.", "command_baseline_invalid");
+  }
+
+  return { pumpSlot, slots };
 }
 
 export const pentairEasyTouchPlugin: ProtocolPlugin = {
@@ -570,7 +914,7 @@ export const pentairEasyTouchPlugin: ProtocolPlugin = {
   decodeFrame(frame, context) {
     return decodePentairFrame(frame, context);
   },
-  encodeCommand(intent) {
-    return encodePentairCommand(intent);
+  encodeCommand(intent, protocolConfig) {
+    return encodePentairCommand(intent, protocolConfig);
   }
 };

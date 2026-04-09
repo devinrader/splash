@@ -41,10 +41,11 @@ test("app publishes normalized pump speed command intent through the bridge targ
   assert.equal(session.published.length, 1);
   assert.equal(session.published[0].subject, "protocol.command.intent");
   const payload = session.published[0].payload as {
-    target: { bus_address: string };
+    target: { equipment_type: string; circuit_key: string };
     arguments: { rpm: number };
   };
-  assert.equal(payload.target.bus_address, "0x60");
+  assert.equal(payload.target.equipment_type, "circuit");
+  assert.equal(payload.target.circuit_key, "pool");
   assert.equal(payload.arguments.rpm, 2800);
 });
 
@@ -68,6 +69,78 @@ test("app publishes a manual Remote Layout request intent for Protocol Explorer"
   assert.equal(session.published[0].subject, "protocol.command.intent");
   assert.equal(session.published[0].payload.command_type, "request_remote_layout_page");
   assert.equal((session.published[0].payload.arguments as { page_index: number }).page_index, 5);
+});
+
+test("app publishes a manual pump info request intent for Protocol Explorer", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC"
+    },
+    logger: noopLogger
+  });
+  const session = new FakeSession();
+
+  const result = await app.publishPumpInfoRequest({ pumpSlot: 2 }, session);
+
+  assert.ok(result.commandId);
+  assert.equal(session.published.length, 1);
+  assert.equal(session.published[0].subject, "protocol.command.intent");
+  assert.equal(session.published[0].payload.command_type, "request_pump_info");
+  assert.equal((session.published[0].payload.arguments as { pump_slot: number }).pump_slot, 2);
+});
+
+test("app publishes a manual pump config write intent for Protocol Explorer", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC"
+    },
+    logger: noopLogger
+  });
+  const session = new FakeSession();
+
+  const result = await app.publishPumpConfigWrite(
+    {
+      pumpId: 1,
+      pumpType: 128,
+      primingTime: 0,
+      unknown3: 2,
+      unknown4: 0,
+      slots: [
+        { circuit_assignment: 6, rpm: 900 },
+        { circuit_assignment: 11, rpm: 1250 },
+        { circuit_assignment: 12, rpm: 3450 },
+        { circuit_assignment: 13, rpm: 2340 },
+        { circuit_assignment: 128, rpm: 1900 },
+        { circuit_assignment: 0, rpm: 0 },
+        { circuit_assignment: 0, rpm: 0 },
+        { circuit_assignment: 0, rpm: 0 }
+      ],
+      primingSpeed: 1000,
+      trailingBytes: new Array(15).fill(0)
+    },
+    session
+  );
+
+  assert.ok(result.commandId);
+  assert.equal(session.published.length, 1);
+  assert.equal(session.published[0].subject, "protocol.command.intent");
+  assert.equal(session.published[0].payload.command_type, "write_pump_config");
+  const args = session.published[0].payload.arguments as {
+    pump_id: number;
+    slots: Array<{ circuit_assignment: number; rpm: number }>;
+    trailing_bytes: number[];
+  };
+  assert.equal(args.pump_id, 1);
+  assert.equal(args.slots[1]?.rpm, 1250);
+  assert.equal(args.trailing_bytes.length, 15);
 });
 
 test("app publishes a manual raw frame request intent for Protocol Explorer", async () => {
