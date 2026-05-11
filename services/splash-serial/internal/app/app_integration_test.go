@@ -940,11 +940,13 @@ func assertHealthz(t *testing.T, addr string, streamID string) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err := client.Get("http://" + addr + "/healthz")
+		resp, err := client.Get("http://" + addr + "/health")
 		if err == nil {
 			defer resp.Body.Close()
 
-			var health httpapi.HealthState
+			var health struct {
+				StreamID string `json:"stream_id"`
+			}
 			if err := json.NewDecoder(resp.Body).Decode(&health); err == nil && health.StreamID == streamID {
 				return
 			}
@@ -959,20 +961,28 @@ func assertHealthStatus(t *testing.T, addr string, status httpapi.Status, stream
 	t.Helper()
 
 	client := &http.Client{Timeout: 2 * time.Second}
+	expectedStatus := map[httpapi.Status]string{
+		httpapi.StatusOK:       "healthy",
+		httpapi.StatusDegraded: "degraded",
+		httpapi.StatusError:    "unhealthy",
+	}[status]
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err := client.Get("http://" + addr + "/healthz")
+		resp, err := client.Get("http://" + addr + "/health")
 		if err == nil {
 			defer resp.Body.Close()
 
-			var health httpapi.HealthState
-			if err := json.NewDecoder(resp.Body).Decode(&health); err == nil && health.Status == status && health.StreamID == streamID {
+			var health struct {
+				Status   string `json:"status"`
+				StreamID string `json:"stream_id"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&health); err == nil && health.Status == expectedStatus && health.StreamID == streamID {
 				return
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	t.Fatalf("timed out waiting for /healthz status=%q stream=%q", status, streamID)
+	t.Fatalf("timed out waiting for /health status=%q stream=%q", expectedStatus, streamID)
 }

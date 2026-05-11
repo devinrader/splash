@@ -56,13 +56,46 @@ func TestIntegrationServerServesHealthzAndMetrics(t *testing.T) {
 		t.Fatalf("expected /healthz status %d, got %d", http.StatusOK, healthResp.StatusCode)
 	}
 
-	var health HealthState
+	var health struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
 	if err := json.NewDecoder(healthResp.Body).Decode(&health); err != nil {
 		t.Fatalf("decode /healthz: %v", err)
 	}
 
-	if health.StreamID != "integration-stream" {
-		t.Fatalf("expected stream_id integration-stream, got %q", health.StreamID)
+	if health.Status != "healthy" {
+		t.Fatalf("expected liveness status healthy, got %q", health.Status)
+	}
+
+	if health.Message != "Process alive" {
+		t.Fatalf("expected liveness message Process alive, got %q", health.Message)
+	}
+
+	semanticResp, err := client.Get("http://" + listener.Addr().String() + "/health")
+	if err != nil {
+		t.Fatalf("get /health: %v", err)
+	}
+	defer semanticResp.Body.Close()
+
+	if semanticResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected /health status %d, got %d", http.StatusOK, semanticResp.StatusCode)
+	}
+
+	var semanticHealth struct {
+		Status   string `json:"status"`
+		StreamID string `json:"stream_id"`
+	}
+	if err := json.NewDecoder(semanticResp.Body).Decode(&semanticHealth); err != nil {
+		t.Fatalf("decode /health: %v", err)
+	}
+
+	if semanticHealth.StreamID != "integration-stream" {
+		t.Fatalf("expected stream_id integration-stream, got %q", semanticHealth.StreamID)
+	}
+
+	if semanticHealth.Status != "degraded" {
+		t.Fatalf("expected degraded health status, got %q", semanticHealth.Status)
 	}
 
 	metricsResp, err := client.Get("http://" + listener.Addr().String() + "/metrics")
@@ -152,12 +185,15 @@ func TestIntegrationServerRunServesUpdatedHealth(t *testing.T) {
 	client := &http.Client{Timeout: 2 * time.Second}
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err := client.Get("http://" + addr + "/healthz")
+		resp, err := client.Get("http://" + addr + "/health")
 		if err == nil {
 			defer resp.Body.Close()
 
-			var health HealthState
-			if err := json.NewDecoder(resp.Body).Decode(&health); err == nil && health.StreamID == "updated-stream" && health.Status == StatusOK {
+			var health struct {
+				Status   string `json:"status"`
+				StreamID string `json:"stream_id"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&health); err == nil && health.StreamID == "updated-stream" && health.Status == "healthy" {
 				cancel()
 
 				select {
