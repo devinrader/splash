@@ -94,6 +94,8 @@ func TestHandleMetricsIncludesExpectedMetricNames(t *testing.T) {
 		"splash_serial_connection_state{state=\"write_blocked\"} 1",
 		"splash_serial_connection_state{state=\"connected\"} 0",
 		"splash_serial_reconnect_total 1",
+		"splash_serial_rx_messages_total 1",
+		"splash_serial_tx_messages_total 2",
 		"splash_serial_bytes_read_total 7",
 		"splash_serial_bytes_written_total 5",
 		"splash_serial_write_failures_total{write_result=\"rejected\"} 1",

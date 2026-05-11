@@ -47,6 +47,8 @@ type HealthState struct {
 type MetricsState struct {
 	ConnectionState   string
 	ReconnectTotal    uint64
+	RXMessagesTotal   uint64
+	TXMessagesTotal   uint64
 	BytesReadTotal    uint64
 	BytesWrittenTotal uint64
 	WriteFailures     map[string]uint64
@@ -108,6 +110,8 @@ func (s *Server) Metrics() MetricsState {
 	return MetricsState{
 		ConnectionState:   s.metrics.ConnectionState,
 		ReconnectTotal:    s.metrics.ReconnectTotal,
+		RXMessagesTotal:   s.metrics.RXMessagesTotal,
+		TXMessagesTotal:   s.metrics.TXMessagesTotal,
 		BytesReadTotal:    s.metrics.BytesReadTotal,
 		BytesWrittenTotal: s.metrics.BytesWrittenTotal,
 		WriteFailures:     failures,
@@ -135,12 +139,14 @@ func (s *Server) AddBytesRead(count int) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.metrics.RXMessagesTotal++
 	s.metrics.BytesReadTotal += uint64(count)
 }
 
 func (s *Server) ObserveWrite(writeResult string, byteCount int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.metrics.TXMessagesTotal++
 
 	if writeResult == "ok" {
 		if byteCount > 0 {
@@ -239,6 +245,12 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 			"# HELP splash_serial_reconnect_total Total reconnect attempts.\n"+
 			"# TYPE splash_serial_reconnect_total counter\n"+
 			"splash_serial_reconnect_total %d\n"+
+			"# HELP splash_serial_rx_messages_total Total observed serial receive messages.\n"+
+			"# TYPE splash_serial_rx_messages_total counter\n"+
+			"splash_serial_rx_messages_total %d\n"+
+			"# HELP splash_serial_tx_messages_total Total observed serial transmit results.\n"+
+			"# TYPE splash_serial_tx_messages_total counter\n"+
+			"splash_serial_tx_messages_total %d\n"+
 			"# HELP splash_serial_bytes_read_total Total serial bytes read.\n"+
 			"# TYPE splash_serial_bytes_read_total counter\n"+
 			"splash_serial_bytes_read_total %d\n"+
@@ -253,6 +265,8 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 			"splash_serial_stream_age_seconds %.6f\n",
 		connectionMetrics,
 		metrics.ReconnectTotal,
+		metrics.RXMessagesTotal,
+		metrics.TXMessagesTotal,
 		metrics.BytesReadTotal,
 		metrics.BytesWrittenTotal,
 		writeFailureMetrics,

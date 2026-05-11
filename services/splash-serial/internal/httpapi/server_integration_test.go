@@ -84,6 +84,14 @@ func TestIntegrationServerServesHealthzAndMetrics(t *testing.T) {
 		t.Fatalf("expected reconnect metric, got %q", string(body))
 	}
 
+	if !strings.Contains(string(body), "splash_serial_rx_messages_total 1") {
+		t.Fatalf("expected rx messages metric, got %q", string(body))
+	}
+
+	if !strings.Contains(string(body), "splash_serial_tx_messages_total 2") {
+		t.Fatalf("expected tx messages metric, got %q", string(body))
+	}
+
 	if !strings.Contains(string(body), "splash_serial_bytes_read_total 11") {
 		t.Fatalf("expected bytes read metric, got %q", string(body))
 	}

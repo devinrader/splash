@@ -29,7 +29,8 @@ test("app publishes normalized pump speed command intent through the bridge targ
       natsUrl: "nats://127.0.0.1:4222",
       httpBind: "127.0.0.1:8080",
       logLevel: "info",
-      timezone: "UTC"
+      timezone: "UTC",
+      natsMonitoringUrl: null
     },
     logger: noopLogger
   });
@@ -49,6 +50,39 @@ test("app publishes normalized pump speed command intent through the bridge targ
   assert.equal(payload.arguments.rpm, 2800);
 });
 
+test("app publishes a controller circuit state command intent", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  });
+  const session = new FakeSession();
+
+  const result = await app.publishCircuitStateCommand(
+    { equipmentId: "controller-main", circuitKey: "feature4", enabled: true },
+    session
+  );
+
+  assert.ok(result.commandId);
+  assert.equal(session.published.length, 1);
+  assert.equal(session.published[0].payload.command_type, "set_circuit_state");
+  assert.deepEqual(session.published[0].payload.target, {
+    equipment_id: "controller-main",
+    equipment_type: "circuit",
+    circuit_key: "feature4"
+  });
+  assert.deepEqual(session.published[0].payload.arguments, {
+    circuit_id: 14,
+    enabled: true
+  });
+});
+
 test("app publishes a manual Remote Layout request intent for Protocol Explorer", async () => {
   const app = new App({
     config: {
@@ -56,7 +90,8 @@ test("app publishes a manual Remote Layout request intent for Protocol Explorer"
       natsUrl: "nats://127.0.0.1:4222",
       httpBind: "127.0.0.1:8080",
       logLevel: "info",
-      timezone: "UTC"
+      timezone: "UTC",
+      natsMonitoringUrl: null
     },
     logger: noopLogger
   });
@@ -78,7 +113,8 @@ test("app publishes a manual pump info request intent for Protocol Explorer", as
       natsUrl: "nats://127.0.0.1:4222",
       httpBind: "127.0.0.1:8080",
       logLevel: "info",
-      timezone: "UTC"
+      timezone: "UTC",
+      natsMonitoringUrl: null
     },
     logger: noopLogger
   });
@@ -93,6 +129,148 @@ test("app publishes a manual pump info request intent for Protocol Explorer", as
   assert.equal((session.published[0].payload.arguments as { pump_slot: number }).pump_slot, 2);
 });
 
+test("app publishes a manual circuit config discovery intent for Protocol Explorer", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  });
+  const session = new FakeSession();
+
+  const result = await app.publishCircuitConfigRequest({ startIndex: 1, endIndex: 20 }, session);
+
+  assert.ok(result.commandId);
+  assert.equal(session.published.length, 1);
+  assert.equal(session.published[0].subject, "protocol.command.intent");
+  assert.equal(session.published[0].payload.command_type, "request_circuit_config");
+  assert.deepEqual(session.published[0].payload.arguments, {
+    start_index: 1,
+    end_index: 20
+  });
+});
+
+test("app publishes a manual custom name request intent for Protocol Explorer", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  });
+  const session = new FakeSession();
+
+  const result = await app.publishCustomNameRequest({ nameIndex: 2 }, session);
+
+  assert.ok(result.commandId);
+  assert.equal(session.published.length, 1);
+  assert.equal(session.published[0].subject, "protocol.command.intent");
+  assert.equal(session.published[0].payload.command_type, "request_custom_name");
+  assert.deepEqual(session.published[0].payload.arguments, {
+    name_index: 2
+  });
+});
+
+test("app publishes a manual controller software version request intent for Protocol Explorer", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  });
+  const session = new FakeSession();
+
+  const result = await app.publishControllerSoftwareVersionRequest(session);
+
+  assert.ok(result.commandId);
+  assert.equal(session.published.length, 1);
+  assert.equal(session.published[0].subject, "protocol.command.intent");
+  assert.equal(session.published[0].payload.command_type, "request_controller_software_version");
+  assert.deepEqual(session.published[0].payload.arguments, {});
+});
+
+test("app publishes a controller datetime request intent", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  });
+  const session = new FakeSession();
+
+  const result = await app.publishControllerDatetimeRequest(session);
+
+  assert.ok(result.commandId);
+  assert.equal(session.published[0].payload.command_type, "request_controller_datetime");
+  assert.deepEqual(session.published[0].payload.arguments, {});
+});
+
+test("app publishes a controller datetime sync intent", async () => {
+  const RealDate = Date;
+  class MockDate extends Date {
+    constructor(...args: any[]) {
+      if (args.length === 0) {
+        super("2026-04-23T14:37:00");
+        return;
+      }
+      super(args[0]);
+    }
+    static override now(): number {
+      return new RealDate("2026-04-23T14:37:00").getTime();
+    }
+  }
+  globalThis.Date = MockDate as DateConstructor;
+
+  try {
+    const app = new App({
+      config: {
+        poolId: "pool-1",
+        natsUrl: "nats://127.0.0.1:4222",
+        httpBind: "127.0.0.1:8080",
+        logLevel: "info",
+        timezone: "UTC",
+        natsMonitoringUrl: null
+      },
+      logger: noopLogger
+    });
+    const session = new FakeSession();
+
+    const result = await app.publishControllerDatetimeSync(session);
+
+    assert.ok(result.commandId);
+    assert.equal(session.published[0].payload.command_type, "sync_controller_datetime");
+    assert.deepEqual(session.published[0].payload.arguments, {
+      month: 4,
+      day: 23,
+      year: 26,
+      day_of_week: 4,
+      hour_24: 14,
+      minute: 37
+    });
+  } finally {
+    globalThis.Date = RealDate;
+  }
+});
+
 test("app publishes a manual pump config write intent for Protocol Explorer", async () => {
   const app = new App({
     config: {
@@ -100,7 +278,8 @@ test("app publishes a manual pump config write intent for Protocol Explorer", as
       natsUrl: "nats://127.0.0.1:4222",
       httpBind: "127.0.0.1:8080",
       logLevel: "info",
-      timezone: "UTC"
+      timezone: "UTC",
+      natsMonitoringUrl: null
     },
     logger: noopLogger
   });
@@ -150,7 +329,8 @@ test("app publishes a manual raw frame request intent for Protocol Explorer", as
       natsUrl: "nats://127.0.0.1:4222",
       httpBind: "127.0.0.1:8080",
       logLevel: "info",
-      timezone: "UTC"
+      timezone: "UTC",
+      natsMonitoringUrl: null
     },
     logger: noopLogger
   });
@@ -178,7 +358,8 @@ test("app republishes protocol frame events to the Protocol Explorer broker", as
       natsUrl: "nats://127.0.0.1:4222",
       httpBind: "127.0.0.1:8080",
       logLevel: "info",
-      timezone: "UTC"
+      timezone: "UTC",
+      natsMonitoringUrl: null
     },
     logger: noopLogger
   }) as unknown as {
@@ -253,6 +434,556 @@ test("app republishes protocol frame events to the Protocol Explorer broker", as
   ]);
 });
 
+test("app health exposes live RS485 rates", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      natsMonitoringUrl: null,
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC"
+    },
+    logger: noopLogger
+  }) as unknown as {
+    getHealth(): Record<string, unknown>;
+    runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
+  };
+
+  const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+  const session: MessagingSession & {
+    emit(subject: string, payload: Record<string, unknown>): Promise<void>;
+  } = {
+    async publish() {},
+    subscribe(subject, handler) {
+      const list = handlers.get(subject) ?? [];
+      list.push(handler);
+      handlers.set(subject, list);
+    },
+    async emit(subject, payload) {
+      for (const handler of handlers.get(subject) ?? []) {
+        await handler(payload);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  const running = app.runNatsSession(session, controller.signal);
+
+  await session.emit("serial.rx.raw", { bytes_hex: "ff00" });
+  await session.emit("serial.tx.raw", { bytes_hex: "ff00" });
+
+  const health = app.getHealth() as {
+    data: {
+      rates: {
+        rs485: {
+          status: string;
+          rx_messages_per_second: number;
+          tx_messages_per_second: number;
+          updated_at: string | null;
+        };
+        nats_broker: {
+          status: string;
+        };
+      };
+      platform_services: {
+        splash_serial: { status: string };
+        nats: { status: string };
+        splash_protocol: { status: string };
+        splash_frontend: { status: string };
+      };
+    };
+  };
+
+  controller.abort();
+  await running;
+
+  assert.equal(health.data.rates.rs485.status, "unavailable");
+  assert.equal(health.data.rates.rs485.rx_messages_per_second, 0.1);
+  assert.equal(health.data.rates.rs485.tx_messages_per_second, 0.1);
+  assert.equal(health.data.rates.rs485.updated_at, null);
+  assert.equal(health.data.rates.nats_broker.status, "unavailable");
+  assert.equal(health.data.platform_services.splash_serial.status, "unavailable");
+  assert.equal(health.data.platform_services.nats.status, "error");
+  assert.equal(health.data.platform_services.splash_protocol.status, "unavailable");
+  assert.equal(health.data.platform_services.splash_frontend.status, "ok");
+});
+
+test("app metrics expose RS485, NATS, and platform service gauges", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      natsMonitoringUrl: null,
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC"
+    },
+    logger: noopLogger
+  }) as unknown as {
+    getMetrics(): string;
+    runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
+  };
+
+  const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+  const session: MessagingSession & {
+    emit(subject: string, payload: Record<string, unknown>): Promise<void>;
+  } = {
+    async publish() {},
+    subscribe(subject, handler) {
+      const list = handlers.get(subject) ?? [];
+      list.push(handler);
+      handlers.set(subject, list);
+    },
+    async emit(subject, payload) {
+      for (const handler of handlers.get(subject) ?? []) {
+        await handler(payload);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  const running = app.runNatsSession(session, controller.signal);
+
+  await session.emit("serial.rx.raw", { bytes_hex: "ff00" });
+  await session.emit("serial.tx.raw", { bytes_hex: "ff00", write_result: "ok" });
+
+  const metrics = app.getMetrics();
+
+  controller.abort();
+  await running;
+
+  assert.match(metrics, /splash_api_service_status\{status="degraded"\} 1/);
+  assert.match(metrics, /splash_api_rs485_status\{status="unavailable"\} 1/);
+  assert.match(metrics, /splash_api_platform_service_status\{service="splash_serial",status="unavailable"\} 1/);
+  assert.match(metrics, /splash_api_platform_service_status\{service="nats",status="error"\} 1/);
+  assert.match(metrics, /splash_api_platform_service_status\{service="splash_protocol",status="unavailable"\} 1/);
+  assert.match(metrics, /splash_api_rs485_rx_messages_per_second 0\.100000/);
+  assert.match(metrics, /splash_api_rs485_tx_messages_per_second 0\.100000/);
+  assert.match(metrics, /splash_api_nats_dependency_up 0/);
+  assert.match(metrics, /splash_api_nats_broker_subscriptions NaN/);
+});
+
+test("app projects circuit configuration decoded frames into dashboard equipment state", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  }) as unknown as {
+    events: {
+      addClient(client: { send(event: string, payload: Record<string, unknown>): void }): () => void;
+    };
+    runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
+  };
+
+  const observed: Array<{ event: string; payload: Record<string, unknown> }> = [];
+  const unsubscribe = app.events.addClient({
+    send(event, payload) {
+      observed.push({ event, payload });
+    }
+  });
+
+  const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+  const session: MessagingSession & {
+    emit(subject: string, payload: Record<string, unknown>): Promise<void>;
+  } = {
+    async publish() {},
+    subscribe(subject, handler) {
+      const list = handlers.get(subject) ?? [];
+      list.push(handler);
+      handlers.set(subject, list);
+    },
+    async emit(subject, payload) {
+      for (const handler of handlers.get(subject) ?? []) {
+        await handler(payload);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  const running = app.runNatsSession(session, controller.signal);
+
+  await session.emit("protocol.frame.decoded", {
+    frame_id: "frame-circuit-2",
+    decoded_at: "2026-03-30T00:00:00Z",
+    message_type: "circuit_configuration",
+    action_code: "0x0b",
+    fields: {
+      circuit_id: 2,
+      function_id: 2,
+      base_function_label: "Pool",
+      name_id: 17,
+      name_label: "FEATURE 6",
+      freeze_flag: false,
+      high_flag: false
+    }
+  });
+
+  controller.abort();
+  await running;
+  unsubscribe();
+
+  assert.equal(observed.length, 1);
+  assert.equal(observed[0].event, "equipment.state");
+  assert.deepEqual((observed[0].payload.circuit_configurations as Record<string, unknown>)["2"], {
+    circuit_id: 2,
+    function_value: 2,
+    function_label: "Pool",
+    name_value: 17,
+    name_label: "FEATURE 6",
+    freeze_flag: false,
+    high_flag: false,
+    updated_at: "2026-03-30T00:00:00Z"
+  });
+});
+
+test("app projects controller datetime decoded frames into dashboard equipment state", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  }) as unknown as {
+    events: {
+      addClient(client: { send(event: string, payload: Record<string, unknown>): void }): () => void;
+    };
+    runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
+  };
+
+  const observed: Array<{ event: string; payload: Record<string, unknown> }> = [];
+  const unsubscribe = app.events.addClient({
+    send(event, payload) {
+      observed.push({ event, payload });
+    }
+  });
+
+  const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+  const session: MessagingSession & {
+    emit(subject: string, payload: Record<string, unknown>): Promise<void>;
+  } = {
+    async publish() {},
+    subscribe(subject, handler) {
+      const list = handlers.get(subject) ?? [];
+      list.push(handler);
+      handlers.set(subject, list);
+    },
+    async emit(subject, payload) {
+      for (const handler of handlers.get(subject) ?? []) {
+        await handler(payload);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  const running = app.runNatsSession(session, controller.signal);
+
+  await session.emit("protocol.frame.decoded", {
+    frame_id: "frame-datetime-1",
+    decoded_at: "2026-03-30T00:00:00Z",
+    message_type: "controller_datetime",
+    action_code: "0x05",
+    fields: {
+      month: 4,
+      day: 23,
+      year: 26,
+      day_of_week: 16,
+      hour_24: 18,
+      minute: 52,
+      daylight_savings_auto: false
+    }
+  });
+
+  controller.abort();
+  await running;
+  unsubscribe();
+
+  assert.equal(observed.length, 1);
+  assert.equal(observed[0].event, "equipment.state");
+  assert.deepEqual(observed[0].payload.controller_datetime_reply, {
+    month: 4,
+    day: 23,
+    year: 26,
+    day_of_week: 16,
+    hour_24: 18,
+    minute: 52,
+    daylight_savings_auto: false,
+    updated_at: "2026-03-30T00:00:00Z"
+  });
+});
+
+test("app projects controller software version decoded frames into dashboard equipment state", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  }) as unknown as {
+    events: {
+      addClient(client: { send(event: string, payload: Record<string, unknown>): void }): () => void;
+    };
+    runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
+  };
+
+  const observed: Array<{ event: string; payload: Record<string, unknown> }> = [];
+  const unsubscribe = app.events.addClient({
+    send(event, payload) {
+      observed.push({ event, payload });
+    }
+  });
+
+  const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+  const session: MessagingSession & {
+    emit(subject: string, payload: Record<string, unknown>): Promise<void>;
+  } = {
+    async publish() {},
+    subscribe(subject, handler) {
+      const list = handlers.get(subject) ?? [];
+      list.push(handler);
+      handlers.set(subject, list);
+    },
+    async emit(subject, payload) {
+      for (const handler of handlers.get(subject) ?? []) {
+        await handler(payload);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  const running = app.runNatsSession(session, controller.signal);
+
+  await session.emit("protocol.frame.decoded", {
+    frame_id: "frame-software-version-1",
+    decoded_at: "2026-03-30T00:00:00Z",
+    message_type: "controller_software_version",
+    action_code: "0xfc",
+    fields: {
+      controller_firmware_major: 1,
+      controller_firmware_minor: 34,
+      bootloader_major: 3,
+      bootloader_minor: 21
+    }
+  });
+
+  controller.abort();
+  await running;
+  unsubscribe();
+
+  assert.equal(observed.length, 1);
+  assert.equal(observed[0].event, "equipment.state");
+  assert.deepEqual(observed[0].payload.controller_software_version_reply, {
+    controller_firmware_major: 1,
+    controller_firmware_minor: 34,
+    bootloader_major: 3,
+    bootloader_minor: 21,
+    updated_at: "2026-03-30T00:00:00Z"
+  });
+});
+
+test("app projects custom name decoded frames into dashboard equipment state", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  }) as unknown as {
+    events: {
+      addClient(client: { send(event: string, payload: Record<string, unknown>): void }): () => void;
+    };
+    runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
+  };
+
+  const observed: Array<{ event: string; payload: Record<string, unknown> }> = [];
+  const unsubscribe = app.events.addClient({
+    send(event, payload) {
+      observed.push({ event, payload });
+    }
+  });
+
+  const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+  const session: MessagingSession & {
+    emit(subject: string, payload: Record<string, unknown>): Promise<void>;
+  } = {
+    async publish() {},
+    subscribe(subject, handler) {
+      const list = handlers.get(subject) ?? [];
+      list.push(handler);
+      handlers.set(subject, list);
+    },
+    async emit(subject, payload) {
+      for (const handler of handlers.get(subject) ?? []) {
+        await handler(payload);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  const running = app.runNatsSession(session, controller.signal);
+
+  await session.emit("protocol.frame.decoded", {
+    frame_id: "frame-custom-2",
+    decoded_at: "2026-03-30T00:00:00Z",
+    message_type: "custom_name",
+    action_code: "0x0a",
+    fields: {
+      name_index: 2,
+      custom_name_bytes: [83, 80, 65, 32, 77, 79, 68, 69, 32],
+      custom_name_text: "SPA MODE"
+    }
+  });
+
+  controller.abort();
+  await running;
+  unsubscribe();
+
+  assert.equal(observed.length, 1);
+  assert.equal(observed[0].event, "equipment.state");
+  assert.deepEqual((observed[0].payload.custom_name_bank as Record<string, unknown>)["2"], {
+    name_index: 2,
+    custom_name_bytes: [83, 80, 65, 32, 77, 79, 68, 69, 32],
+    custom_name_text: "SPA MODE",
+    updated_at: "2026-03-30T00:00:00Z"
+  });
+});
+
+test("app retains controller model identity fields in latest equipment state", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  });
+
+  const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+  const session: MessagingSession & {
+    emit(subject: string, payload: Record<string, unknown>): Promise<void>;
+  } = {
+    async publish() {},
+    subscribe(subject, handler) {
+      const list = handlers.get(subject) ?? [];
+      list.push(handler);
+      handlers.set(subject, list);
+    },
+    async emit(subject, payload) {
+      for (const handler of handlers.get(subject) ?? []) {
+        await handler(payload);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  const running = (app as unknown as { runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void> }).runNatsSession(
+    session,
+    controller.signal
+  );
+
+  await session.emit("equipment.state.controller", {
+    controller_hour_24: 14,
+    controller_minute: 5,
+    controller_sub_model_byte: 23,
+    controller_model_byte: 3,
+    controller_model_family: "intellicenter",
+    controller_model_label: "IntelliCenter",
+    occurred_at: "2026-03-30T00:00:00Z"
+  });
+
+  controller.abort();
+  await running;
+
+  const controllerView = app.getEquipment().find((entry) => entry.equipment_type === "controller");
+  assert.ok(controllerView);
+  assert.deepEqual((controllerView.latest_state as Record<string, unknown>).controller_sub_model_byte, 23);
+  assert.deepEqual((controllerView.latest_state as Record<string, unknown>).controller_model_byte, 3);
+  assert.deepEqual((controllerView.latest_state as Record<string, unknown>).controller_model_family, "intellicenter");
+  assert.deepEqual((controllerView.latest_state as Record<string, unknown>).controller_model_label, "IntelliCenter");
+});
+
+test("app auto-requests custom name bank indexes once when controller state first appears and cache is empty", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  }) as unknown as {
+    runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
+  };
+
+  const published: Array<{ subject: string; payload: Record<string, unknown> }> = [];
+  const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+  const session: MessagingSession & {
+    emit(subject: string, payload: Record<string, unknown>): Promise<void>;
+  } = {
+    async publish(subject, payload) {
+      published.push({ subject, payload });
+    },
+    subscribe(subject, handler) {
+      const list = handlers.get(subject) ?? [];
+      list.push(handler);
+      handlers.set(subject, list);
+    },
+    async emit(subject, payload) {
+      for (const handler of handlers.get(subject) ?? []) {
+        await handler(payload);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  const running = app.runNatsSession(session, controller.signal);
+
+  await session.emit("equipment.state.controller", {
+    controller_hour_24: 14,
+    controller_minute: 5,
+    occurred_at: "2026-03-30T00:00:00Z"
+  });
+
+  await session.emit("equipment.state.controller", {
+    controller_hour_24: 14,
+    controller_minute: 6,
+    occurred_at: "2026-03-30T00:00:05Z"
+  });
+
+  controller.abort();
+  await running;
+
+  const customNameRequests = published.filter((entry) => entry.subject === "protocol.command.intent" && entry.payload.command_type === "request_custom_name");
+  assert.equal(customNameRequests.length, 10);
+  assert.deepEqual(
+    customNameRequests.map((entry) => (entry.payload.arguments as { name_index: number }).name_index),
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  );
+});
+
 test("app saves protocol frame bundles from recent observed frame traffic", async () => {
   const app = new App({
     config: {
@@ -260,7 +991,8 @@ test("app saves protocol frame bundles from recent observed frame traffic", asyn
       natsUrl: "nats://127.0.0.1:4222",
       httpBind: "127.0.0.1:8080",
       logLevel: "info",
-      timezone: "UTC"
+      timezone: "UTC",
+      natsMonitoringUrl: null
     },
     logger: noopLogger
   }) as unknown as {
@@ -327,7 +1059,8 @@ test("watch sessions capture live explorer frames after explicit start", async (
       natsUrl: "nats://127.0.0.1:4222",
       httpBind: "127.0.0.1:8080",
       logLevel: "info",
-      timezone: "UTC"
+      timezone: "UTC",
+      natsMonitoringUrl: null
     },
     logger: noopLogger
   }) as unknown as {

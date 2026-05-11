@@ -20,6 +20,7 @@ export class HttpRequestError extends Error {}
 export interface HttpHandlers {
   getEquipment(): Array<Record<string, unknown>>;
   getHealth(): Record<string, unknown>;
+  getMetrics(): string;
   getEventBroker(): EventBroker;
   getProtocolFrameBroker(): EventBroker;
   listProtocolFrameBundles(): ProtocolFrameBundleSummary[];
@@ -38,9 +39,15 @@ export interface HttpHandlers {
   createProtocolPrompt(input: ProtocolPromptInput): ProtocolPrompt;
   publishRemoteLayoutRequest(input: { pageIndex: number }): Promise<{ commandId: string }>;
   publishPumpInfoRequest(input: { pumpSlot: number }): Promise<{ commandId: string }>;
+  publishCircuitConfigRequest(input: { startIndex: number; endIndex: number }): Promise<{ commandId: string }>;
+  publishCustomNameRequest(input: { nameIndex: number }): Promise<{ commandId: string }>;
+  publishControllerSoftwareVersionRequest(): Promise<{ commandId: string }>;
+  publishControllerDatetimeRequest(): Promise<{ commandId: string }>;
+  publishControllerDatetimeSync(): Promise<{ commandId: string }>;
   publishPumpConfigWrite(input: PumpConfigWriteRequest): Promise<{ commandId: string }>;
   publishRawFrameCommand(input: { protocolName: string; bytesHex: string }): Promise<{ commandId: string }>;
   publishPumpSpeedCommand(input: { equipmentId: string; rpm: number; circuitKey?: string | null }): Promise<{ commandId: string }>;
+  publishCircuitStateCommand(input: { equipmentId: string; circuitKey: string; enabled: boolean }): Promise<{ commandId: string }>;
 }
 
 export interface PumpConfigWriteSlot {
@@ -103,6 +110,10 @@ export class LocalHttpServer implements HttpServer {
 
       if (req.method === "GET" && req.url === "/health") {
         return json(req, res, 200, this.handlers.getHealth());
+      }
+
+      if (req.method === "GET" && req.url === "/metrics") {
+        return text(req, res, 200, this.handlers.getMetrics(), "text/plain; version=0.0.4");
       }
 
       if (req.method === "GET" && req.url === "/events") {
@@ -192,6 +203,66 @@ export class LocalHttpServer implements HttpServer {
         });
       }
 
+      if (req.method === "POST" && req.url === "/protocol/circuit-config/request") {
+        const body = await readJsonBody(req);
+        const result = await this.handlers.publishCircuitConfigRequest(readCircuitConfigRange(body));
+        return json(req, res, 202, {
+          data: {
+            command_id: result.commandId,
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      if (req.method === "POST" && req.url === "/protocol/custom-name/request") {
+        const body = await readJsonBody(req);
+        const result = await this.handlers.publishCustomNameRequest(readCustomNameIndex(body));
+        return json(req, res, 202, {
+          data: {
+            command_id: result.commandId,
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      if (req.method === "POST" && req.url === "/protocol/software-version/request") {
+        await readJsonBody(req);
+        const result = await this.handlers.publishControllerSoftwareVersionRequest();
+        return json(req, res, 202, {
+          data: {
+            command_id: result.commandId,
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      if (req.method === "POST" && req.url === "/protocol/controller-datetime/request") {
+        await readJsonBody(req);
+        const result = await this.handlers.publishControllerDatetimeRequest();
+        return json(req, res, 202, {
+          data: {
+            command_id: result.commandId,
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      if (req.method === "POST" && req.url === "/protocol/controller-datetime/sync") {
+        await readJsonBody(req);
+        const result = await this.handlers.publishControllerDatetimeSync();
+        return json(req, res, 202, {
+          data: {
+            command_id: result.commandId,
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
       if (req.method === "POST" && req.url === "/protocol/pump-config/write") {
         const body = await readJsonBody(req);
         const result = await this.handlers.publishPumpConfigWrite(readPumpConfigWriteRequest(body));
@@ -246,12 +317,20 @@ export class LocalHttpServer implements HttpServer {
       const controlMatch = req.url?.match(/^\/equipment\/([^/]+)\/control$/);
       if (req.method === "POST" && controlMatch) {
         const body = await readJsonBody(req);
-        const controlRequest = readPumpControlRequest(body);
-        const result = await this.handlers.publishPumpSpeedCommand({
-          equipmentId: decodeURIComponent(controlMatch[1]),
-          rpm: controlRequest.rpm,
-          circuitKey: controlRequest.circuitKey
-        });
+        const equipmentId = decodeURIComponent(controlMatch[1]);
+        const controlRequest = readEquipmentControlRequest(body);
+        const result =
+          controlRequest.commandType === "set_speed"
+            ? await this.handlers.publishPumpSpeedCommand({
+                equipmentId,
+                rpm: controlRequest.rpm,
+                circuitKey: controlRequest.circuitKey
+              })
+            : await this.handlers.publishCircuitStateCommand({
+                equipmentId,
+                circuitKey: controlRequest.circuitKey,
+                enabled: controlRequest.enabled
+              });
         return json(req, res, 202, {
           data: {
             command_id: result.commandId,
@@ -316,27 +395,52 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
   return parsed as Record<string, unknown>;
 }
 
-function readPumpControlRequest(body: Record<string, unknown>): { rpm: number; circuitKey: string | null } {
+function readEquipmentControlRequest(
+  body: Record<string, unknown>
+):
+  | { commandType: "set_speed"; rpm: number; circuitKey: string | null }
+  | { commandType: "set_circuit_state"; circuitKey: string; enabled: boolean } {
   const commandType = body.command_type;
   const args = body.arguments;
-  if (commandType !== "set_speed" || !args || typeof args !== "object" || Array.isArray(args)) {
-    throw new HttpRequestError("Control payload must provide command_type 'set_speed' and arguments.");
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    throw new HttpRequestError("Control payload must provide a supported command_type and arguments.");
   }
 
-  const rpm = (args as Record<string, unknown>).rpm;
-  if (typeof rpm !== "number" || !Number.isInteger(rpm)) {
-    throw new HttpRequestError("Pump speed control requires an integer rpm.");
+  if (commandType === "set_speed") {
+    const rpm = (args as Record<string, unknown>).rpm;
+    if (typeof rpm !== "number" || !Number.isInteger(rpm)) {
+      throw new HttpRequestError("Pump speed control requires an integer rpm.");
+    }
+
+    const circuitKey = body.circuit_key;
+    if (circuitKey != null && (typeof circuitKey !== "string" || circuitKey.trim().length === 0)) {
+      throw new HttpRequestError("Pump speed control circuit_key must be a non-empty string when provided.");
+    }
+
+    return {
+      commandType,
+      rpm,
+      circuitKey: typeof circuitKey === "string" ? circuitKey.trim() : null
+    };
   }
 
   const circuitKey = body.circuit_key;
-  if (circuitKey != null && (typeof circuitKey !== "string" || circuitKey.trim().length === 0)) {
-    throw new HttpRequestError("Pump speed control circuit_key must be a non-empty string when provided.");
+  if (commandType === "set_circuit_state") {
+    if (typeof circuitKey !== "string" || circuitKey.trim().length === 0) {
+      throw new HttpRequestError("Circuit state control requires a non-empty circuit_key.");
+    }
+    const enabled = (args as Record<string, unknown>).enabled;
+    if (typeof enabled !== "boolean") {
+      throw new HttpRequestError("Circuit state control requires boolean arguments.enabled.");
+    }
+    return {
+      commandType,
+      circuitKey: circuitKey.trim(),
+      enabled
+    };
   }
 
-  return {
-    rpm,
-    circuitKey: typeof circuitKey === "string" ? circuitKey.trim() : null
-  };
+  throw new HttpRequestError("Control payload must provide command_type 'set_speed' or 'set_circuit_state'.");
 }
 
 function readPageIndex(body: Record<string, unknown>): number {
@@ -355,6 +459,35 @@ function readPumpSlot(body: Record<string, unknown>): number {
   }
 
   return pumpSlot;
+}
+
+function readCircuitConfigRange(body: Record<string, unknown>): { startIndex: number; endIndex: number } {
+  const startIndex = body.start_index ?? 1;
+  const endIndex = body.end_index ?? 20;
+
+  if (typeof startIndex !== "number" || !Number.isInteger(startIndex) || startIndex < 1 || startIndex > 255) {
+    throw new HttpRequestError("Circuit config request requires start_index to be an integer between 1 and 255.");
+  }
+  if (typeof endIndex !== "number" || !Number.isInteger(endIndex) || endIndex < 1 || endIndex > 255) {
+    throw new HttpRequestError("Circuit config request requires end_index to be an integer between 1 and 255.");
+  }
+  if (endIndex < startIndex) {
+    throw new HttpRequestError("Circuit config request requires end_index to be greater than or equal to start_index.");
+  }
+  if (endIndex - startIndex + 1 > 32) {
+    throw new HttpRequestError("Circuit config request is limited to 32 indexes at a time.");
+  }
+
+  return { startIndex, endIndex };
+}
+
+export function readCustomNameIndex(body: Record<string, unknown>): { nameIndex: number } {
+  const nameIndex = body.name_index;
+  if (typeof nameIndex !== "number" || !Number.isInteger(nameIndex) || nameIndex < 0 || nameIndex > 9) {
+    throw new HttpRequestError("Custom name request requires name_index to be an integer between 0 and 9.");
+  }
+
+  return { nameIndex };
 }
 
 function readOptionalLabel(body: Record<string, unknown>): string | null {
@@ -603,6 +736,14 @@ function json(req: IncomingMessage, res: ServerResponse, status: number, payload
     "content-type": "application/json"
   });
   res.end(JSON.stringify(payload));
+}
+
+function text(req: IncomingMessage, res: ServerResponse, status: number, payload: string, contentType: string): void {
+  res.writeHead(status, {
+    ...corsHeaders(req),
+    "content-type": contentType
+  });
+  res.end(payload);
 }
 
 function preflight(res: ServerResponse, req: IncomingMessage): void {

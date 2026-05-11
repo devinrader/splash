@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: splash-api
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 127.0.0.1:8080
+
+  - job_name: splash-protocol
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 127.0.0.1:9109
+
+  - job_name: splash-serial
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - splash-zero.local:9108
