@@ -27,4 +27,21 @@ test("loadConfig parses expected settings", () => {
   assert.equal(config.httpBind, "127.0.0.1:8080");
   assert.equal(config.logLevel, "debug");
   assert.equal(config.timezone, "America/New_York");
+  assert.equal(config.serialHealthUrl, null);
+  assert.equal(config.protocolHealthUrl, null);
+});
+
+test("loadConfig parses optional upstream health URLs", () => {
+  const config = loadConfig({
+    API_POOL_ID: "pool-1",
+    NATS_URL: "nats://127.0.0.1:4222",
+    API_NATS_MONITORING_URL: "http://127.0.0.1:8222",
+    API_SERIAL_HEALTH_URL: "http://10.0.40.54:9108/healthz",
+    API_PROTOCOL_HEALTH_URL: "http://127.0.0.1:9109/healthz",
+    API_HTTP_BIND: "127.0.0.1:8080"
+  });
+
+  assert.equal(config.natsMonitoringUrl, "http://127.0.0.1:8222");
+  assert.equal(config.serialHealthUrl, "http://10.0.40.54:9108/healthz");
+  assert.equal(config.protocolHealthUrl, "http://127.0.0.1:9109/healthz");
 });
