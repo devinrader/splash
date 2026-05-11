@@ -4,7 +4,9 @@ import { App } from "../src/app.js";
 import type { HttpServer } from "../src/http.js";
 import type { Logger } from "../src/logger.js";
 import type { MessagingSession } from "../src/messaging.js";
+import { renderMetrics } from "../src/metrics.js";
 import { EnvProtocolSelectionProvider, type ProtocolSelectionProvider } from "../src/provider.js";
+import type { AppSnapshot } from "../src/state.js";
 
 class UnavailableProvider implements ProtocolSelectionProvider {
   async getSelection(): Promise<{
@@ -50,6 +52,26 @@ function buildFrameHex(): string {
   const checksum = frame.slice(3).reduce((sum, byte) => (sum + byte) & 0xffff, 0);
   frame.push((checksum >> 8) & 0xff, checksum & 0xff);
   return frame.map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function commandIntent(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    pool_id: "pool-1",
+    command_id: "command-1",
+    requested_at: "2026-03-30T00:00:00Z",
+    protocol_name: "pentair_easytouch",
+    target: {
+      equipment_type: "circuit",
+      circuit_key: "pool_high"
+    },
+    command_type: "set_speed",
+    arguments: {
+      rpm: 2800
+    },
+    requested_by: "test",
+    dry_run: false,
+    ...overrides
+  };
 }
 
 test("app starts in degraded config state when provider is unavailable", async () => {
@@ -120,7 +142,7 @@ test("app tracks service-local NATS and RS485 metric counters", async () => {
     config: {
       natsUrl: "nats://127.0.0.1:4222",
       httpBind: "127.0.0.1:19110",
-      commandTimeoutMs: 5000,
+      commandTimeoutMs: 20,
       logLevel: "info",
       timezone: "UTC"
     },
@@ -133,15 +155,7 @@ test("app tracks service-local NATS and RS485 metric counters", async () => {
     logger: noopLogger
   }) as unknown as {
     refreshSelection(signal?: AbortSignal): Promise<void>;
-    getSnapshot(): {
-      metrics: {
-        serialRxMessagesTotal: number;
-        serialTxMessagesTotal: number;
-        protocolFramesDecodedTotal: number;
-        natsMessagesReceivedTotal: number;
-        natsMessagesPublishedTotal: number;
-      };
-    };
+    getSnapshot(): AppSnapshot;
     runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
   };
 
@@ -179,20 +193,76 @@ test("app tracks service-local NATS and RS485 metric counters", async () => {
     bytes_hex: buildFrameHex(),
     byte_count: 16
   });
+  await session.emit("serial.rx.raw", {
+    serial_instance_id: "serial-1",
+    stream_id: "stream-1",
+    chunk_id: "chunk-bad",
+    port: "/dev/ttyUSB0",
+    received_at: "2026-03-30T00:00:01Z",
+    bytes_hex: buildFrameHex().slice(0, -2) + "00",
+    byte_count: 16
+  });
+  await session.emit("serial.rx.raw", {
+    serial_instance_id: "serial-1",
+    stream_id: "stream-1",
+    chunk_id: "chunk-partial",
+    port: "/dev/ttyUSB0",
+    received_at: "2026-03-30T00:00:02Z",
+    bytes_hex: "ff00ff",
+    byte_count: 3
+  });
+  await session.emit("serial.rx.raw", {
+    serial_instance_id: "serial-1",
+    stream_id: "stream-2",
+    chunk_id: "chunk-reset",
+    port: "/dev/ttyUSB0",
+    received_at: "2026-03-30T00:00:03Z",
+    bytes_hex: "abcd",
+    byte_count: 2
+  });
+  await session.emit("protocol.command.intent", commandIntent({ command_id: "command-dry-run", dry_run: true }));
+  await session.emit("serial.port.status", {
+    pool_id: "pool-1",
+    stream_id: "stream-2",
+    status: "connected",
+    reported_at: "2026-03-30T00:00:04Z"
+  });
+  await session.emit("protocol.command.intent", commandIntent({ command_id: "command-timeout" }));
   await session.emit("serial.tx.raw", {
     serial_instance_id: "serial-1",
     stream_id: "stream-1",
     command_id: "command-1",
     bytes_hex: "ff00ffa5011021e1010001b9"
   });
+  await new Promise((resolve) => setTimeout(resolve, 40));
 
   controller.abort();
   await running;
 
   const snapshot = app.getSnapshot();
-  assert.equal(snapshot.metrics.serialRxMessagesTotal, 1);
+  const metrics = renderMetrics(snapshot);
+
+  assert.equal(snapshot.metrics.framesAssembledTotal, 2);
+  assert.equal(snapshot.metrics.frameValidationFailuresTotal, 2);
+  assert.ok(snapshot.metrics.normalizedEventsTotal >= 1);
+  assert.equal(snapshot.metrics.commandsAcceptedTotal, 2);
+  assert.equal(snapshot.metrics.commandResultsTotal.accepted, 2);
+  assert.equal(snapshot.metrics.commandResultsTotal.encoded, 2);
+  assert.equal(snapshot.metrics.commandResultsTotal.completed, 1);
+  assert.equal(snapshot.metrics.commandResultsTotal.timed_out, 1);
+  assert.equal(snapshot.metrics.streamResetsTotal, 1);
+  assert.equal(snapshot.metrics.correlationTimeoutsTotal, 1);
+  assert.equal(snapshot.metrics.serialRxMessagesTotal, 4);
   assert.equal(snapshot.metrics.serialTxMessagesTotal, 1);
-  assert.ok(snapshot.metrics.natsMessagesReceivedTotal >= 2);
-  assert.ok(snapshot.metrics.natsMessagesPublishedTotal >= 2);
+  assert.ok(snapshot.metrics.natsMessagesReceivedTotal >= 7);
+  assert.ok(snapshot.metrics.natsMessagesPublishedTotal >= 11);
   assert.ok(snapshot.metrics.protocolFramesDecodedTotal >= 1);
+  assert.match(metrics, /splash_protocol_frames_assembled_total 2/);
+  assert.match(metrics, /splash_protocol_frame_validation_failures_total 2/);
+  assert.match(metrics, new RegExp(`splash_protocol_normalized_events_total ${snapshot.metrics.normalizedEventsTotal}`));
+  assert.match(metrics, /splash_protocol_commands_total 2/);
+  assert.match(metrics, /splash_protocol_command_results_total\{status="completed"\} 1/);
+  assert.match(metrics, /splash_protocol_command_results_total\{status="timed_out"\} 1/);
+  assert.match(metrics, /splash_protocol_stream_resets_total 1/);
+  assert.match(metrics, /splash_protocol_correlation_timeouts_total 1/);
 });

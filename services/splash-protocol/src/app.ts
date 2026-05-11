@@ -51,7 +51,10 @@ export class App {
   getSnapshot(): AppSnapshot {
     return {
       ...this.snapshot,
-      metrics: { ...this.snapshot.metrics }
+      metrics: {
+        ...this.snapshot.metrics,
+        commandResultsTotal: { ...this.snapshot.metrics.commandResultsTotal }
+      }
     };
   }
 
@@ -157,11 +160,34 @@ export class App {
     const instrumentedSession: MessagingSession = {
       publish: async (subject, payload) => {
         this.snapshot.metrics.natsMessagesPublishedTotal += 1;
+        if (subject === "protocol.frame.raw") {
+          this.snapshot.metrics.framesAssembledTotal += 1;
+        }
         if (subject === "protocol.frame.decoded") {
           this.snapshot.metrics.protocolFramesDecodedTotal += 1;
         }
         if (subject === "protocol.frame.unidentified") {
           this.snapshot.metrics.protocolFramesUnidentifiedTotal += 1;
+          if (payload.reason === "stream_reset") {
+            this.snapshot.metrics.streamResetsTotal += 1;
+          } else {
+            this.snapshot.metrics.frameValidationFailuresTotal += 1;
+          }
+        }
+        if (subject.startsWith("equipment.state.")) {
+          this.snapshot.metrics.normalizedEventsTotal += 1;
+        }
+        if (subject.startsWith("command.result.")) {
+          const status = typeof payload.status === "string" ? payload.status : null;
+          if (status && status in this.snapshot.metrics.commandResultsTotal) {
+            this.snapshot.metrics.commandResultsTotal[status as keyof typeof this.snapshot.metrics.commandResultsTotal] += 1;
+            if (status === "accepted") {
+              this.snapshot.metrics.commandsAcceptedTotal += 1;
+            }
+            if (status === "timed_out") {
+              this.snapshot.metrics.correlationTimeoutsTotal += 1;
+            }
+          }
         }
         await session.publish(subject, payload);
       },

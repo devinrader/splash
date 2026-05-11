@@ -28,6 +28,13 @@ export interface AppSnapshot {
   shutdownReason: string | null;
   lastTransitionAt: string;
   metrics: {
+    framesAssembledTotal: number;
+    frameValidationFailuresTotal: number;
+    normalizedEventsTotal: number;
+    commandsAcceptedTotal: number;
+    commandResultsTotal: Record<"accepted" | "encoded" | "transmitted" | "completed" | "timed_out" | "failed", number>;
+    streamResetsTotal: number;
+    correlationTimeoutsTotal: number;
     serialRxMessagesTotal: number;
     serialTxMessagesTotal: number;
     protocolFramesDecodedTotal: number;
@@ -54,6 +61,20 @@ export function createInitialSnapshot(): AppSnapshot {
     shutdownReason: null,
     lastTransitionAt: new Date().toISOString(),
     metrics: {
+      framesAssembledTotal: 0,
+      frameValidationFailuresTotal: 0,
+      normalizedEventsTotal: 0,
+      commandsAcceptedTotal: 0,
+      commandResultsTotal: {
+        accepted: 0,
+        encoded: 0,
+        transmitted: 0,
+        completed: 0,
+        timed_out: 0,
+        failed: 0
+      },
+      streamResetsTotal: 0,
+      correlationTimeoutsTotal: 0,
       serialRxMessagesTotal: 0,
       serialTxMessagesTotal: 0,
       protocolFramesDecodedTotal: 0,
