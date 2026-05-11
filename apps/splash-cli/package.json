@@ -1,12 +1,16 @@
 {
   "name": "splash-cli",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Operator CLI utilities for Splash.",
+  "bin": {
+    "splash-cli": "./main.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "scripts": {
+    "test": "node --test ./*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }
