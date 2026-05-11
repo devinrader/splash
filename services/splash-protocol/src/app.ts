@@ -49,7 +49,10 @@ export class App {
   }
 
   getSnapshot(): AppSnapshot {
-    return { ...this.snapshot };
+    return {
+      ...this.snapshot,
+      metrics: { ...this.snapshot.metrics }
+    };
   }
 
   async run(signal: AbortSignal): Promise<void> {
@@ -150,8 +153,41 @@ export class App {
   }
 
   private async runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void> {
-    this.commands.attach(session);
-    this.protocolRuntime.attach(session);
+    const handlerRegistry = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+    const instrumentedSession: MessagingSession = {
+      publish: async (subject, payload) => {
+        this.snapshot.metrics.natsMessagesPublishedTotal += 1;
+        if (subject === "protocol.frame.decoded") {
+          this.snapshot.metrics.protocolFramesDecodedTotal += 1;
+        }
+        if (subject === "protocol.frame.unidentified") {
+          this.snapshot.metrics.protocolFramesUnidentifiedTotal += 1;
+        }
+        await session.publish(subject, payload);
+      },
+      subscribe: (subject, handler) => {
+        const handlers = handlerRegistry.get(subject);
+        if (handlers) {
+          handlers.push(handler);
+          return;
+        }
+        handlerRegistry.set(subject, [handler]);
+        session.subscribe(subject, async (payload) => {
+          this.snapshot.metrics.natsMessagesReceivedTotal += 1;
+          if (subject === "serial.rx.raw") {
+            this.snapshot.metrics.serialRxMessagesTotal += 1;
+          }
+          if (subject === "serial.tx.raw") {
+            this.snapshot.metrics.serialTxMessagesTotal += 1;
+          }
+          for (const registeredHandler of handlerRegistry.get(subject) ?? []) {
+            await registeredHandler(payload);
+          }
+        });
+      }
+    };
+    this.commands.attach(instrumentedSession);
+    this.protocolRuntime.attach(instrumentedSession);
     await waitForAbort(signal);
   }
 }

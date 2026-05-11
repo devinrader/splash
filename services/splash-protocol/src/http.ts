@@ -58,7 +58,8 @@ export class LocalHttpServer implements HttpServer {
           decode_error_code: snapshot.decodeErrorCode,
           command_error_code: snapshot.commandErrorCode,
           shutdown_reason: snapshot.shutdownReason,
-          last_transition_at: snapshot.lastTransitionAt
+          last_transition_at: snapshot.lastTransitionAt,
+          metrics: snapshot.metrics
         })
       );
       return;

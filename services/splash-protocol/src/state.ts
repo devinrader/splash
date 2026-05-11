@@ -27,6 +27,14 @@ export interface AppSnapshot {
   commandErrorCode: string | null;
   shutdownReason: string | null;
   lastTransitionAt: string;
+  metrics: {
+    serialRxMessagesTotal: number;
+    serialTxMessagesTotal: number;
+    protocolFramesDecodedTotal: number;
+    protocolFramesUnidentifiedTotal: number;
+    natsMessagesReceivedTotal: number;
+    natsMessagesPublishedTotal: number;
+  };
 }
 
 export function createInitialSnapshot(): AppSnapshot {
@@ -44,6 +52,14 @@ export function createInitialSnapshot(): AppSnapshot {
     decodeErrorCode: "decode_blocked_no_active_plugin",
     commandErrorCode: "command_blocked_no_active_plugin",
     shutdownReason: null,
-    lastTransitionAt: new Date().toISOString()
+    lastTransitionAt: new Date().toISOString(),
+    metrics: {
+      serialRxMessagesTotal: 0,
+      serialTxMessagesTotal: 0,
+      protocolFramesDecodedTotal: 0,
+      protocolFramesUnidentifiedTotal: 0,
+      natsMessagesReceivedTotal: 0,
+      natsMessagesPublishedTotal: 0
+    }
   };
 }
