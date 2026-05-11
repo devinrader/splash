@@ -6,7 +6,7 @@ import { SplashIcon } from "../components/icons/SplashIcon";
 import { Card, MetricCard, MockEntityRow, MockModeRow } from "../components/mockUi";
 import type { SystemHardwareDetailId } from "../navigation";
 import { SYSTEM_TABS, getActiveSystemTab } from "../navigation";
-import type { ConnectivityHistorySample, EquipmentRecord, HealthData, PlatformServiceHealthRecord } from "../types";
+import type { ConnectivityHistorySample, EquipmentRecord, PlatformStatusResponse, PlatformServiceHealthRecord } from "../types";
 import type { ControllerCircuitDefinition, PendingCircuitToggle } from "../viewUtils";
 import {
   formatBoolean,
@@ -512,8 +512,8 @@ function ControlTab(props: SystemPageProps) {
 }
 
 function ConnectivityTab({ controller, pump, chlorinator, healthData, connectivityHistory, isRequestingControllerDatetime, handleControllerDatetimeRequest, isSyncingControllerDatetime, handleControllerDatetimeSync, controllerDatetimeMessage }: SystemPageProps) {
-  const rs485Rates = healthData?.rates?.rs485;
-  const natsBrokerRates = healthData?.rates?.nats_broker;
+  const rs485Rates = healthData?.connectivity?.rs485;
+  const natsBrokerRates = healthData?.connectivity?.nats_broker;
   return (
     <section className="mock-system-page">
       <section className="mock-kpi-grid">
@@ -591,13 +591,7 @@ function ConnectivityTab({ controller, pump, chlorinator, healthData, connectivi
 }
 
 function PlatformTab({ healthStatus, sseStatus, controller, healthData }: SystemPageProps) {
-  const platformServices = healthData?.platform_services;
-  const serviceRows = [
-    { key: "splash_serial", label: "Splash Serial", record: platformServices?.splash_serial },
-    { key: "nats", label: "NATS", record: platformServices?.nats },
-    { key: "splash_protocol", label: "Splash Protocol", record: platformServices?.splash_protocol },
-    { key: "splash_frontend", label: "Splash Frontend", record: platformServices?.splash_frontend }
-  ];
+  const serviceRows = healthData?.services ?? [];
 
   return (
     <section className="mock-system-page">
@@ -608,12 +602,12 @@ function PlatformTab({ healthStatus, sseStatus, controller, healthData }: System
         <Card title="Services" status="Runtime" className="mock-card-span-2">
           <div className="record-list">
             {serviceRows.map((service) => (
-              <div className="record-card" key={service.key}>
-                <strong>{service.label}</strong>
-                <span>{formatPlatformServiceSummary(service.record)}</span>
-                <span>{readNullableString(service.record?.detail) ?? "No additional detail available."}</span>
-                <span className={`system-status-chip ${getPlatformServiceStatusClassName(service.record?.status)}`}>
-                  {formatPlatformServiceStatus(service.record?.status)}
+              <div className="record-card" key={service.name}>
+                <strong>{formatPlatformServiceName(service.name)}</strong>
+                <span>{formatPlatformServiceSummary(service)}</span>
+                <span>{service.message}</span>
+                <span className={`system-status-chip ${getPlatformServiceStatusClassName(service.status)}`}>
+                  {formatPlatformServiceStatus(service.status)}
                 </span>
               </div>
             ))}
@@ -624,7 +618,7 @@ function PlatformTab({ healthStatus, sseStatus, controller, healthData }: System
             <div><dt>Shell uptime</dt><dd>14d 6h</dd></div>
             <div><dt>Event stream</dt><dd>{sseStatus === "connected" ? "Connected" : "Connecting"}</dd></div>
             <div><dt>Last controller time</dt><dd>{formatControllerTime(controller?.latest_state.controller_hour_24, controller?.latest_state.controller_minute)}</dd></div>
-            <div><dt>API Health</dt><dd>{healthStatus === "ok" ? "Healthy" : "Degraded"}</dd></div>
+            <div><dt>Platform status</dt><dd>{formatPlatformServiceStatus(healthStatus)}</dd></div>
           </dl>
         </Card>
       </section>
@@ -736,8 +730,8 @@ export interface SystemPageProps {
   controller: EquipmentRecord | undefined;
   pump: EquipmentRecord | undefined;
   chlorinator: EquipmentRecord | undefined;
-  healthStatus: "unknown" | "ok" | "degraded";
-  healthData: HealthData | null;
+  healthStatus: "healthy" | "degraded" | "unhealthy" | "down" | "unknown";
+  healthData: PlatformStatusResponse | null;
   connectivityHistory: ConnectivityHistorySample[];
   sseStatus: "connecting" | "connected" | "disconnected";
   installedCircuits: Array<{ circuit: ControllerCircuitDefinition; state: boolean | null }>;
@@ -774,35 +768,57 @@ function formatCountValue(value: number | null | undefined): string {
 }
 
 function formatPlatformServiceStatus(value: PlatformServiceHealthRecord["status"]): string {
-  if (value === "ok") {
+  if (value === "healthy") {
     return "Healthy";
   }
   if (value === "degraded") {
     return "Degraded";
   }
-  if (value === "error") {
-    return "Error";
+  if (value === "unhealthy") {
+    return "Unhealthy";
   }
-  return "Unavailable";
+  if (value === "down") {
+    return "Down";
+  }
+  return "Unknown";
+}
+
+function formatPlatformServiceName(value: string): string {
+  switch (value) {
+    case "splash-api":
+      return "Splash API";
+    case "splash-serial":
+      return "Splash Serial";
+    case "splash-protocol":
+      return "Splash Protocol";
+    case "splash-frontend":
+      return "Splash Frontend";
+    case "nats":
+      return "NATS";
+    case "prometheus":
+      return "Prometheus";
+    case "grafana":
+      return "Grafana";
+    default:
+      return value;
+  }
 }
 
 function formatPlatformServiceSummary(record: PlatformServiceHealthRecord | undefined): string {
-  const summary = readNullableString(record?.summary);
-  const updatedAt = readNullableString(record?.updated_at);
-  if (summary && updatedAt) {
-    return `${summary} · updated ${formatUpdatedAt(updatedAt)}`;
-  }
-  if (summary) {
-    return summary;
+  if (record?.lastChecked) {
+    return `${record.criticality} · updated ${formatUpdatedAt(record.lastChecked)}`;
   }
   return "Unavailable";
 }
 
 function getPlatformServiceStatusClassName(value: PlatformServiceHealthRecord["status"]): string {
-  if (value === "ok") {
+  if (value === "healthy") {
     return "system-status-chip-good";
   }
-  if (value === "degraded" || value === "error") {
+  if (value === "degraded") {
+    return "system-status-chip-watch";
+  }
+  if (value === "unhealthy" || value === "down") {
     return "system-status-chip-watch";
   }
   return "system-status-chip-muted";

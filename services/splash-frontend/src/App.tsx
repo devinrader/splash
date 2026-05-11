@@ -8,7 +8,7 @@ import {
   createProtocolBundle,
   createProtocolPrompt,
   fetchEquipment,
-  fetchHealth,
+  fetchPlatformStatus,
   fetchProtocolAnnotations,
   fetchProtocolBundles,
   fetchProtocolPrompts,
@@ -30,7 +30,7 @@ import { useFrontendStore } from "./store";
 import type {
   ConnectivityHistorySample,
   EquipmentRecord,
-  HealthData,
+  PlatformStatusResponse,
   ProtocolAnnotation,
   ProtocolBundleComparison,
   ProtocolBundleSummary,
@@ -622,8 +622,8 @@ function AppLayout({
   diagnosticsPageProps
 }: {
   controller: EquipmentRecord | undefined;
-  healthStatus: "unknown" | "ok" | "degraded";
-  healthData: HealthData | null;
+  healthStatus: "healthy" | "degraded" | "unhealthy" | "down" | "unknown";
+  healthData: PlatformStatusResponse | null;
   sseStatus: "connecting" | "connected" | "disconnected";
   errorMessage: string | null;
   command: { status: string | null; detail: string | null };
@@ -721,17 +721,18 @@ async function loadInitialState({
   setErrorMessage
 }: {
   setEquipment: (records: EquipmentRecord[]) => void;
-  setHealthStatus: (status: "unknown" | "ok" | "degraded") => void;
-  setHealthData: (data: HealthData | null) => void;
+  setHealthStatus: (status: "healthy" | "degraded" | "unhealthy" | "down" | "unknown") => void;
+  setHealthData: (data: PlatformStatusResponse | null) => void;
   setErrorMessage: (message: string | null) => void;
 }): Promise<void> {
   try {
-    const [equipmentResponse, healthResponse] = await Promise.all([fetchEquipment(), fetchHealth()]);
+    const [equipmentResponse, healthResponse] = await Promise.all([fetchEquipment(), fetchPlatformStatus()]);
     startTransition(() => {
       setEquipment(equipmentResponse.data);
-      setHealthStatus(healthResponse.status);
-      setHealthData(healthResponse.data ?? null);
+      setHealthStatus(healthResponse.overall);
+      setHealthData(healthResponse);
       setErrorMessage(null);
+      window.localStorage.setItem("splash.platform.status", JSON.stringify(healthResponse));
     });
   } catch (error) {
     setErrorMessage(error instanceof Error ? error.message : String(error));
@@ -749,23 +750,34 @@ async function refreshEquipment(setEquipment: (records: EquipmentRecord[]) => vo
 }
 
 async function refreshHealth(
-  setHealthStatus: (status: "unknown" | "ok" | "degraded") => void,
-  setHealthData: (data: HealthData | null) => void,
+  setHealthStatus: (status: "healthy" | "degraded" | "unhealthy" | "down" | "unknown") => void,
+  setHealthData: (data: PlatformStatusResponse | null) => void,
   setErrorMessage: (message: string | null) => void
 ): Promise<void> {
   try {
-    const response = await fetchHealth();
-    setHealthStatus(response.status);
-    setHealthData(response.data ?? null);
+    const response = await fetchPlatformStatus();
+    setHealthStatus(response.overall);
+    setHealthData(response);
     setErrorMessage(null);
+    window.localStorage.setItem("splash.platform.status", JSON.stringify(response));
   } catch (error) {
+    const cachedValue = window.localStorage.getItem("splash.platform.status");
+    if (cachedValue) {
+      try {
+        const cached = JSON.parse(cachedValue) as PlatformStatusResponse;
+        setHealthStatus("unknown");
+        setHealthData(cached);
+      } catch {
+        // Ignore cache parse failure and surface the live error below.
+      }
+    }
     setErrorMessage(error instanceof Error ? error.message : String(error));
   }
 }
 
-function createConnectivityHistorySample(healthData: HealthData | null): ConnectivityHistorySample | null {
-  const rs485Rates = healthData?.rates?.rs485;
-  const natsBrokerRates = healthData?.rates?.nats_broker;
+function createConnectivityHistorySample(healthData: PlatformStatusResponse | null): ConnectivityHistorySample | null {
+  const rs485Rates = healthData?.connectivity?.rs485;
+  const natsBrokerRates = healthData?.connectivity?.nats_broker;
   const sample: ConnectivityHistorySample = {
     recorded_at: new Date().toISOString(),
     rs485_in_messages_per_second: normalizeRateSample(rs485Rates?.rx_messages_per_second),

@@ -40,16 +40,70 @@ export class LocalHttpServer implements HttpServer {
     const req = _req;
     if (req.url === "/healthz") {
       const snapshot = this.getSnapshot();
+      res.writeHead(200, {
+        "content-type": "application/json"
+      });
+      res.end(
+        JSON.stringify({
+          status: "healthy",
+          message: "Process alive"
+        })
+      );
+      return;
+    }
+
+    if (req.url === "/readyz") {
+      const snapshot = this.getSnapshot();
+      const ready = snapshot.status === "ok";
+      res.writeHead(ready ? 200 : 503, {
+        "content-type": "application/json"
+      });
+      res.end(
+        JSON.stringify({
+          status: ready ? "healthy" : "unhealthy",
+          ready
+        })
+      );
+      return;
+    }
+
+    if (req.url === "/health") {
+      const snapshot = this.getSnapshot();
+      const status = snapshot.status === "ok" ? "healthy" : snapshot.status === "degraded" ? "degraded" : "unhealthy";
+      const message =
+        status === "healthy"
+          ? "Protocol decode pipeline ready"
+          : status === "degraded"
+            ? "Protocol service reachable with impaired dependencies or readiness"
+            : "Protocol service cannot perform its primary role";
       res.writeHead(snapshot.status === "error" ? 503 : 200, {
         "content-type": "application/json"
       });
       res.end(
         JSON.stringify({
-          status: snapshot.status,
+          status,
+          message,
           startup_phase: snapshot.startupPhase,
           pool_id: snapshot.poolId,
           active_plugin: snapshot.activePlugin,
           stream_id: snapshot.streamId,
+          checks: {
+            process: {
+              status: "healthy"
+            },
+            nats: {
+              status: snapshot.nats === "ok" ? "healthy" : "unhealthy"
+            },
+            configuration: {
+              status: snapshot.configuration === "valid" ? "healthy" : "unhealthy"
+            },
+            decode: {
+              status: snapshot.decode === "ok" ? "healthy" : "unhealthy"
+            },
+            commands: {
+              status: snapshot.commands === "ok" ? "healthy" : "unhealthy"
+            }
+          },
           nats: snapshot.nats,
           configuration: snapshot.configuration,
           decode: snapshot.decode,
@@ -58,8 +112,8 @@ export class LocalHttpServer implements HttpServer {
           decode_error_code: snapshot.decodeErrorCode,
           command_error_code: snapshot.commandErrorCode,
           shutdown_reason: snapshot.shutdownReason,
-          last_transition_at: snapshot.lastTransitionAt,
-          metrics: snapshot.metrics
+          last_checked: new Date().toISOString(),
+          last_transition_at: snapshot.lastTransitionAt
         })
       );
       return;

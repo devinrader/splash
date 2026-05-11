@@ -28,14 +28,16 @@ export interface EquipmentResponse {
 }
 
 export interface HealthResponse {
-  status: "ok" | "degraded";
-  data?: HealthData;
+  status: "healthy" | "degraded" | "unhealthy" | "down" | "unknown";
+  message?: string;
+  checks?: Record<string, { status: string; message?: string }>;
   error: unknown;
 }
 
-export interface HealthData {
-  dependencies?: Record<string, string>;
-  rates?: {
+export interface PlatformStatusResponse {
+  overall: "healthy" | "degraded" | "unhealthy" | "down" | "unknown";
+  generatedAt: string;
+  connectivity?: {
     rs485?: {
       rx_messages_per_second?: number | null;
       tx_messages_per_second?: number | null;
@@ -49,19 +51,18 @@ export interface HealthData {
       error_code?: string | null;
     };
   };
-  platform_services?: {
-    splash_serial?: PlatformServiceHealthRecord;
-    nats?: PlatformServiceHealthRecord;
-    splash_protocol?: PlatformServiceHealthRecord;
-    splash_frontend?: PlatformServiceHealthRecord;
-  };
+  services: PlatformServiceHealthRecord[];
 }
 
 export interface PlatformServiceHealthRecord {
-  status?: "ok" | "degraded" | "error" | "unavailable";
-  summary?: string | null;
-  detail?: string | null;
-  updated_at?: string | null;
+  name: string;
+  type: "splash" | "third-party";
+  criticality: "critical" | "important" | "optional";
+  status: "healthy" | "degraded" | "unhealthy" | "down" | "unknown";
+  message: string;
+  lastChecked: string | null;
+  responseTimeMs: number | null;
+  checks?: Record<string, { status: string; message?: string }>;
 }
 
 export interface ConnectivityHistorySample {

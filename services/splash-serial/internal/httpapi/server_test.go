@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestHandleHealthzReturnsDegradedState(t *testing.T) {
+func TestHandleHealthzReturnsLivenessPayload(t *testing.T) {
 	server := NewServer("127.0.0.1:9108", HealthState{
 		Status:          StatusDegraded,
 		StreamID:        "stream-1",
@@ -30,21 +30,21 @@ func TestHandleHealthzReturnsDegradedState(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 
-	var got HealthState
+	var got map[string]any
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 
-	if got.StreamID != "stream-1" {
-		t.Fatalf("expected stream_id stream-1, got %q", got.StreamID)
+	if got["status"] != "healthy" {
+		t.Fatalf("expected healthy liveness status, got %v", got["status"])
 	}
 
-	if got.ConnectionState != "connected" {
-		t.Fatalf("expected connection_state connected, got %q", got.ConnectionState)
+	if got["message"] != "Process alive" {
+		t.Fatalf("expected process alive message, got %v", got["message"])
 	}
 }
 
-func TestHandleHealthzReturnsServiceUnavailableForError(t *testing.T) {
+func TestHandleReadyzReturnsServiceUnavailableForError(t *testing.T) {
 	server := NewServer("127.0.0.1:9108", HealthState{
 		Status:          StatusError,
 		SerialDevice:    "/dev/ttyUSB0",
@@ -53,13 +53,60 @@ func TestHandleHealthzReturnsServiceUnavailableForError(t *testing.T) {
 		Configuration:   ConfigurationValid,
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	rec := httptest.NewRecorder()
 
 	server.handler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
+	}
+}
+
+func TestHandleHealthReturnsSemanticServiceState(t *testing.T) {
+	server := NewServer("127.0.0.1:9108", HealthState{
+		Status:          StatusDegraded,
+		StreamID:        "stream-1",
+		SerialDevice:    "/dev/ttyUSB0",
+		ConnectionState: "connected",
+		NATS:            DependencyError,
+		Configuration:   ConfigurationValid,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+
+	server.handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var got map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if got["status"] != "degraded" {
+		t.Fatalf("expected degraded status, got %v", got["status"])
+	}
+
+	if got["stream_id"] != "stream-1" {
+		t.Fatalf("expected stream_id stream-1, got %v", got["stream_id"])
+	}
+
+	checks, ok := got["checks"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected checks object, got %T", got["checks"])
+	}
+
+	natsCheck, ok := checks["nats"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected nats check object, got %T", checks["nats"])
+	}
+
+	if natsCheck["status"] != "unhealthy" {
+		t.Fatalf("expected nats unhealthy status, got %v", natsCheck["status"])
 	}
 }
 

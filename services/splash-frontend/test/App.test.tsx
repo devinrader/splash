@@ -68,6 +68,27 @@ function renderApp(initialEntries: string[] = ["/system/overview"]) {
   );
 }
 
+function platformStatusResponse(overrides: Partial<Record<string, unknown>> = {}) {
+  return response({
+    overall: "healthy",
+    generatedAt: "2026-05-11T14:00:00.000Z",
+    connectivity: {
+      rs485: {
+        rx_messages_per_second: null,
+        tx_messages_per_second: null
+      },
+      nats_broker: {
+        status: "ok",
+        subscriptions: null,
+        in_messages_per_second: null,
+        out_messages_per_second: null
+      }
+    },
+    services: [],
+    ...overrides
+  });
+}
+
 test("renders milestone equipment values from the API snapshot", async () => {
   vi.stubGlobal(
     "fetch",
@@ -142,15 +163,7 @@ test("renders milestone equipment values from the API snapshot", async () => {
         });
       }
 
-      return response({
-        status: "ok",
-        data: {
-          dependencies: {
-            nats: "ok"
-          }
-        },
-        error: null
-      });
+      return platformStatusResponse();
     })
   );
 
@@ -252,26 +265,19 @@ test("renders Connectivity metric cards from API health data", async () => {
         });
       }
 
-      return response({
-        status: "ok",
-        data: {
-          dependencies: {
-            nats: "ok"
+      return platformStatusResponse({
+        connectivity: {
+          rs485: {
+            rx_messages_per_second: 2,
+            tx_messages_per_second: 1.5
           },
-          rates: {
-            rs485: {
-              rx_messages_per_second: 2,
-              tx_messages_per_second: 1.5
-            },
-            nats_broker: {
-              status: "ok",
-              subscriptions: 11,
-              in_messages_per_second: 3,
-              out_messages_per_second: 4
-            }
+          nats_broker: {
+            status: "ok",
+            subscriptions: 11,
+            in_messages_per_second: 3,
+            out_messages_per_second: 4
           }
-        },
-        error: null
+        }
       });
     })
   );
@@ -315,40 +321,50 @@ test("renders Platform service health rows from API health data", async () => {
         });
       }
 
-      return response({
-        status: "ok",
-        data: {
-          dependencies: {
-            nats: "ok"
-          },
-          platform_services: {
-            splash_serial: {
-              status: "degraded",
-              summary: "connected · NATS degraded",
-              detail: "Device /dev/ttyUSB0 · stream stream-1",
-              updated_at: "2026-05-11T14:00:00.000Z"
-            },
-            nats: {
-              status: "ok",
-              summary: "Connected",
-              detail: null,
-              updated_at: null
-            },
-            splash_protocol: {
-              status: "ok",
-              summary: "running_ok · pentair_easytouch",
-              detail: "Active stream stream-1",
-              updated_at: "2026-05-11T14:00:00.000Z"
-            },
-            splash_frontend: {
-              status: "ok",
-              summary: "Browser session active",
-              detail: "Frontend shell is serving the current operator session.",
-              updated_at: "2026-05-11T14:00:00.000Z"
+      return platformStatusResponse({
+        overall: "degraded",
+        services: [
+          {
+            name: "splash-serial",
+            type: "splash",
+            criticality: "important",
+            status: "degraded",
+            message: "Device /dev/ttyUSB0 · stream stream-1",
+            lastChecked: "2026-05-11T14:00:00.000Z",
+            responseTimeMs: 12,
+            checks: {
+              serialPort: { status: "healthy", message: "Connected to /dev/ttyUSB0" },
+              nats: { status: "unhealthy", message: "NATS degraded" }
             }
+          },
+          {
+            name: "nats",
+            type: "third-party",
+            criticality: "critical",
+            status: "healthy",
+            message: "Connected",
+            lastChecked: "2026-05-11T14:00:00.000Z",
+            responseTimeMs: 8
+          },
+          {
+            name: "splash-protocol",
+            type: "splash",
+            criticality: "important",
+            status: "healthy",
+            message: "running_ok · pentair_easytouch",
+            lastChecked: "2026-05-11T14:00:00.000Z",
+            responseTimeMs: 9
+          },
+          {
+            name: "splash-frontend",
+            type: "splash",
+            criticality: "important",
+            status: "healthy",
+            message: "Browser session active",
+            lastChecked: "2026-05-11T14:00:00.000Z",
+            responseTimeMs: 3
           }
-        },
-        error: null
+        ]
       });
     })
   );
@@ -360,7 +376,7 @@ test("renders Platform service health rows from API health data", async () => {
     assert.ok(screen.getByText("NATS"));
     assert.ok(screen.getByText("Splash Protocol"));
     assert.ok(screen.getByText("Splash Frontend"));
-    assert.ok(screen.getByText(/connected · NATS degraded/));
+    assert.ok(screen.getAllByText(/important · updated/i).length >= 1);
     assert.ok(screen.getByText("Device /dev/ttyUSB0 · stream stream-1"));
     assert.ok(screen.getByText(/running_ok · pentair_easytouch/));
     assert.ok(screen.getByText(/Browser session active/));
@@ -448,7 +464,7 @@ test("renders custom name bank values as text inputs on the EasyTouch hardware d
         });
       }
 
-      return response({ status: "ok", error: null });
+      return platformStatusResponse();
     })
   );
 
@@ -535,7 +551,7 @@ test("renders EasyTouch circuit configuration rows as staged editors from live c
         });
       }
 
-      return response({ status: "ok", error: null });
+      return platformStatusResponse();
     })
   );
 
@@ -576,7 +592,7 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
         return response({ data: [], error: null });
       }
 
-      return response({ status: "ok", error: null });
+      return platformStatusResponse();
     })
   );
 
@@ -827,7 +843,7 @@ test("requests and syncs controller date/time from the dashboard", async () => {
         });
       }
 
-      return response({ status: "ok", error: null });
+      return platformStatusResponse();
     })
   );
 
@@ -888,7 +904,7 @@ test("automatically requests controller date/time once when 0x05 data is missing
         });
       }
 
-      return response({ status: "ok", error: null });
+      return platformStatusResponse();
     })
   );
 
@@ -940,7 +956,7 @@ test("tracks active controller date/time requests until a decoded reply is seen"
         });
       }
 
-      return response({ status: "ok", error: null });
+      return platformStatusResponse();
     })
   );
 
@@ -1008,7 +1024,7 @@ test("renders 0x05 date/time from the legacy mis-decoded reply shape", async () 
         });
       }
 
-      return response({ status: "ok", error: null });
+      return platformStatusResponse();
     })
   );
 
@@ -1042,7 +1058,7 @@ test("tracks active Remote Layout requests until command completion is seen", as
         });
       }
 
-      return response({ status: "ok", error: null });
+      return platformStatusResponse();
     })
   );
 
@@ -1244,11 +1260,8 @@ test("submits pump speed control and resolves the pending command from SSE", asy
         });
       }
 
-      if (input.endsWith("/health")) {
-        return response({
-          status: "ok",
-          error: null
-        });
+      if (input.endsWith("/platform/status")) {
+        return platformStatusResponse();
       }
 
       if (input.includes("/equipment/pump-main/control")) {
@@ -1507,8 +1520,8 @@ test("captures explorer bundles and creates annotation and prompt records", asyn
         });
       }
 
-      if (input.endsWith("/health")) {
-        return response({ status: "ok", error: null });
+      if (input.endsWith("/platform/status")) {
+        return platformStatusResponse();
       }
 
       if (input.endsWith("/protocol/bundles") && (!init || !init.method)) {
@@ -1653,8 +1666,8 @@ test("submits a manual raw frame send from Protocol Explorer", async () => {
         });
       }
 
-      if (input.endsWith("/health")) {
-        return response({ status: "ok", error: null });
+      if (input.endsWith("/platform/status")) {
+        return platformStatusResponse();
       }
 
       if (input.endsWith("/protocol/bundles") && (!init || !init.method)) {
@@ -1706,8 +1719,8 @@ test("renders and filters the live message log component", async () => {
         });
       }
 
-      if (input.endsWith("/health")) {
-        return response({ status: "ok", error: null });
+      if (input.endsWith("/platform/status")) {
+        return platformStatusResponse();
       }
 
       if (input.endsWith("/protocol/bundles") && (!init || !init.method)) {

@@ -1,7 +1,7 @@
 import { create } from "zustand";
-import type { CommandResultEvent, EquipmentRecord, HealthData } from "./types";
+import type { CommandResultEvent, EquipmentRecord, PlatformStatusResponse } from "./types";
 
-export type HealthStatus = "unknown" | "ok" | "degraded";
+export type HealthStatus = "healthy" | "degraded" | "unhealthy" | "down" | "unknown";
 export type SseStatus = "connecting" | "connected" | "disconnected";
 
 export interface CommandUiState {
@@ -15,13 +15,13 @@ export interface CommandUiState {
 export interface FrontendState {
   equipment: Record<string, EquipmentRecord>;
   healthStatus: HealthStatus;
-  healthData: HealthData | null;
+  healthData: PlatformStatusResponse | null;
   sseStatus: SseStatus;
   errorMessage: string | null;
   command: CommandUiState;
   setEquipment: (records: EquipmentRecord[]) => void;
   setHealthStatus: (status: HealthStatus) => void;
-  setHealthData: (data: HealthData | null) => void;
+  setHealthData: (data: PlatformStatusResponse | null) => void;
   setSseStatus: (status: SseStatus) => void;
   setErrorMessage: (message: string | null) => void;
   beginPumpCommand: (input: { commandId: string; rpm: number }) => void;

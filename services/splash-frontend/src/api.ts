@@ -2,7 +2,7 @@ import type {
   CommandAcceptedResponse,
   CircuitConfigRequestResponse,
   EquipmentResponse,
-  HealthResponse,
+  PlatformStatusResponse,
   ProtocolAnnotationConfidence,
   ProtocolAnnotationResponse,
   ProtocolBundleComparisonResponse,
@@ -32,12 +32,12 @@ export async function fetchEquipment(): Promise<EquipmentResponse> {
   return (await response.json()) as EquipmentResponse;
 }
 
-export async function fetchHealth(): Promise<HealthResponse> {
-  const response = await fetch(buildApiUrl("/health"));
+export async function fetchPlatformStatus(): Promise<PlatformStatusResponse> {
+  const response = await fetch(buildApiUrl("/platform/status"));
   if (!response.ok) {
-    throw new Error(`Health request failed with HTTP ${response.status}.`);
+    throw new Error(`Platform status request failed with HTTP ${response.status}.`);
   }
-  return (await response.json()) as HealthResponse;
+  return (await response.json()) as PlatformStatusResponse;
 }
 
 export async function requestPumpSpeed(input: {

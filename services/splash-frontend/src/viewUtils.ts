@@ -240,7 +240,7 @@ function buildCircuitOptionList(currentLabel: string | null, options: readonly s
 }
 
 export function getSidebarStatus(input: {
-  healthStatus: "unknown" | "ok" | "degraded";
+  healthStatus: "healthy" | "degraded" | "unhealthy" | "down" | "unknown";
   sseStatus: "connecting" | "connected" | "disconnected";
   errorMessage: string | null;
   commandStatus: string | null;
@@ -250,6 +250,8 @@ export function getSidebarStatus(input: {
   if (
     input.errorMessage ||
     input.healthStatus === "degraded" ||
+    input.healthStatus === "unhealthy" ||
+    input.healthStatus === "down" ||
     input.sseStatus === "disconnected" ||
     input.commandStatus === "failed" ||
     input.commandStatus === "timed_out"

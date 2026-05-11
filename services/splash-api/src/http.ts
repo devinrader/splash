@@ -20,6 +20,7 @@ export class HttpRequestError extends Error {}
 export interface HttpHandlers {
   getEquipment(): Array<Record<string, unknown>>;
   getHealth(): Record<string, unknown>;
+  getPlatformStatus(): Promise<Record<string, unknown>>;
   getMetrics(): string;
   getEventBroker(): EventBroker;
   getProtocolFrameBroker(): EventBroker;
@@ -110,6 +111,26 @@ export class LocalHttpServer implements HttpServer {
 
       if (req.method === "GET" && req.url === "/health") {
         return json(req, res, 200, this.handlers.getHealth());
+      }
+
+      if (req.method === "GET" && req.url === "/healthz") {
+        return json(req, res, 200, {
+          status: "healthy",
+          message: "Process alive"
+        });
+      }
+
+      if (req.method === "GET" && req.url === "/readyz") {
+        const health = this.handlers.getHealth();
+        const ready = health.ready === true;
+        return json(req, res, ready ? 200 : 503, {
+          status: ready ? "healthy" : "unhealthy",
+          ready
+        });
+      }
+
+      if (req.method === "GET" && req.url === "/platform/status") {
+        return json(req, res, 200, await this.handlers.getPlatformStatus());
       }
 
       if (req.method === "GET" && req.url === "/metrics") {

@@ -191,18 +191,71 @@ func (s *Server) serve(ctx context.Context, listener net.Listener) error {
 func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealthz)
+	mux.HandleFunc("/readyz", s.handleReadyz)
+	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	return mux
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":  "healthy",
+		"message": "Process alive",
+	})
+}
+
+func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
 	health := s.Health()
+	ready := health.Status == StatusOK
 	statusCode := http.StatusOK
-	if health.Status == StatusError {
+	if !ready {
 		statusCode = http.StatusServiceUnavailable
 	}
+	writeJSON(w, statusCode, map[string]any{
+		"status": map[bool]string{true: "healthy", false: "unhealthy"}[ready],
+		"ready":  ready,
+	})
+}
 
-	writeJSON(w, statusCode, health)
+func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	health := s.Health()
+	statusCode := http.StatusOK
+	status := "healthy"
+	message := "Serial transport ready"
+	if health.Status == StatusDegraded {
+		status = "degraded"
+		message = "Serial transport reachable with impaired dependencies or freshness"
+	} else if health.Status == StatusError {
+		statusCode = http.StatusServiceUnavailable
+		status = "unhealthy"
+		message = "Serial transport cannot perform its primary role"
+	}
+
+	writeJSON(w, statusCode, map[string]any{
+		"status":         status,
+		"message":        message,
+		"stream_id":      health.StreamID,
+		"serial_device":  health.SerialDevice,
+		"connection_state": health.ConnectionState,
+		"nats":           health.NATS,
+		"configuration":  health.Configuration,
+		"last_checked":   time.Now().UTC().Format(time.RFC3339),
+		"checks": map[string]any{
+			"process": map[string]any{
+				"status": "healthy",
+			},
+			"serialPort": map[string]any{
+				"status": mapDependencyStatus(health.ConnectionState),
+				"message": health.ConnectionState,
+			},
+			"nats": map[string]any{
+				"status": mapDependencyState(health.NATS),
+			},
+			"configuration": map[string]any{
+				"status": "healthy",
+			},
+		},
+	})
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
@@ -291,4 +344,28 @@ func writeJSON(w http.ResponseWriter, statusCode int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func mapDependencyState(state DependencyState) string {
+	switch state {
+	case DependencyOK:
+		return "healthy"
+	case DependencyError:
+		return "unhealthy"
+	default:
+		return "unknown"
+	}
+}
+
+func mapDependencyStatus(connectionState string) string {
+	switch connectionState {
+	case "connected":
+		return "healthy"
+	case "connecting", "disconnected", "write_blocked":
+		return "degraded"
+	case "error":
+		return "unhealthy"
+	default:
+		return "unknown"
+	}
 }

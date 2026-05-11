@@ -434,7 +434,7 @@ test("app republishes protocol frame events to the Protocol Explorer broker", as
   ]);
 });
 
-test("app health exposes live RS485 rates", async () => {
+test("app platform status exposes live RS485 rates", async () => {
   const app = new App({
     config: {
       poolId: "pool-1",
@@ -447,6 +447,7 @@ test("app health exposes live RS485 rates", async () => {
     logger: noopLogger
   }) as unknown as {
     getHealth(): Record<string, unknown>;
+    getPlatformStatus(): Promise<Record<string, unknown>>;
     runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
   };
 
@@ -473,24 +474,27 @@ test("app health exposes live RS485 rates", async () => {
   await session.emit("serial.rx.raw", { bytes_hex: "ff00" });
   await session.emit("serial.tx.raw", { bytes_hex: "ff00" });
 
-  const health = app.getHealth() as {
-    data: {
-      rates: {
-        rs485: {
-          status: string;
-          rx_messages_per_second: number;
-          tx_messages_per_second: number;
-          updated_at: string | null;
-        };
-        nats_broker: {
-          status: string;
-        };
+  const health = await app.getPlatformStatus() as {
+    overall: string;
+    connectivity: {
+      rs485: {
+        rx_messages_per_second: number;
+        tx_messages_per_second: number;
       };
-      platform_services: {
-        splash_serial: { status: string };
-        nats: { status: string };
-        splash_protocol: { status: string };
-        splash_frontend: { status: string };
+      nats_broker: {
+        status: string;
+      };
+    };
+    services: Array<{
+      name: string;
+      status: string;
+    }>;
+  };
+  const localHealth = app.getHealth() as {
+    status: string;
+    checks: {
+      nats: {
+        status: string;
       };
     };
   };
@@ -498,18 +502,17 @@ test("app health exposes live RS485 rates", async () => {
   controller.abort();
   await running;
 
-  assert.equal(health.data.rates.rs485.status, "unavailable");
-  assert.equal(health.data.rates.rs485.rx_messages_per_second, 0.1);
-  assert.equal(health.data.rates.rs485.tx_messages_per_second, 0.1);
-  assert.equal(health.data.rates.rs485.updated_at, null);
-  assert.equal(health.data.rates.nats_broker.status, "unavailable");
-  assert.equal(health.data.platform_services.splash_serial.status, "unavailable");
-  assert.equal(health.data.platform_services.nats.status, "error");
-  assert.equal(health.data.platform_services.splash_protocol.status, "unavailable");
-  assert.equal(health.data.platform_services.splash_frontend.status, "ok");
+  assert.equal(health.overall, "unhealthy");
+  assert.equal(health.connectivity.rs485.rx_messages_per_second, 0.1);
+  assert.equal(health.connectivity.rs485.tx_messages_per_second, 0.1);
+  assert.equal(health.connectivity.nats_broker.status, "unknown");
+  assert.equal(health.services.find((service) => service.name === "splash-api")?.status, "unhealthy");
+  assert.equal(health.services.find((service) => service.name === "nats")?.status, "down");
+  assert.equal(localHealth.status, "unhealthy");
+  assert.equal(localHealth.checks.nats.status, "unhealthy");
 });
 
-test("app metrics expose RS485, NATS, and platform service gauges", async () => {
+test("app metrics expose platform health gauges and connectivity rates", async () => {
   const app = new App({
     config: {
       poolId: "pool-1",
@@ -522,6 +525,7 @@ test("app metrics expose RS485, NATS, and platform service gauges", async () => 
     logger: noopLogger
   }) as unknown as {
     getMetrics(): string;
+    getPlatformStatus(): Promise<Record<string, unknown>>;
     runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
   };
 
@@ -547,21 +551,21 @@ test("app metrics expose RS485, NATS, and platform service gauges", async () => 
 
   await session.emit("serial.rx.raw", { bytes_hex: "ff00" });
   await session.emit("serial.tx.raw", { bytes_hex: "ff00", write_result: "ok" });
+  await app.getPlatformStatus();
 
   const metrics = app.getMetrics();
 
   controller.abort();
   await running;
 
-  assert.match(metrics, /splash_api_service_status\{status="degraded"\} 1/);
-  assert.match(metrics, /splash_api_rs485_status\{status="unavailable"\} 1/);
-  assert.match(metrics, /splash_api_platform_service_status\{service="splash_serial",status="unavailable"\} 1/);
-  assert.match(metrics, /splash_api_platform_service_status\{service="nats",status="error"\} 1/);
-  assert.match(metrics, /splash_api_platform_service_status\{service="splash_protocol",status="unavailable"\} 1/);
+  assert.match(metrics, /splash_api_service_status\{status="unhealthy"\} 1/);
+  assert.match(metrics, /splash_api_rs485_status\{status="unknown"\} 1/);
+  assert.match(metrics, /splash_api_platform_service_status\{service="nats",status="down"\} 1/);
+  assert.match(metrics, /splash_platform_service_health\{service="splash-api",status="unhealthy"\} 1/);
   assert.match(metrics, /splash_api_rs485_rx_messages_per_second 0\.100000/);
   assert.match(metrics, /splash_api_rs485_tx_messages_per_second 0\.100000/);
   assert.match(metrics, /splash_api_nats_dependency_up 0/);
-  assert.match(metrics, /splash_api_nats_broker_subscriptions NaN/);
+  assert.match(metrics, /splash_platform_service_check_failures_total\{service="nats"\} 1/);
 });
 
 test("app projects circuit configuration decoded frames into dashboard equipment state", async () => {

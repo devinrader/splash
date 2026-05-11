@@ -25,13 +25,23 @@ import {
   type ProtocolWatchSessionSummary
 } from "./protocol-bundles.js";
 import { LatestStateProjection } from "./state.js";
-import { NatsVarzMonitor, PlatformServiceHealthMonitor, RollingMessageRate } from "./rates.js";
+import { NatsVarzMonitor, RollingMessageRate } from "./rates.js";
+import {
+  computeOverallStatus,
+  type CanonicalServiceStatus,
+  type PlatformServiceRecord,
+  PlatformHealthMonitor,
+  type PlatformStatusSnapshot,
+  type ServiceCheckResult,
+  type ServiceDefinition
+} from "./platform-health.js";
 
 export interface AppOptions {
   config?: ApiConfig;
   logger?: Logger;
   httpServer?: HttpServer;
   fetchImpl?: typeof fetch;
+  tcpProbe?: (host: string, port: number, timeoutMs: number) => Promise<void>;
 }
 
 export class App {
@@ -47,8 +57,7 @@ export class App {
   private readonly serialRxRate = new RollingMessageRate();
   private readonly serialTxRate = new RollingMessageRate();
   private readonly natsVarzMonitor: NatsVarzMonitor;
-  private readonly serialHealthMonitor: PlatformServiceHealthMonitor;
-  private readonly protocolHealthMonitor: PlatformServiceHealthMonitor;
+  private readonly platformHealthMonitor: PlatformHealthMonitor;
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
 
@@ -60,15 +69,12 @@ export class App {
       monitoringUrl: this.config.natsMonitoringUrl,
       fetchImpl: options.fetchImpl
     });
-    this.serialHealthMonitor = new PlatformServiceHealthMonitor({
-      healthUrl: this.config.serialHealthUrl ?? null,
+    this.platformHealthMonitor = new PlatformHealthMonitor({
+      registry: this.buildServiceRegistry(),
       fetchImpl: options.fetchImpl,
-      parser: parseSerialHealthSnapshot
-    });
-    this.protocolHealthMonitor = new PlatformServiceHealthMonitor({
-      healthUrl: this.config.protocolHealthUrl ?? null,
-      fetchImpl: options.fetchImpl,
-      parser: parseProtocolHealthSnapshot
+      pollIntervalMs: this.config.healthPollIntervalMs,
+      timeoutMs: this.config.healthTimeoutMs,
+      tcpProbe: options.tcpProbe
     });
     this.nats = new NatsSupervisor(this.config.natsUrl, this.logger, async (session, signal) =>
       this.runNatsSession(session, signal)
@@ -80,93 +86,92 @@ export class App {
   }
 
   getHealth(): Record<string, unknown> {
+    const localService = this.buildLocalApiServiceRecord();
+    const ready = localService.status === "healthy";
+    const checks = normalizeChecks(localService.checks);
+    return {
+      status: localService.status,
+      message: localService.message,
+      ready,
+      checks,
+      last_checked: localService.lastChecked,
+      generated_at: new Date().toISOString()
+    };
+  }
+
+  async getPlatformStatus(): Promise<Record<string, unknown>> {
+    await this.platformHealthMonitor.refreshNow();
+    const snapshot = this.platformHealthMonitor.getSnapshot();
     const natsState = this.nats.snapshot();
     const brokerRates = this.natsVarzMonitor.getSnapshot();
-    const serialHealth = this.serialHealthMonitor.getSnapshot();
-    const protocolHealth = this.protocolHealthMonitor.getSnapshot();
     return {
-      status: natsState.status === "ok" ? "ok" : "degraded",
-      data: {
-        dependencies: {
-          nats: natsState.status
+      overall: snapshot.overall,
+      generatedAt: snapshot.generatedAt,
+      connectivity: {
+        rs485: {
+          rx_messages_per_second: this.serialRxRate.getMessagesPerSecond(),
+          tx_messages_per_second: this.serialTxRate.getMessagesPerSecond()
         },
-        rates: {
-          rs485: {
-            status: serialHealth.status,
-            rx_messages_per_second: this.serialRxRate.getMessagesPerSecond(),
-            tx_messages_per_second: this.serialTxRate.getMessagesPerSecond(),
-            updated_at: serialHealth.updatedAt
-          },
-          nats_broker: {
-            status: brokerRates.status,
-            subscriptions: brokerRates.subscriptions,
-            in_messages_per_second: brokerRates.inMessagesPerSecond,
-            out_messages_per_second: brokerRates.outMessagesPerSecond,
-            last_sample_at: brokerRates.lastSampleAt,
-            error_code: brokerRates.errorCode
-          }
+        nats_broker: {
+          status: mapBrokerStatus(brokerRates.status),
+          subscriptions: brokerRates.subscriptions,
+          in_messages_per_second: brokerRates.inMessagesPerSecond,
+          out_messages_per_second: brokerRates.outMessagesPerSecond,
+          last_sample_at: brokerRates.lastSampleAt,
+          error_code: brokerRates.errorCode
         },
-        platform_services: {
-          splash_serial: {
-            status: serialHealth.status,
-            summary: serialHealth.summary,
-            detail: serialHealth.detail,
-            updated_at: serialHealth.updatedAt
-          },
-          nats: {
-            status: natsState.status === "ok" ? "ok" : "error",
-            summary: natsState.status === "ok" ? "Connected" : "Disconnected",
-            detail: null,
-            updated_at: null
-          },
-          splash_protocol: {
-            status: protocolHealth.status,
-            summary: protocolHealth.summary,
-            detail: protocolHealth.detail,
-            updated_at: protocolHealth.updatedAt
-          },
-          splash_frontend: {
-            status: "ok",
-            summary: "Browser session active",
-            detail: "Frontend shell is serving the current operator session.",
-            updated_at: new Date().toISOString()
-          }
-        }
       },
-      error: null
+      services: snapshot.services.map((service) => ({
+        name: service.name,
+        type: service.type,
+        criticality: service.criticality,
+        status: service.status,
+        message: service.message,
+        lastChecked: service.lastChecked,
+        responseTimeMs: service.responseTimeMs,
+        checks: normalizeChecks(service.checks),
+        raw: service.raw ?? undefined
+      })),
+      local: {
+        nats_client_status: natsState.status
+      }
     };
   }
 
   getMetrics(): string {
     const natsState = this.nats.snapshot();
     const brokerRates = this.natsVarzMonitor.getSnapshot();
-    const serialHealth = this.serialHealthMonitor.getSnapshot();
-    const protocolHealth = this.protocolHealthMonitor.getSnapshot();
     const rs485RxRate = this.serialRxRate.getMessagesPerSecond();
     const rs485TxRate = this.serialTxRate.getMessagesPerSecond();
     const now = Date.now() / 1000;
+    const snapshot = this.platformHealthMonitor.getSnapshot();
+    const splashSerial = snapshot.services.find((service) => service.name === "splash-serial");
+    const splashProtocol = snapshot.services.find((service) => service.name === "splash-protocol");
 
     const metricLines = [
       "# HELP splash_api_service_status API service status gauge.",
       "# TYPE splash_api_service_status gauge",
-      renderStatusSeries("splash_api_service_status", ["ok", "degraded", "error"], natsState.status === "ok" ? "ok" : "degraded").trimEnd(),
+      renderStatusSeries("splash_api_service_status", ["healthy", "degraded", "unhealthy", "down", "unknown"], this.buildLocalApiServiceRecord().status).trimEnd(),
       "# HELP splash_api_rs485_status RS485 connectivity status derived from splash-serial health.",
       "# TYPE splash_api_rs485_status gauge",
-      renderStatusSeries("splash_api_rs485_status", ["ok", "degraded", "error", "unavailable"], serialHealth.status).trimEnd(),
+      renderStatusSeries("splash_api_rs485_status", ["healthy", "degraded", "unhealthy", "down", "unknown"], splashSerial?.status ?? "unknown").trimEnd(),
       "# HELP splash_api_nats_broker_status NATS broker monitoring status derived from /varz polling.",
       "# TYPE splash_api_nats_broker_status gauge",
-      renderStatusSeries("splash_api_nats_broker_status", ["ok", "unavailable", "error"], brokerRates.status).trimEnd(),
+      renderStatusSeries("splash_api_nats_broker_status", ["healthy", "degraded", "unhealthy", "down", "unknown"], mapBrokerStatus(brokerRates.status)).trimEnd(),
       "# HELP splash_api_platform_service_status Aggregated platform service status gauge.",
       "# TYPE splash_api_platform_service_status gauge",
-      renderStatusSeries("splash_api_platform_service_status", ["ok", "degraded", "error", "unavailable"], serialHealth.status, {
-        service: "splash_serial"
-      }).trimEnd(),
-      renderStatusSeries("splash_api_platform_service_status", ["ok", "degraded", "error", "unavailable"], natsState.status === "ok" ? "ok" : "error", {
-        service: "nats"
-      }).trimEnd(),
-      renderStatusSeries("splash_api_platform_service_status", ["ok", "degraded", "error", "unavailable"], protocolHealth.status, {
-        service: "splash_protocol"
-      }).trimEnd(),
+      ...snapshot.services.map((service) =>
+        renderStatusSeries("splash_api_platform_service_status", ["healthy", "degraded", "unhealthy", "down", "unknown"], service.status, {
+          service: service.name
+        }).trimEnd()
+      ),
+      "# HELP splash_platform_service_health Canonical platform service health gauge.",
+      "# TYPE splash_platform_service_health gauge",
+      ...snapshot.services.map((service) =>
+        renderStatusSeries("splash_platform_service_health", ["healthy", "degraded", "unhealthy", "down", "unknown"], service.status, {
+          service: service.name
+        }).trimEnd()
+      ),
       "# HELP splash_api_rs485_rx_messages_per_second Rolling 10-second average RS485 receive messages per second observed by splash-api.",
       "# TYPE splash_api_rs485_rx_messages_per_second gauge",
       `splash_api_rs485_rx_messages_per_second ${formatNumber(rs485RxRate)}`,
@@ -187,8 +192,24 @@ export class App {
       `splash_api_nats_broker_out_messages_per_second ${formatNullableMetric(brokerRates.outMessagesPerSecond)}`,
       "# HELP splash_api_platform_service_last_updated_seconds Unix timestamp of the last successful platform service health poll.",
       "# TYPE splash_api_platform_service_last_updated_seconds gauge",
-      `splash_api_platform_service_last_updated_seconds{service="splash_serial"} ${formatNullableTimestamp(serialHealth.updatedAt)}`,
-      `splash_api_platform_service_last_updated_seconds{service="splash_protocol"} ${formatNullableTimestamp(protocolHealth.updatedAt)}`,
+      ...snapshot.services.map((service) =>
+        `splash_api_platform_service_last_updated_seconds{service="${service.name}"} ${formatNullableTimestamp(service.lastChecked)}`
+      ),
+      "# HELP splash_platform_service_check_duration_seconds Last observed platform service health-check duration.",
+      "# TYPE splash_platform_service_check_duration_seconds gauge",
+      ...snapshot.services.map((service) =>
+        `splash_platform_service_check_duration_seconds{service="${service.name}"} ${service.responseTimeMs == null ? "NaN" : (service.responseTimeMs / 1000).toFixed(6)}`
+      ),
+      "# HELP splash_platform_service_check_failures_total Synthetic per-snapshot failure gauge for non-healthy service checks.",
+      "# TYPE splash_platform_service_check_failures_total gauge",
+      ...snapshot.services.map((service) =>
+        `splash_platform_service_check_failures_total{service="${service.name}"} ${service.status === "healthy" ? 0 : 1}`
+      ),
+      "# HELP splash_platform_service_last_success_seconds Unix timestamp of the last successful healthy or degraded service check.",
+      "# TYPE splash_platform_service_last_success_seconds gauge",
+      ...snapshot.services.map((service) =>
+        `splash_platform_service_last_success_seconds{service="${service.name}"} ${service.status === "healthy" || service.status === "degraded" ? formatNullableTimestamp(service.lastChecked) : "NaN"}`
+      ),
       `splash_api_platform_service_last_updated_seconds{service="splash_api"} ${formatNumber(now)}`
     ];
 
@@ -534,6 +555,7 @@ export class App {
       new LocalHttpServer(this.config.httpBind, {
         getEquipment: () => this.getEquipment(),
         getHealth: () => this.getHealth(),
+        getPlatformStatus: () => this.getPlatformStatus(),
         getMetrics: () => this.getMetrics(),
         getEventBroker: () => this.events,
         getProtocolFrameBroker: () => this.protocolFrames,
@@ -630,8 +652,7 @@ export class App {
 
     await httpServer.start(signal);
     void this.natsVarzMonitor.start(signal);
-    void this.serialHealthMonitor.start(signal);
-    void this.protocolHealthMonitor.start(signal);
+    void this.platformHealthMonitor.start(signal);
     void this.nats.run(signal);
     await waitForAbort(signal);
   }
@@ -763,40 +784,114 @@ export class App {
       await this.publishCustomNameRequest({ nameIndex }, session);
     }
   }
-}
 
-function parseSerialHealthSnapshot(payload: Record<string, unknown>) {
-  const status = readPlatformStatus(payload.status);
-  const connectionState = typeof payload.connection_state === "string" ? payload.connection_state : "unknown";
-  const serialDevice = typeof payload.serial_device === "string" ? payload.serial_device : "unknown device";
-  const streamId = typeof payload.stream_id === "string" ? payload.stream_id : null;
-  const nats = typeof payload.nats === "string" ? payload.nats : "unknown";
+  private buildServiceRegistry(): ServiceDefinition[] {
+    const registry: ServiceDefinition[] = [
+      {
+        name: "splash-api",
+        kind: "local",
+        type: "splash",
+        criticality: "critical",
+        check: async () => this.buildLocalApiServiceRecord()
+      },
+      {
+        name: "nats",
+        kind: "nats",
+        type: "third-party",
+        criticality: "critical",
+        tcpUrl: this.config.natsUrl,
+        monitoringUrl: this.config.natsMonitoringUrl
+      }
+    ];
 
-  return {
-    status,
-    summary: `${connectionState} · ${nats === "ok" ? "NATS connected" : "NATS degraded"}`,
-    detail: `Device ${serialDevice}${streamId ? ` · stream ${streamId}` : ""}`
-  };
-}
+    if (this.config.serialHealthUrl) {
+      registry.push({
+        name: "splash-serial",
+        kind: "splash",
+        type: "splash",
+        criticality: "critical",
+        healthUrl: this.config.serialHealthUrl
+      });
+    }
+    if (this.config.protocolHealthUrl) {
+      registry.push({
+        name: "splash-protocol",
+        kind: "splash",
+        type: "splash",
+        criticality: "important",
+        healthUrl: this.config.protocolHealthUrl
+      });
+    }
+    if (this.config.frontendUrl) {
+      registry.push({
+        name: "splash-frontend",
+        kind: "http",
+        type: "splash",
+        criticality: "important",
+        url: this.config.frontendUrl
+      });
+    }
+    if (this.config.prometheusUrl) {
+      registry.push({
+        name: "prometheus",
+        kind: "prometheus",
+        type: "third-party",
+        criticality: "optional",
+        url: this.config.prometheusUrl
+      });
+    }
+    if (this.config.grafanaUrl) {
+      registry.push({
+        name: "grafana",
+        kind: "grafana",
+        type: "third-party",
+        criticality: "optional",
+        url: this.config.grafanaUrl
+      });
+    }
 
-function parseProtocolHealthSnapshot(payload: Record<string, unknown>) {
-  const status = readPlatformStatus(payload.status);
-  const activePlugin = typeof payload.active_plugin === "string" ? payload.active_plugin : "unknown plugin";
-  const streamId = typeof payload.stream_id === "string" ? payload.stream_id : null;
-  const startupPhase = typeof payload.startup_phase === "string" ? payload.startup_phase : "unknown";
-
-  return {
-    status,
-    summary: `${startupPhase} · ${activePlugin}`,
-    detail: streamId ? `Active stream ${streamId}` : "No active serial stream"
-  };
-}
-
-function readPlatformStatus(value: unknown): "ok" | "degraded" | "error" | "unavailable" {
-  if (value === "ok" || value === "degraded" || value === "error" || value === "unavailable") {
-    return value;
+    return registry;
   }
-  return "unavailable";
+
+  private buildLocalApiServiceRecord(): Omit<PlatformServiceRecord, "name" | "type" | "criticality"> {
+    const natsState = this.nats.snapshot();
+    const processStatus: ServiceCheckResult = {
+      status: "healthy",
+      message: "API process is alive"
+    };
+    const natsCheck: ServiceCheckResult = {
+      status: natsState.status === "ok" ? "healthy" : "unhealthy",
+      message: natsState.status === "ok" ? "NATS client connected" : "NATS client disconnected"
+    };
+    const aggregatorCheck: ServiceCheckResult = {
+      status: this.platformHealthMonitor.isStale() ? "unknown" : "healthy",
+      message: this.platformHealthMonitor.isStale() ? "Platform health snapshot is stale or not yet collected" : "Platform health snapshot is current"
+    };
+    const checks: Record<string, ServiceCheckResult> = {
+      process: processStatus,
+      nats: natsCheck,
+      aggregator: aggregatorCheck
+    };
+
+    const status: CanonicalServiceStatus =
+      natsState.status === "ok"
+        ? (aggregatorCheck.status === "unknown" ? "degraded" : "healthy")
+        : "unhealthy";
+
+    return {
+      status,
+      message:
+        status === "healthy"
+          ? "Splash API is ready"
+          : status === "degraded"
+            ? "Splash API is reachable but platform health data is still warming up"
+            : "Splash API is reachable but cannot fully perform its primary role",
+      lastChecked: new Date().toISOString(),
+      responseTimeMs: 0,
+      checks,
+      raw: null
+    };
+  }
 }
 
 function renderStatusSeries(
@@ -833,6 +928,23 @@ function formatNullableTimestamp(value: string | null): string {
   }
   const unixSeconds = Date.parse(value) / 1000;
   return Number.isFinite(unixSeconds) ? unixSeconds.toFixed(3) : "NaN";
+}
+
+function normalizeChecks(checks: Record<string, ServiceCheckResult>): Record<string, { status: CanonicalServiceStatus; message?: string }> {
+  return Object.fromEntries(
+    Object.entries(checks).map(([key, value]) => [key, { status: value.status, ...(value.message ? { message: value.message } : {}) }])
+  );
+}
+
+function mapBrokerStatus(status: "ok" | "unavailable" | "error"): CanonicalServiceStatus {
+  switch (status) {
+    case "ok":
+      return "healthy";
+    case "error":
+      return "unhealthy";
+    case "unavailable":
+      return "unknown";
+  }
 }
 
 async function waitForAbort(signal: AbortSignal): Promise<void> {
