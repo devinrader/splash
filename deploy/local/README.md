@@ -65,6 +65,8 @@ deploy/local/start-splash-api-local.sh
 Notes:
 
 - the script loads `deploy/local/splash-api.env.example` by default
+- the default API env example includes `API_PROMETHEUS_URL` and `API_GRAFANA_URL` so the Platform tab can report observability service health
+- the default API env example points `API_SERIAL_HEALTH_URL` and `API_PROTOCOL_HEALTH_URL` at `/health`, not `/healthz`, because the platform aggregator needs semantic health rather than liveness-only checks
 - the script loads `deploy/local/splash-protocol.env.example` by default
 - the script loads `deploy/local/splash-frontend.env.example` by default
 - the frontend bind defaults to `127.0.0.1:3000` unless `FRONTEND_HTTP_BIND`
@@ -106,7 +108,7 @@ Default targets in that file assume:
 
 - `splash-api` on `127.0.0.1:8080`
 - `splash-protocol` on `127.0.0.1:9109`
-- `splash-serial` on `splash-zero.local:9108`
+- `splash-serial` on `10.0.40.54:9108`
 
 Adjust the `splash-serial` target if your hardware host uses a different
 address.

@@ -197,18 +197,19 @@ export class PlatformHealthMonitor {
         responseTimeMs: Date.now() - startedAt
       };
     } catch (error) {
+      const message = normalizeCheckError(error);
       return {
         name: definition.name,
         type: definition.type,
         criticality: definition.criticality,
         status: "down",
-        message: error instanceof Error ? error.message : "health_check_failed",
+        message,
         lastChecked: new Date().toISOString(),
         responseTimeMs: Date.now() - startedAt,
         checks: {
           process: {
             status: "down",
-            message: error instanceof Error ? error.message : "health_check_failed"
+            message
           }
         },
         raw: null
@@ -426,7 +427,7 @@ export function computeOverallStatus(services: PlatformServiceRecord[]): Canonic
   if (services.some((service) => service.criticality === "optional" && (service.status === "down" || service.status === "unhealthy"))) {
     return "degraded";
   }
-  if (services.some((service) => service.status === "unknown")) {
+  if (services.some((service) => service.criticality !== "optional" && service.status === "unknown")) {
     return "unknown";
   }
   return "healthy";
@@ -494,6 +495,19 @@ function statusToLabel(status: CanonicalServiceStatus): string {
     case "unknown":
       return "Unknown";
   }
+}
+
+function normalizeCheckError(error: unknown): string {
+  if (error instanceof Error) {
+    if (error.name === "AbortError" || error.message === "This operation was aborted") {
+      return "health_check_timeout";
+    }
+    if (error.message === "tcp_timeout") {
+      return "tcp_timeout";
+    }
+    return error.message;
+  }
+  return "health_check_failed";
 }
 
 async function fetchWithTimeout(fetchImpl: typeof fetch, url: string, timeoutMs: number): Promise<Response> {

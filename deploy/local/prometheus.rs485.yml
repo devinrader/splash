@@ -19,4 +19,4 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets:
-          - splash-zero.local:9108
+          - 10.0.40.54:9108

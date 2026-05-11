@@ -363,6 +363,24 @@ test("renders Platform service health rows from API health data", async () => {
             message: "Browser session active",
             lastChecked: "2026-05-11T14:00:00.000Z",
             responseTimeMs: 3
+          },
+          {
+            name: "prometheus",
+            type: "third-party",
+            criticality: "optional",
+            status: "degraded",
+            message: "Scrape targets partially impaired",
+            lastChecked: "2026-05-11T14:00:00.000Z",
+            responseTimeMs: 14
+          },
+          {
+            name: "grafana",
+            type: "third-party",
+            criticality: "optional",
+            status: "down",
+            message: "Datasource API unavailable",
+            lastChecked: "2026-05-11T14:00:00.000Z",
+            responseTimeMs: null
           }
         ]
       });
@@ -376,12 +394,20 @@ test("renders Platform service health rows from API health data", async () => {
     assert.ok(screen.getByText("NATS"));
     assert.ok(screen.getByText("Splash Protocol"));
     assert.ok(screen.getByText("Splash Frontend"));
+    assert.ok(screen.getByText("Prometheus"));
+    assert.ok(screen.getByText("Grafana"));
+    assert.ok(screen.getAllByText("Splash service · Important").length >= 1);
+    assert.ok(screen.getByText("Third-party service · Critical"));
+    assert.ok(screen.getAllByText("Third-party service · Optional").length >= 1);
     assert.ok(screen.getAllByText(/important · updated/i).length >= 1);
     assert.ok(screen.getByText("Device /dev/ttyUSB0 · stream stream-1"));
     assert.ok(screen.getByText(/running_ok · pentair_easytouch/));
     assert.ok(screen.getByText(/Browser session active/));
+    assert.ok(screen.getByText(/Scrape targets partially impaired/));
+    assert.ok(screen.getByText(/Datasource API unavailable/));
     assert.ok(screen.getAllByText("Healthy").length > 0);
     assert.ok(screen.getAllByText("Degraded").length > 0);
+    assert.ok(screen.getAllByText("Down").length > 0);
   });
 });
 

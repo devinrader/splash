@@ -36,12 +36,16 @@ test("loadConfig parses optional upstream health URLs", () => {
     API_POOL_ID: "pool-1",
     NATS_URL: "nats://127.0.0.1:4222",
     API_NATS_MONITORING_URL: "http://127.0.0.1:8222",
-    API_SERIAL_HEALTH_URL: "http://10.0.40.54:9108/healthz",
-    API_PROTOCOL_HEALTH_URL: "http://127.0.0.1:9109/healthz",
+    API_SERIAL_HEALTH_URL: "http://10.0.40.54:9108/health",
+    API_PROTOCOL_HEALTH_URL: "http://127.0.0.1:9109/health",
+    API_PROMETHEUS_URL: "http://prometheus.rader.haus",
+    API_GRAFANA_URL: "http://grafana.rader.haus",
     API_HTTP_BIND: "127.0.0.1:8080"
   });
 
   assert.equal(config.natsMonitoringUrl, "http://127.0.0.1:8222");
-  assert.equal(config.serialHealthUrl, "http://10.0.40.54:9108/healthz");
-  assert.equal(config.protocolHealthUrl, "http://127.0.0.1:9109/healthz");
+  assert.equal(config.serialHealthUrl, "http://10.0.40.54:9108/health");
+  assert.equal(config.protocolHealthUrl, "http://127.0.0.1:9109/health");
+  assert.equal(config.prometheusUrl, "http://prometheus.rader.haus");
+  assert.equal(config.grafanaUrl, "http://grafana.rader.haus");
 });

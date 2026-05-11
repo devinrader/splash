@@ -596,7 +596,7 @@ function PlatformTab({ healthStatus, sseStatus, controller, healthData }: System
   return (
     <section className="mock-system-page">
       <Card title="Platform">
-        <p className="panel-copy">The Platform tab concentrates current health for the core Splash services that power transport, messaging, protocol decoding, and the operator UI.</p>
+        <p className="panel-copy">The Platform tab shows live health for all platform services tracked by Splash API, including Splash-owned services and operational third-party dependencies.</p>
       </Card>
       <section className="mock-platform-grid">
         <Card title="Services" status="Runtime" className="mock-card-span-2">
@@ -604,6 +604,7 @@ function PlatformTab({ healthStatus, sseStatus, controller, healthData }: System
             {serviceRows.map((service) => (
               <div className="record-card" key={service.name}>
                 <strong>{formatPlatformServiceName(service.name)}</strong>
+                <span>{formatPlatformServiceRole(service)}</span>
                 <span>{formatPlatformServiceSummary(service)}</span>
                 <span>{service.message}</span>
                 <span className={`system-status-chip ${getPlatformServiceStatusClassName(service.status)}`}>
@@ -809,6 +810,12 @@ function formatPlatformServiceSummary(record: PlatformServiceHealthRecord | unde
     return `${record.criticality} · updated ${formatUpdatedAt(record.lastChecked)}`;
   }
   return "Unavailable";
+}
+
+function formatPlatformServiceRole(record: PlatformServiceHealthRecord): string {
+  const typeLabel = record.type === "splash" ? "Splash service" : "Third-party service";
+  const criticalityLabel = record.criticality.charAt(0).toUpperCase() + record.criticality.slice(1);
+  return `${typeLabel} · ${criticalityLabel}`;
 }
 
 function getPlatformServiceStatusClassName(value: PlatformServiceHealthRecord["status"]): string {

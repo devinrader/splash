@@ -839,6 +839,8 @@ export class App {
         criticality: "optional",
         url: this.config.prometheusUrl
       });
+    } else {
+      registry.push(this.buildUnconfiguredServiceDefinition("prometheus", "optional", "Prometheus URL is not configured"));
     }
     if (this.config.grafanaUrl) {
       registry.push({
@@ -848,6 +850,8 @@ export class App {
         criticality: "optional",
         url: this.config.grafanaUrl
       });
+    } else {
+      registry.push(this.buildUnconfiguredServiceDefinition("grafana", "optional", "Grafana URL is not configured"));
     }
 
     return registry;
@@ -890,6 +894,32 @@ export class App {
       responseTimeMs: 0,
       checks,
       raw: null
+    };
+  }
+
+  private buildUnconfiguredServiceDefinition(
+    name: "prometheus" | "grafana",
+    criticality: "optional",
+    message: string
+  ): ServiceDefinition {
+    return {
+      name,
+      kind: "local",
+      type: "third-party",
+      criticality,
+      check: async () => ({
+        status: "unknown",
+        message,
+        lastChecked: new Date().toISOString(),
+        responseTimeMs: 0,
+        checks: {
+          configuration: {
+            status: "unknown",
+            message
+          }
+        },
+        raw: null
+      })
     };
   }
 }

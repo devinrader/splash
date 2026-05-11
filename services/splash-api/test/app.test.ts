@@ -508,6 +508,8 @@ test("app platform status exposes live RS485 rates", async () => {
   assert.equal(health.connectivity.nats_broker.status, "unknown");
   assert.equal(health.services.find((service) => service.name === "splash-api")?.status, "unhealthy");
   assert.equal(health.services.find((service) => service.name === "nats")?.status, "down");
+  assert.equal(health.services.find((service) => service.name === "prometheus")?.status, "unknown");
+  assert.equal(health.services.find((service) => service.name === "grafana")?.status, "unknown");
   assert.equal(localHealth.status, "unhealthy");
   assert.equal(localHealth.checks.nats.status, "unhealthy");
 });
@@ -562,6 +564,8 @@ test("app metrics expose platform health gauges and connectivity rates", async (
   assert.match(metrics, /splash_api_rs485_status\{status="unknown"\} 1/);
   assert.match(metrics, /splash_api_platform_service_status\{service="nats",status="down"\} 1/);
   assert.match(metrics, /splash_platform_service_health\{service="splash-api",status="unhealthy"\} 1/);
+  assert.match(metrics, /splash_platform_service_health\{service="prometheus",status="unknown"\} 1/);
+  assert.match(metrics, /splash_platform_service_health\{service="grafana",status="unknown"\} 1/);
   assert.match(metrics, /splash_api_rs485_rx_messages_per_second 0\.100000/);
   assert.match(metrics, /splash_api_rs485_tx_messages_per_second 0\.100000/);
   assert.match(metrics, /splash_api_nats_dependency_up 0/);
