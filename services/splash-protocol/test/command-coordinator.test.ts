@@ -59,6 +59,52 @@ function commandIntent(overrides: Partial<MessagePayload> = {}): MessagePayload 
   };
 }
 
+function circuitConfigurationFrame(circuitId: number): MessagePayload {
+  return {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    frame_id: `frame-circuit-${circuitId}`,
+    protocol_name: "pentair_easytouch",
+    frame_family: "pentair",
+    decoded_at: "2026-03-30T00:00:02Z",
+    message_type: "circuit_configuration",
+    action_code: "0x0b",
+    source_address: "0x10",
+    destination_address: "0x21",
+    checksum_status: "valid",
+    fields: {
+      circuit_id: circuitId,
+      function_id: 1,
+      base_function_label: "Pool",
+      name_id: circuitId,
+      freeze_flag: false,
+      high_flag: false
+    },
+    unknown_fields: []
+  };
+}
+
+function controllerAckFrame(): MessagePayload {
+  return {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    frame_id: "frame-controller-ack",
+    protocol_name: "pentair_easytouch",
+    frame_family: "pentair",
+    decoded_at: "2026-03-30T00:00:02Z",
+    message_type: "controller_ack",
+    action_code: "0x01",
+    source_address: "0x10",
+    destination_address: "0x21",
+    checksum_status: "valid",
+    fields: {
+      payload_hex: "",
+      payload_length: 0
+    },
+    unknown_fields: []
+  };
+}
+
 test("command coordinator encodes, transmits, and completes the initial pump speed flow", async () => {
   const session = new FakeSession();
   const coordinator = new CommandCoordinator(noopLogger, 100);
@@ -319,6 +365,150 @@ test("command coordinator completes transport-ack diagnostic commands after writ
     .filter((entry) => entry.subject === "command.result.command-remote-layout")
     .map((entry) => entry.payload.status);
   assert.ok(results.includes("transmitted"));
+  assert.ok(results.includes("completed"));
+});
+
+test("command coordinator waits for controller ack before completing set_circuit_state", async () => {
+  const session = new FakeSession();
+  const coordinator = new CommandCoordinator(noopLogger, 100);
+  coordinator.setActiveSelection(selection, pentairEasyTouchPlugin);
+  coordinator.attach(session);
+
+  await session.emit("serial.port.status", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    status: "connected",
+    reported_at: "2026-03-30T00:00:00Z"
+  });
+  await session.emit(
+    "protocol.command.intent",
+    commandIntent({
+      command_id: "command-circuit-toggle",
+      target: {
+        equipment_type: "circuit",
+        circuit_key: "feature4"
+      },
+      command_type: "set_circuit_state",
+      arguments: {
+        circuit_id: 14,
+        enabled: true
+      }
+    })
+  );
+
+  const writes = session.published.filter((entry) => entry.subject === "serial.write.request");
+  assert.equal(writes.length, 1);
+
+  await session.emit("serial.tx.raw", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    command_id: "command-circuit-toggle",
+    written_at: "2026-03-30T00:00:01Z",
+    bytes_hex: writes[0]?.payload.bytes_hex,
+    byte_count: writes[0]?.payload.byte_count,
+    write_result: "ok",
+    error_code: null,
+    detail: null
+  });
+
+  let results = session.published
+    .filter((entry) => entry.subject === "command.result.command-circuit-toggle")
+    .map((entry) => entry.payload.status);
+  assert.ok(results.includes("transmitted"));
+  assert.ok(!results.includes("completed"));
+
+  await session.emit("protocol.frame.decoded", controllerAckFrame());
+
+  results = session.published
+    .filter((entry) => entry.subject === "command.result.command-circuit-toggle")
+    .map((entry) => entry.payload.status);
+  assert.ok(results.includes("completed"));
+});
+
+test("command coordinator paces controller circuit config requests by decoded replies", async () => {
+  const session = new FakeSession();
+  const coordinator = new CommandCoordinator(noopLogger, 100);
+  coordinator.setActiveSelection(selection, pentairEasyTouchPlugin);
+  coordinator.attach(session);
+
+  await session.emit("serial.port.status", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    status: "connected",
+    reported_at: "2026-03-30T00:00:00Z"
+  });
+  await session.emit(
+    "protocol.command.intent",
+    commandIntent({
+      command_id: "command-circuit-config",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_circuit_config",
+      arguments: {
+        start_index: 1,
+        end_index: 3
+      }
+    })
+  );
+
+  const encoded = session.published.filter((entry) => entry.subject === "protocol.command.encoded");
+  let writes = session.published.filter((entry) => entry.subject === "serial.write.request");
+  assert.equal(encoded.length, 3);
+  assert.equal(writes.length, 1);
+
+  await session.emit("serial.tx.raw", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    command_id: "command-circuit-config",
+    written_at: "2026-03-30T00:00:01Z",
+    bytes_hex: writes[0]?.payload.bytes_hex,
+    byte_count: writes[0]?.payload.byte_count,
+    write_result: "ok",
+    error_code: null,
+    detail: null
+  });
+
+  writes = session.published.filter((entry) => entry.subject === "serial.write.request");
+  assert.equal(writes.length, 1);
+
+  await session.emit("protocol.frame.decoded", circuitConfigurationFrame(1));
+  writes = session.published.filter((entry) => entry.subject === "serial.write.request");
+  assert.equal(writes.length, 2);
+
+  await session.emit("serial.tx.raw", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    command_id: "command-circuit-config",
+    written_at: "2026-03-30T00:00:02Z",
+    bytes_hex: writes[1]?.payload.bytes_hex,
+    byte_count: writes[1]?.payload.byte_count,
+    write_result: "ok",
+    error_code: null,
+    detail: null
+  });
+  await session.emit("protocol.frame.decoded", circuitConfigurationFrame(2));
+
+  writes = session.published.filter((entry) => entry.subject === "serial.write.request");
+  assert.equal(writes.length, 3);
+
+  await session.emit("serial.tx.raw", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    command_id: "command-circuit-config",
+    written_at: "2026-03-30T00:00:03Z",
+    bytes_hex: writes[2]?.payload.bytes_hex,
+    byte_count: writes[2]?.payload.byte_count,
+    write_result: "ok",
+    error_code: null,
+    detail: null
+  });
+  await session.emit("protocol.frame.decoded", circuitConfigurationFrame(3));
+
+  const results = session.published
+    .filter((entry) => entry.subject === "command.result.command-circuit-config")
+    .map((entry) => entry.payload.status);
   assert.ok(results.includes("completed"));
 });
 

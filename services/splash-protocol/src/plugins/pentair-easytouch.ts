@@ -68,6 +68,75 @@ function decodePumpConfigSlots(payload: Uint8Array): Array<Record<string, number
 
 type ControllerMode = "pool" | "spa" | "pool_spa" | "aux_only" | "idle";
 
+function decodeControllerModelFamily(
+  controllerSubModelByte: number | null,
+  controllerModelByte: number | null
+): "easytouch" | "suntouch" | "intellitouch" | "intellicenter" | null {
+  if (controllerModelByte === null) {
+    return null;
+  }
+
+  if (controllerModelByte === 13 || controllerModelByte === 14) {
+    return "easytouch";
+  }
+
+  if (controllerModelByte === 11) {
+    return "suntouch";
+  }
+
+  if (controllerModelByte >= 0 && controllerModelByte <= 5) {
+    if (controllerSubModelByte === 23 || (controllerSubModelByte !== null && controllerSubModelByte >= 40)) {
+      return "intellicenter";
+    }
+    return "intellitouch";
+  }
+
+  return null;
+}
+
+function decodeControllerModelLabel(controllerSubModelByte: number | null, controllerModelByte: number | null): string | null {
+  const family = decodeControllerModelFamily(controllerSubModelByte, controllerModelByte);
+  switch (family) {
+    case "easytouch":
+      return "EasyTouch";
+    case "suntouch":
+      return "SunTouch";
+    case "intellitouch":
+      return "IntelliTouch";
+    case "intellicenter":
+      return "IntelliCenter";
+    default:
+      return null;
+  }
+}
+
+function decodeControllerModeLabel(controllerModeByte: number | null): string | null {
+  if (controllerModeByte === null) {
+    return null;
+  }
+
+  const labels: string[] = [];
+
+  if ((controllerModeByte & 0x01) !== 0) {
+    labels.push("run");
+  }
+  if ((controllerModeByte & 0x08) !== 0) {
+    labels.push("freeze protection");
+  }
+  if ((controllerModeByte & 0x80) !== 0) {
+    labels.push("timeout");
+  }
+  if ((controllerModeByte & 0x04) !== 0) {
+    labels.push("celsius");
+  }
+
+  if (labels.length === 0) {
+    labels.push("idle");
+  }
+
+  return labels.join(" + ");
+}
+
 function decodePoolHeatMode(heatSettingByte: number | null): "off" | "heater" | "solar_preferred" | "solar" | null {
   if (heatSettingByte === null) {
     return null;
@@ -82,6 +151,164 @@ function decodePoolHeatMode(heatSettingByte: number | null): "off" | "heater" | 
       return "solar_preferred";
     case 3:
       return "solar";
+    default:
+      return null;
+  }
+}
+
+function decodeCircuitBaseFunction(functionId: number | null): string | null {
+  if (functionId === null) {
+    return null;
+  }
+
+  switch (functionId & 0x3f) {
+    case 0:
+      return "Generic";
+    case 1:
+      return "Spa";
+    case 2:
+      return "Pool";
+    case 3:
+      return "Spillway";
+    case 4:
+      return "Master Cleaner";
+    case 5:
+      return "Cleaner";
+    case 6:
+      return "Solar";
+    case 7:
+      return "Heat Boost";
+    case 8:
+      return "Heat Enable";
+    case 9:
+      return "Jets";
+    case 10:
+      return "Aux (standard relay)";
+    case 11:
+      return "Feature";
+    case 12:
+      return "Light";
+    case 13:
+      return "IntelliBrite";
+    case 14:
+      return "MagicStream";
+    case 15:
+      return "Laminar";
+    case 16:
+      return "Waterfall";
+    case 17:
+      return "Fountain";
+    case 18:
+      return "Blower";
+    case 19:
+      return "Pool Light";
+    case 20:
+      return "Spa Light";
+    case 21:
+      return "Landscape Light";
+    case 22:
+      return "Floor Cleaner";
+    case 23:
+      return "Booster Pump";
+    case 24:
+      return "Valve";
+    case 25:
+      return "Heater";
+    case 26:
+      return "Heat Pump";
+    case 27:
+      return "Color Wheel";
+    case 28:
+      return "Dimmer";
+    case 29:
+      return "Unknown / Reserved";
+    case 30:
+      return "Egg Timer Only";
+    default:
+      return "Unknown";
+  }
+}
+
+function decodeCircuitNameLabel(nameId: number | null): string | null {
+  switch (nameId) {
+    case 0:
+      return "NOT USED";
+    case 1:
+      return "SPA";
+    case 2:
+      return "POOL";
+    case 3:
+      return "SPA LIGHT";
+    case 4:
+      return "POOL LIGHT";
+    case 5:
+      return "AUX 1";
+    case 6:
+      return "AUX 2";
+    case 7:
+      return "AUX 3";
+    case 8:
+      return "AUX 4";
+    case 9:
+      return "AUX 5";
+    case 10:
+      return "AUX 6";
+    case 11:
+      return "AUX 7";
+    case 12:
+      return "FEATURE 1";
+    case 13:
+      return "FEATURE 2";
+    case 14:
+      return "FEATURE 3";
+    case 15:
+      return "FEATURE 4";
+    case 16:
+      return "FEATURE 5";
+    case 17:
+      return "FEATURE 6";
+    case 18:
+      return "FEATURE 7";
+    case 19:
+      return "VALVE 1";
+    case 20:
+      return "VALVE 2";
+    case 21:
+      return "VALVE 3";
+    case 22:
+      return "VALVE 4";
+    case 23:
+      return "SOLAR";
+    case 24:
+      return "HEATER";
+    case 25:
+      return "HEAT PUMP";
+    case 26:
+      return "CLEANER";
+    case 27:
+      return "BOOSTER";
+    case 28:
+      return "WATERFALL";
+    case 29:
+      return "FOUNTAIN";
+    case 30:
+      return "BLOWER";
+    case 31:
+      return "LIGHTS";
+    case 32:
+      return "LANDSCAPE LIGHT";
+    case 33:
+      return "INTELLIBRITE";
+    case 34:
+      return "MAGICSTREAM";
+    case 35:
+      return "LAMINAR";
+    case 36:
+      return "COLOR WHEEL";
+    case 37:
+      return "DIMMER";
+    case 38:
+      return "GENERIC";
     default:
       return null;
   }
@@ -164,7 +391,7 @@ function expectStartDelimiter(frame: Uint8Array): void {
 
 function expectValidPentairProtocolByte(frame: Uint8Array): void {
   const protocolByte = frame[4];
-  if (protocolByte !== 0x00 && protocolByte !== 0x01) {
+  if (protocolByte !== 0x00 && protocolByte !== 0x01 && protocolByte !== 0x34) {
     throw new ProtocolDecodeError(
       `Frame uses unsupported Pentair protocol byte 0x${(protocolByte ?? 0).toString(16).padStart(2, "0")}.`,
       "protocol_byte_invalid"
@@ -185,8 +412,18 @@ function calculateChecksum(bytes: Uint8Array): number {
 
 function decodeMessageType(actionCode: number): string {
   switch (actionCode) {
+    case 0x0a:
+      return "custom_name";
+    case 0xfc:
+      return "controller_software_version";
+    case 0x01:
+      return "controller_ack";
+    case 0x05:
+      return "controller_datetime";
     case 0x02:
       return "controller_status";
+    case 0x0b:
+      return "circuit_configuration";
     case 0x18:
       return "pump_info";
     case 0x07:
@@ -221,6 +458,36 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
   const payloadHex = bytesToHex(payload);
 
   switch (actionCode) {
+    case 0x0a:
+      return {
+        payload_hex: payloadHex,
+        payload_length: payload.length,
+        name_index: payload[0] ?? null,
+        custom_name_bytes: [...payload.slice(1)],
+        custom_name_text: decodeFixedWidthAscii(payload.slice(1))
+      };
+    case 0xfc:
+      return {
+        payload_hex: payloadHex,
+        payload_length: payload.length,
+        controller_firmware_major: payload[1] ?? null,
+        controller_firmware_minor: payload[2] ?? null,
+        bootloader_major: payload[5] ?? null,
+        bootloader_minor: payload[6] ?? null
+      };
+    case 0x05:
+      return {
+        payload_hex: payloadHex,
+        payload_length: payload.length,
+        hour_24: payload[0] ?? null,
+        minute: payload[1] ?? null,
+        day_of_week: payload[2] ?? null,
+        day: payload[3] ?? null,
+        month: payload[4] ?? null,
+        year: payload[5] ?? null,
+        unknown_byte_6: payload[6] ?? null,
+        daylight_savings_auto: payload[7] == null ? null : payload[7] === 1
+      };
     case 0x02:
       {
         const circuitsByte = payload[2] ?? 0;
@@ -230,6 +497,8 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
         const valveStateByte = payload[10] ?? null;
         const delayByte = payload[12] ?? null;
         const heatSettingByte = payload[22] ?? null;
+        const controllerSubModelByte = payload[27] ?? null;
+        const controllerModelByte = payload[28] ?? null;
         const circuits = decodeCircuitStates(circuitsByte, circuitsByte2, circuitsByte3);
         return {
           payload_hex: payloadHex,
@@ -243,6 +512,7 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
           circuits_byte_2: circuitsByte2,
           circuits_byte_3: circuitsByte3,
           controller_mode_byte: controllerModeByte,
+          controller_mode_label: decodeControllerModeLabel(controllerModeByte),
           service_mode: controllerModeByte === null ? null : (controllerModeByte & 0x01) !== 0,
           celsius_mode: controllerModeByte === null ? null : (controllerModeByte & 0x04) !== 0,
           freeze_protection_active: controllerModeByte === null ? null : (controllerModeByte & 0x08) !== 0,
@@ -255,6 +525,10 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
           heat_setting_byte: heatSettingByte,
           pool_heat_mode: decodePoolHeatMode(heatSettingByte),
           spa_heat_mode: decodeSpaHeatMode(heatSettingByte),
+          controller_sub_model_byte: controllerSubModelByte,
+          controller_model_byte: controllerModelByte,
+          controller_model_family: decodeControllerModelFamily(controllerSubModelByte, controllerModelByte),
+          controller_model_label: decodeControllerModelLabel(controllerSubModelByte, controllerModelByte),
           active_circuit_keys: decodeActiveCircuitKeys(circuitsByte, circuitsByte2, circuitsByte3),
           mode: decodeControllerMode(circuits),
           circuits
@@ -271,6 +545,25 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
         rpm_hi: payload[5] ?? null,
         rpm_lo: payload[6] ?? null
       };
+    case 0x0b:
+      {
+        const functionId = payload[1] ?? null;
+        const nameId = payload[2] ?? null;
+        return {
+          payload_hex: payloadHex,
+          payload_length: payload.length,
+          circuit_id: payload[0] ?? null,
+          function_id: functionId,
+          base_function_id: functionId === null ? null : functionId & 0x3f,
+          base_function_label: decodeCircuitBaseFunction(functionId),
+          freeze_flag: functionId === null ? null : (functionId & 0x40) !== 0,
+          high_flag: functionId === null ? null : (functionId & 0x80) !== 0,
+          name_id: nameId,
+          name_label: decodeCircuitNameLabel(nameId),
+          reserved_3: payload[3] ?? null,
+          reserved_4: payload[4] ?? null
+        };
+      }
     case 0x19:
       return {
         payload_hex: payloadHex,
@@ -360,9 +653,17 @@ function decodeNormalizedEvents(
             event_id: null,
             occurred_at: occurredAt,
             source,
+            controller_hour_24: payload[0] ?? null,
+            controller_minute: payload[1] ?? null,
             water_temp_f: payload[14] ?? null,
             air_temp_f: payload[18] ?? null,
             solar_temp_f: payload[19] ?? null,
+            controller_mode_byte: controllerModeByte,
+            controller_mode_label: decodeControllerModeLabel(controllerModeByte),
+            controller_sub_model_byte: payload[27] ?? null,
+            controller_model_byte: payload[28] ?? null,
+            controller_model_family: decodeControllerModelFamily(payload[27] ?? null, payload[28] ?? null),
+            controller_model_label: decodeControllerModelLabel(payload[27] ?? null, payload[28] ?? null),
             heater: {
               enabled: (payload[15] ?? 0) === 0x20
             },
@@ -543,6 +844,13 @@ function parseRpmArgument(value: unknown, fieldName: string): number {
     throw new ProtocolCommandError(`${fieldName} must be an integer RPM between 0 and 3450.`, "command_arguments_invalid");
   }
   return value;
+}
+
+function decodeFixedWidthAscii(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((byte) => String.fromCharCode(byte))
+    .join("")
+    .replace(/\s+$/g, "");
 }
 
 function buildPumpConfigPayload(argumentsValue: Record<string, unknown>): number[] {
@@ -741,6 +1049,140 @@ function encodePentairCommand(intent: NormalizedCommandIntent, protocolConfig: R
     };
   }
 
+  if (intent.command_type === "request_controller_datetime") {
+    const bytes = buildPentairFrame(0x01, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0xc5, [0x00]);
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "transport_ack"
+      }
+    };
+  }
+
+  if (intent.command_type === "sync_controller_datetime") {
+    const month = parseByteArgument(intent.arguments.month, "month");
+    const day = parseByteArgument(intent.arguments.day, "day");
+    const year = parseByteArgument(intent.arguments.year, "year");
+    const dayOfWeek = parseByteArgument(intent.arguments.day_of_week, "day_of_week");
+    const hour24 = parseByteArgument(intent.arguments.hour_24, "hour_24");
+    const minute = parseByteArgument(intent.arguments.minute, "minute");
+
+    const bytes = buildPentairFrame(0x01, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0x85, [
+      month,
+      day,
+      year,
+      dayOfWeek,
+      hour24,
+      minute
+    ]);
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "transport_ack"
+      }
+    };
+  }
+
+  if (intent.command_type === "request_circuit_config") {
+    const startIndex = intent.arguments.start_index;
+    const endIndex = intent.arguments.end_index;
+    if (typeof startIndex !== "number" || !Number.isInteger(startIndex) || startIndex < 1 || startIndex > 255) {
+      throw new ProtocolCommandError("Pentair circuit config requests require integer start_index between 1 and 255.", "command_arguments_invalid");
+    }
+    if (typeof endIndex !== "number" || !Number.isInteger(endIndex) || endIndex < 1 || endIndex > 255) {
+      throw new ProtocolCommandError("Pentair circuit config requests require integer end_index between 1 and 255.", "command_arguments_invalid");
+    }
+    if (endIndex < startIndex) {
+      throw new ProtocolCommandError("Pentair circuit config requests require end_index >= start_index.", "command_arguments_invalid");
+    }
+    if (endIndex - startIndex + 1 > 32) {
+      throw new ProtocolCommandError("Pentair circuit config requests are limited to 32 indexes at a time.", "command_arguments_invalid");
+    }
+
+    const writes = Array.from({ length: endIndex - startIndex + 1 }, (_, offset) => {
+      const circuitIndex = startIndex + offset;
+      const bytes = buildPentairFrame(0x34, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0xcb, [circuitIndex]);
+      return {
+        bytes,
+        bytesHex: bytesToHex(bytes),
+        busRequirements: {
+          requires_idle_ms: DEFAULT_IDLE_MS
+        }
+      };
+    });
+
+    return {
+      protocolName: "pentair_easytouch",
+      writes,
+      correlation: {
+        kind: "controller_circuit_config",
+        startIndex,
+        endIndex
+      }
+    };
+  }
+
+  if (intent.command_type === "request_custom_name") {
+    const nameIndex = intent.arguments.name_index;
+    if (typeof nameIndex !== "number" || !Number.isInteger(nameIndex) || nameIndex < 0 || nameIndex > 9) {
+      throw new ProtocolCommandError("Pentair custom name requests require integer name_index between 0 and 9.", "command_arguments_invalid");
+    }
+
+    const bytes = buildPentairFrame(0x34, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0xca, [nameIndex]);
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "transport_ack"
+      }
+    };
+  }
+
+  if (intent.command_type === "request_controller_software_version") {
+    const bytes = buildPentairFrame(0x34, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0xfd, []);
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "transport_ack"
+      }
+    };
+  }
+
   if (intent.command_type === "write_pump_config") {
     const payload = buildPumpConfigPayload(intent.arguments);
     const bytes = buildPentairFrame(0x34, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0x9b, payload);
@@ -761,9 +1203,38 @@ function encodePentairCommand(intent: NormalizedCommandIntent, protocolConfig: R
     };
   }
 
+  if (intent.command_type === "set_circuit_state") {
+    if (intent.target.equipment_type !== "circuit") {
+      throw new ProtocolCommandError("Pentair set_circuit_state requires a controller circuit target.", "command_target_invalid");
+    }
+
+    const circuitId = parseByteArgument(intent.arguments.circuit_id, "circuit_id");
+    const enabled = intent.arguments.enabled;
+    if (typeof enabled !== "boolean") {
+      throw new ProtocolCommandError("Pentair set_circuit_state requires boolean enabled.", "command_arguments_invalid");
+    }
+
+    const bytes = buildPentairFrame(0x34, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0x86, [circuitId, enabled ? 1 : 0]);
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "controller_ack"
+      }
+    };
+  }
+
   if (intent.command_type !== "set_speed") {
     throw new ProtocolCommandError(
-      "pentair_easytouch only supports controller-circuit set_speed, manual pump info requests, manual pump config writes, manual Remote Layout requests, and Explorer raw frame sends in the current command slice.",
+      "pentair_easytouch only supports controller-circuit set_speed and set_circuit_state, manual circuit config requests, manual custom name requests, manual controller software-version requests, controller date/time requests and sync, manual pump info requests, manual pump config writes, manual Remote Layout requests, and Explorer raw frame sends in the current command slice.",
       "unsupported_command_encode"
     );
   }

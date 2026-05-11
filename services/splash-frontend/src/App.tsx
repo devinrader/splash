@@ -1,4 +1,6 @@
-import { startTransition, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { startTransition, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import type React from "react";
+import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
   buildApiUrl,
   compareProtocolBundles,
@@ -10,29 +12,65 @@ import {
   fetchProtocolAnnotations,
   fetchProtocolBundles,
   fetchProtocolPrompts,
+  requestCircuitConfig,
+  requestCircuitState,
+  requestControllerDatetime,
   requestRemoteLayoutPage,
-  sendRawProtocolFrame,
-  requestPumpSpeed
+  requestPumpSpeed,
+  syncControllerDatetime,
+  sendRawProtocolFrame
 } from "./api";
+import { AppShell } from "./components/AppShell";
+import { SplashIcon } from "./components/icons/SplashIcon";
+import { NAV_ITEMS, PAGE_SUMMARIES, getActiveNavItem } from "./navigation";
+import { DiagnosticsPage } from "./pages/DiagnosticsPage";
+import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { SystemPage } from "./pages/SystemPage";
 import { useFrontendStore } from "./store";
 import type {
+  ConnectivityHistorySample,
   EquipmentRecord,
+  HealthData,
   ProtocolAnnotation,
   ProtocolBundleComparison,
   ProtocolBundleSummary,
   ProtocolFrameEvent,
   ProtocolPrompt
 } from "./types";
+import {
+  type ActivePlatformRequest,
+  type PendingCircuitToggle,
+  formatCommandStatus,
+  formatControllerTime,
+  formatMessagesPerSecond,
+  formatTopbarDate,
+  formatTopbarTime,
+  getControllerCircuitStates,
+  getMessageLogSource,
+  getMessageLogType,
+  getSidebarStatus,
+  getStatusIconName,
+  getTopbarWeatherSummary,
+  isControllerCircuitMetadataMissing,
+  readNullableString
+} from "./viewUtils";
+import "./tokens.css";
 import "./styles.css";
+
+const CONNECTIVITY_SAMPLE_WINDOW_MS = 9_000;
+const CONNECTIVITY_SAMPLE_MAX_POINTS = 18;
+const HEALTH_POLL_INTERVAL_MS = 10_000;
 
 export default function App() {
   const equipment = useFrontendStore((state) => state.equipment);
   const healthStatus = useFrontendStore((state) => state.healthStatus);
+  const healthData = useFrontendStore((state) => state.healthData);
   const sseStatus = useFrontendStore((state) => state.sseStatus);
   const errorMessage = useFrontendStore((state) => state.errorMessage);
   const command = useFrontendStore((state) => state.command);
   const setEquipment = useFrontendStore((state) => state.setEquipment);
   const setHealthStatus = useFrontendStore((state) => state.setHealthStatus);
+  const setHealthData = useFrontendStore((state) => state.setHealthData);
   const setSseStatus = useFrontendStore((state) => state.setSseStatus);
   const setErrorMessage = useFrontendStore((state) => state.setErrorMessage);
   const beginPumpCommand = useFrontendStore((state) => state.beginPumpCommand);
@@ -43,10 +81,22 @@ export default function App() {
   const [rpmInput, setRpmInput] = useState("2800");
   const [circuitKeyInput, setCircuitKeyInput] = useState("pool");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRequestingCircuitConfig, setIsRequestingCircuitConfig] = useState(false);
+  const [circuitConfigRequestMessage, setCircuitConfigRequestMessage] = useState<string | null>(null);
+  const [isRequestingControllerDatetime, setIsRequestingControllerDatetime] = useState(false);
+  const [isSyncingControllerDatetime, setIsSyncingControllerDatetime] = useState(false);
+  const [controllerDatetimeMessage, setControllerDatetimeMessage] = useState<string | null>(null);
+  const [pendingCircuitToggle, setPendingCircuitToggle] = useState<PendingCircuitToggle | null>(null);
+  const [activeRequests, setActiveRequests] = useState<ActivePlatformRequest[]>([]);
   const [bundleLabel, setBundleLabel] = useState("");
   const [remoteLayoutPageIndex, setRemoteLayoutPageIndex] = useState("0");
   const [rawFrameHex, setRawFrameHex] = useState("ff00ffa5011022e1010001ba");
   const [recentFrames, setRecentFrames] = useState<ProtocolFrameEvent[]>([]);
+  const [deviceFilter, setDeviceFilter] = useState("all");
+  const [messageTypeFilter, setMessageTypeFilter] = useState("all");
+  const [messageLogLimit, setMessageLogLimit] = useState("100");
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
+  const [isStreamPaused, setIsStreamPaused] = useState(false);
   const [bundles, setBundles] = useState<ProtocolBundleSummary[]>([]);
   const [baselineBundleId, setBaselineBundleId] = useState("");
   const [comparisonBundleId, setComparisonBundleId] = useState("");
@@ -65,87 +115,92 @@ export default function App() {
   const [promptWhy, setPromptWhy] = useState("");
   const [promptFieldName, setPromptFieldName] = useState("payload_hex");
   const [promptFrameIndex, setPromptFrameIndex] = useState("0");
-  const [promptInputType, setPromptInputType] = useState<"controller_menu_state" | "equipment_behavior" | "circuit_name" | "configured_rpm">(
-    "controller_menu_state"
-  );
+  const [promptInputType, setPromptInputType] = useState<"controller_menu_state" | "equipment_behavior" | "circuit_name" | "configured_rpm">("controller_menu_state");
   const [explorerError, setExplorerError] = useState<string | null>(null);
+  const [connectivityHistory, setConnectivityHistory] = useState<ConnectivityHistorySample[]>([]);
+  const hasRequestedControllerDatetimeRef = useRef(false);
+  const hasRequestedControllerCircuitConfigRef = useRef(false);
+  const isStreamPausedRef = useRef(false);
+  const messageLogTableRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    void loadInitialState({ setEquipment, setHealthStatus, setErrorMessage });
-    void refreshBundles({
-      setBundles,
-      setBaselineBundleId,
-      setComparisonBundleId,
-      setSelectedBundleId,
-      setExplorerError
-    });
-  }, [setEquipment, setErrorMessage, setHealthStatus]);
+    void loadInitialState({ setEquipment, setHealthStatus, setHealthData, setErrorMessage });
+    void refreshBundles({ setBundles, setBaselineBundleId, setComparisonBundleId, setSelectedBundleId, setExplorerError });
+  }, [setEquipment, setErrorMessage, setHealthData, setHealthStatus]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void refreshHealth(setHealthStatus, setHealthData, setErrorMessage);
+    }, HEALTH_POLL_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [setErrorMessage, setHealthData, setHealthStatus]);
 
   useEffect(() => {
     setSseStatus("connecting");
     const source = new EventSource(buildApiUrl("/events"));
-
     source.addEventListener("ready", () => {
       setSseStatus("connected");
       void refreshEquipment(setEquipment, setErrorMessage);
-      void refreshHealth(setHealthStatus, setErrorMessage);
+      void refreshHealth(setHealthStatus, setHealthData, setErrorMessage);
     });
-
-    source.addEventListener("equipment.state", (event) => {
-      startTransition(() => {
-        applyEquipmentStateEvent(parseEventPayload(event));
-      });
-    });
-
-    source.addEventListener("pump.state", (event) => {
-      startTransition(() => {
-        applyPumpStateEvent(parseEventPayload(event));
-      });
-    });
-
+    source.addEventListener("equipment.state", (event) => startTransition(() => applyEquipmentStateEvent(parseEventPayload(event))));
+    source.addEventListener("pump.state", (event) => startTransition(() => applyPumpStateEvent(parseEventPayload(event))));
     source.addEventListener("command.result", (event) => {
+      const payload = parseEventPayload(event);
       startTransition(() => {
-        applyCommandResult(parseEventPayload(event));
+        applyCommandResult(payload);
+        clearActiveRequestByCommandResult(setActiveRequests, payload);
+        const commandId = readNullableString(payload.command_id);
+        const status = readNullableString(payload.status);
+        if (pendingCircuitToggle && commandId === pendingCircuitToggle.commandId && (status === "failed" || status === "timed_out")) {
+          setPendingCircuitToggle(null);
+        }
       });
     });
-
     source.onerror = () => {
       setSseStatus("disconnected");
-      void refreshHealth(setHealthStatus, setErrorMessage);
+      void refreshHealth(setHealthStatus, setHealthData, setErrorMessage);
     };
-
-    return () => {
-      source.close();
-    };
-  }, [applyCommandResult, applyEquipmentStateEvent, applyPumpStateEvent, setEquipment, setErrorMessage, setHealthStatus, setSseStatus]);
+    return () => source.close();
+  }, [applyCommandResult, applyEquipmentStateEvent, applyPumpStateEvent, pendingCircuitToggle, setEquipment, setErrorMessage, setHealthData, setHealthStatus, setSseStatus]);
 
   useEffect(() => {
     const source = new EventSource(buildApiUrl("/protocol/frames"));
-
     source.addEventListener("protocol.frame.raw", (event) => {
-      appendFrame(setRecentFrames, "protocol.frame.raw", parseEventPayload(event));
+      if (!isStreamPausedRef.current) {
+        appendFrame(setRecentFrames, "protocol.frame.raw", parseEventPayload(event));
+      }
     });
-
     source.addEventListener("protocol.frame.decoded", (event) => {
-      appendFrame(setRecentFrames, "protocol.frame.decoded", parseEventPayload(event));
+      const payload = parseEventPayload(event);
+      if (!isStreamPausedRef.current) {
+        appendFrame(setRecentFrames, "protocol.frame.decoded", payload);
+      }
+      clearActiveRequestByReply(setActiveRequests, payload);
     });
-
     source.addEventListener("protocol.command.encoded", (event) => {
-      appendFrame(setRecentFrames, "protocol.command.encoded", parseEventPayload(event));
+      if (!isStreamPausedRef.current) {
+        appendFrame(setRecentFrames, "protocol.command.encoded", parseEventPayload(event));
+      }
     });
-
     source.addEventListener("serial.tx.raw", (event) => {
-      appendFrame(setRecentFrames, "serial.tx.raw", parseEventPayload(event));
+      if (!isStreamPausedRef.current) {
+        appendFrame(setRecentFrames, "serial.tx.raw", parseEventPayload(event));
+      }
     });
-
-    source.onerror = () => {
-      setExplorerError((current) => current ?? "Protocol frame stream disconnected.");
-    };
-
-    return () => {
-      source.close();
-    };
+    source.onerror = () => setExplorerError((current) => current ?? "Protocol frame stream disconnected.");
+    return () => source.close();
   }, []);
+
+  useEffect(() => {
+    const nextSample = createConnectivityHistorySample(healthData);
+    if (!nextSample) {
+      return;
+    }
+
+    setConnectivityHistory((current) => upsertConnectivityHistorySample(current, nextSample));
+  }, [healthData]);
 
   useEffect(() => {
     if (!selectedBundleId) {
@@ -153,7 +208,6 @@ export default function App() {
       setPrompts([]);
       return;
     }
-
     void refreshExplorerMetadata(selectedBundleId, setAnnotations, setPrompts, setExplorerError);
   }, [selectedBundleId]);
 
@@ -161,14 +215,82 @@ export default function App() {
   const pump = equipment["pump-main"];
   const chlorinator = equipment["chlorinator-main"];
   const pendingCommand = isSubmitting || command.commandId !== null;
+  const controllerCircuitStates = getControllerCircuitStates(
+    controller?.hardware?.circuits,
+    controller?.latest_state.circuits,
+    controller?.latest_state.active_circuit_keys,
+    controller?.latest_state.mode,
+    controller?.latest_state.circuit_configurations
+  );
+  const installedCircuits = controllerCircuitStates.filter((entry) => entry.circuit.installed);
+  const activeCircuitCount = installedCircuits.filter((entry) => entry.state === true).length;
+  const controllerMode = readNullableString(controller?.latest_state.mode) ?? "pool";
+  const filteredFrames = recentFrames.filter((frame) => {
+    const source = getMessageLogSource(frame);
+    const messageType = getMessageLogType(frame);
+    if (deviceFilter !== "all" && source !== deviceFilter) {
+      return false;
+    }
+    if (messageTypeFilter !== "all" && messageType !== messageTypeFilter) {
+      return false;
+    }
+    return true;
+  });
+  const visibleFrames = filteredFrames.slice(0, Number.parseInt(messageLogLimit, 10));
+  const availableDevices = Array.from(new Set(recentFrames.map((frame) => getMessageLogSource(frame))));
+  const availableMessageTypes = Array.from(new Set(recentFrames.map((frame) => getMessageLogType(frame))));
+  const messagesPerSecond = formatMessagesPerSecond(recentFrames);
+
+  useEffect(() => {
+    isStreamPausedRef.current = isStreamPaused;
+  }, [isStreamPaused]);
+
+  useEffect(() => {
+    if (!autoScrollEnabled || !messageLogTableRef.current) {
+      return;
+    }
+    messageLogTableRef.current.scrollTop = 0;
+  }, [autoScrollEnabled, visibleFrames]);
+
+  useEffect(() => {
+    if (!pendingCircuitToggle) {
+      return;
+    }
+    const updatedAtValue = readNullableString(controller?.latest_state.updated_at);
+    if (updatedAtValue && updatedAtValue !== pendingCircuitToggle.controllerUpdatedAt) {
+      setPendingCircuitToggle(null);
+    }
+  }, [controller?.latest_state.updated_at, pendingCircuitToggle]);
+
+  useEffect(() => {
+    if (sseStatus !== "connected" || hasRequestedControllerDatetimeRef.current) {
+      return;
+    }
+    if (controller?.latest_state.controller_datetime_reply) {
+      hasRequestedControllerDatetimeRef.current = true;
+      return;
+    }
+    hasRequestedControllerDatetimeRef.current = true;
+    void handleControllerDatetimeRequest();
+  }, [controller?.latest_state.controller_datetime_reply, sseStatus]);
+
+  useEffect(() => {
+    if (sseStatus !== "connected" || !controller || isRequestingCircuitConfig || hasRequestedControllerCircuitConfigRef.current) {
+      return;
+    }
+    if (!isControllerCircuitMetadataMissing(controller)) {
+      hasRequestedControllerCircuitConfigRef.current = true;
+      return;
+    }
+    hasRequestedControllerCircuitConfigRef.current = true;
+    void handleCircuitConfigRequest("auto");
+  }, [controller, isRequestingCircuitConfig, sseStatus]);
 
   useEffect(() => {
     if (!pump) {
       return;
     }
-
-    const defaultCircuitKey = pump.default_control_circuit_key ?? pump.control_circuit_keys?.[0] ?? "pool";
-    setCircuitKeyInput(defaultCircuitKey);
+    setCircuitKeyInput(pump.default_control_circuit_key ?? pump.control_circuit_keys?.[0] ?? "pool");
   }, [pump]);
 
   async function handlePumpSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
@@ -178,16 +300,10 @@ export default function App() {
       setErrorMessage("Enter a valid integer RPM before submitting.");
       return;
     }
-
     setErrorMessage(null);
     setIsSubmitting(true);
-
     try {
-      const response = await requestPumpSpeed({
-        equipmentId: pump.id,
-        rpm,
-        circuitKey: circuitKeyInput
-      });
+      const response = await requestPumpSpeed({ equipmentId: pump.id, rpm, circuitKey: circuitKeyInput });
       beginPumpCommand({ commandId: response.data.command_id, rpm });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
@@ -202,13 +318,7 @@ export default function App() {
       setExplorerError(null);
       await createProtocolBundle({ label: bundleLabel.trim().length > 0 ? bundleLabel.trim() : null });
       setBundleLabel("");
-      await refreshBundles({
-        setBundles,
-        setBaselineBundleId,
-        setComparisonBundleId,
-        setSelectedBundleId,
-        setExplorerError
-      });
+      await refreshBundles({ setBundles, setBaselineBundleId, setComparisonBundleId, setSelectedBundleId, setExplorerError });
     } catch (error) {
       setExplorerError(error instanceof Error ? error.message : String(error));
     }
@@ -221,15 +331,16 @@ export default function App() {
       setExplorerError("Enter a valid Remote Layout page index.");
       return;
     }
-
     try {
       setExplorerError(null);
       const response = await requestRemoteLayoutPage({ pageIndex });
-      applyCommandResult({
-        command_id: response.data.command_id,
-        status: response.data.status,
-        detail: `Manual Remote Layout request for page ${pageIndex} accepted.`
+      addActiveRequest(setActiveRequests, {
+        commandId: response.data.command_id,
+        label: `Remote Layout page ${pageIndex}`,
+        waitingFor: "command completion",
+        replyType: null
       });
+      applyCommandResult({ command_id: response.data.command_id, status: response.data.status, detail: `Manual Remote Layout request for page ${pageIndex} accepted.` });
     } catch (error) {
       setExplorerError(error instanceof Error ? error.message : String(error));
     }
@@ -242,20 +353,89 @@ export default function App() {
       setExplorerError("Enter even-length lowercase hex bytes for the raw frame.");
       return;
     }
-
     try {
       setExplorerError(null);
-      const response = await sendRawProtocolFrame({
-        protocolName: "pentair_easytouch",
-        bytesHex
+      const response = await sendRawProtocolFrame({ protocolName: "pentair_easytouch", bytesHex });
+      addActiveRequest(setActiveRequests, { commandId: response.data.command_id, label: "Manual raw frame send", waitingFor: "command completion", replyType: null });
+      applyCommandResult({ command_id: response.data.command_id, status: response.data.status, detail: `Manual raw frame send accepted for ${bytesHex}.` });
+    } catch (error) {
+      setExplorerError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleCircuitConfigRequest(trigger: "auto" | "manual" = "manual"): Promise<void> {
+    try {
+      setExplorerError(null);
+      setIsRequestingCircuitConfig(true);
+      const response = await requestCircuitConfig();
+      addActiveRequest(setActiveRequests, {
+        commandId: response.data.command_id,
+        label: "Controller circuit config discovery",
+        waitingFor: "circuit configuration reply",
+        replyType: "circuit_configuration"
       });
-      applyCommandResult({
-        command_id: response.data.command_id,
-        status: response.data.status,
-        detail: `Manual raw frame send accepted for ${bytesHex}.`
+      if (trigger === "manual") {
+        setCircuitConfigRequestMessage(`Controller circuit configuration discovery accepted for indexes 1-20. Command ${response.data.command_id}.`);
+      }
+    } catch (error) {
+      setExplorerError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsRequestingCircuitConfig(false);
+    }
+  }
+
+  async function handleCircuitToggle(circuit: { key: string; writable: boolean }, currentState: boolean | null): Promise<void> {
+    if (!circuit.writable || currentState == null || pendingCircuitToggle) {
+      return;
+    }
+    try {
+      setExplorerError(null);
+      const response = await requestCircuitState({ equipmentId: "controller-main", circuitKey: circuit.key, enabled: !currentState });
+      setPendingCircuitToggle({
+        circuitKey: circuit.key,
+        commandId: response.data.command_id,
+        controllerUpdatedAt: readNullableString(controller?.latest_state.updated_at)
       });
     } catch (error) {
       setExplorerError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleControllerDatetimeRequest(): Promise<void> {
+    try {
+      setExplorerError(null);
+      setIsRequestingControllerDatetime(true);
+      const response = await requestControllerDatetime();
+      addActiveRequest(setActiveRequests, {
+        commandId: response.data.command_id,
+        label: "Controller date/time request",
+        waitingFor: "0x05 controller date/time reply",
+        replyType: "controller_datetime"
+      });
+      setControllerDatetimeMessage(`Controller date/time request accepted. Command ${response.data.command_id}.`);
+    } catch (error) {
+      setExplorerError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsRequestingControllerDatetime(false);
+    }
+  }
+
+  async function handleControllerDatetimeSync(): Promise<void> {
+    try {
+      setExplorerError(null);
+      setIsSyncingControllerDatetime(true);
+      const response = await syncControllerDatetime();
+      addActiveRequest(setActiveRequests, {
+        commandId: response.data.command_id,
+        label: "Controller date/time sync",
+        waitingFor: "0x05 controller date/time reply",
+        replyType: "controller_datetime"
+      });
+      setControllerDatetimeMessage(`Controller date/time sync accepted as a provisional best-effort action. Command ${response.data.command_id}.`);
+    } catch (error) {
+      setExplorerError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsSyncingControllerDatetime(false);
     }
   }
 
@@ -264,13 +444,9 @@ export default function App() {
       setExplorerError("Select both a baseline and comparison bundle.");
       return;
     }
-
     try {
       setExplorerError(null);
-      const response = await compareProtocolBundles({
-        baselineBundleId,
-        comparisonBundleId
-      });
+      const response = await compareProtocolBundles({ baselineBundleId, comparisonBundleId });
       setBundleComparison(response.data);
     } catch (error) {
       setExplorerError(error instanceof Error ? error.message : String(error));
@@ -283,7 +459,6 @@ export default function App() {
       setExplorerError("Select a bundle before creating an annotation.");
       return;
     }
-
     try {
       setExplorerError(null);
       await createProtocolAnnotation({
@@ -310,7 +485,6 @@ export default function App() {
       setExplorerError("Select a bundle before creating a prompt.");
       return;
     }
-
     try {
       setExplorerError(null);
       await createProtocolPrompt({
@@ -330,386 +504,225 @@ export default function App() {
     }
   }
 
-  return (
-    <main className="page-shell">
-      <section className="hero">
-        <div>
-          <p className="eyebrow">Milestone 1</p>
-          <h1>Pool equipment read and control</h1>
-          <p className="hero-copy">
-            Live temperatures, salt, and pump RPM with a controller-facing browser control path and a developer Protocol Explorer for reverse engineering.
-          </p>
-        </div>
-        <div className="status-cluster" aria-label="service status">
-          <StatusPill label="API" value={healthStatus} />
-          <StatusPill label="Events" value={sseStatus} />
-          <StatusPill label="Command" value={command.status ?? "idle"} />
-        </div>
-      </section>
-
-      {errorMessage ? (
-        <section className="notice notice-error" role="alert">
-          {errorMessage}
-        </section>
-      ) : null}
-
-      {command.detail ? (
-        <section className="notice" aria-live="polite">
-          <strong>{formatCommandStatus(command.status)}</strong>
-          <span>{command.detail}</span>
-        </section>
-      ) : null}
-
-      {explorerError ? (
-        <section className="notice notice-error" role="alert">
-          {explorerError}
-        </section>
-      ) : null}
-
-      <section className="dashboard-grid">
-        <MetricCard label="Air Temperature" value={readMetric(controller?.latest_state.air_temp_f)} unit="°F" accent="sky" />
-        <MetricCard label="Water Temperature" value={readMetric(controller?.latest_state.water_temp_f)} unit="°F" accent="water" />
-        <MetricCard label="Salt Level" value={readMetric(chlorinator?.latest_state.salt_ppm)} unit="ppm" accent="sand" />
-        <MetricCard label="Pump Speed" value={readMetric(pump?.latest_state.rpm)} unit="RPM" accent="pump" />
-      </section>
-
-      <section className="control-panel">
-        <div>
-          <p className="panel-kicker">Pump control</p>
-          <h2>{pump?.display_name ?? "Main Pump"}</h2>
-          <p className="panel-copy">
-            The milestone command path stays on the production control loop while the Explorer below helps decode controller traffic and config writes.
-          </p>
-          <dl className="detail-grid">
-            <div>
-              <dt>Current RPM</dt>
-              <dd>{formatMetric(readMetric(pump?.latest_state.rpm), "RPM")}</dd>
-            </div>
-            <div>
-              <dt>Running</dt>
-              <dd>{formatBoolean(pump?.latest_state.running)}</dd>
-            </div>
-            <div>
-              <dt>Target bus address</dt>
-              <dd>{typeof pump?.bus_address === "string" ? pump.bus_address : "Unavailable"}</dd>
-            </div>
-          </dl>
-        </div>
-
-        <form className="control-form" onSubmit={(event) => void handlePumpSubmit(event)}>
-          <label htmlFor="pump-circuit">Controller circuit</label>
-          <select
-            id="pump-circuit"
-            value={circuitKeyInput}
-            onChange={(event) => setCircuitKeyInput(event.target.value)}
-            disabled={pendingCommand || !pump}
-          >
-            {(pump?.control_circuit_keys ?? []).map((circuitKey) => (
-              <option key={circuitKey} value={circuitKey}>
-                {formatCircuitKey(circuitKey)}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="pump-rpm">Requested RPM</label>
-          <input
-            id="pump-rpm"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={rpmInput}
-            onChange={(event) => setRpmInput(event.target.value)}
-            disabled={pendingCommand || !pump}
-          />
-          <button type="submit" disabled={pendingCommand || !pump}>
-            {pendingCommand ? "Waiting for command result..." : "Set pump speed"}
-          </button>
-          <p className="form-caption">Pump speed changes remain disabled while the prior command is unresolved.</p>
-        </form>
-      </section>
-
-      <section className="explorer-shell">
-        <div className="explorer-header">
-          <div>
-            <p className="panel-kicker">Protocol Explorer</p>
-            <h2>Live frames and collaborative decoding</h2>
-            <p className="panel-copy">
-              This panel is developer-facing on purpose. It helps capture controlled experiments, compare bundles, and record what still needs operator input.
-            </p>
-          </div>
-          <div className="explorer-actions">
-            <form className="inline-form" onSubmit={(event) => void handleBundleSave(event)}>
-              <label htmlFor="bundle-label">Bundle label</label>
-              <input
-                id="bundle-label"
-                value={bundleLabel}
-                onChange={(event) => setBundleLabel(event.target.value)}
-                placeholder="pool-high-before-change"
-              />
-              <button type="submit">Save frame bundle</button>
-            </form>
-            <form className="inline-form" onSubmit={(event) => void handleRemoteLayoutRequest(event)}>
-              <label htmlFor="remote-layout-page-index">Remote Layout page</label>
-              <input
-                id="remote-layout-page-index"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={remoteLayoutPageIndex}
-                onChange={(event) => setRemoteLayoutPageIndex(event.target.value)}
-              />
-              <button type="submit">Request page</button>
-            </form>
-            <form className="inline-form" onSubmit={(event) => void handleRawFrameSend(event)}>
-              <label htmlFor="raw-frame-hex">Raw frame hex</label>
-              <input
-                id="raw-frame-hex"
-                value={rawFrameHex}
-                onChange={(event) => setRawFrameHex(event.target.value)}
-                placeholder="ff00ffa5011022e1010001ba"
-              />
-              <button type="submit">Send raw frame</button>
-            </form>
-          </div>
-        </div>
-
-        <div className="explorer-grid">
-          <article className="explorer-card">
-            <h3>Live frame stream</h3>
-            <p className="card-copy">Recent raw and decoded frame events from `/protocol/frames`.</p>
-            <div className="frame-list">
-              {recentFrames.length === 0 ? <p className="empty-state">Waiting for protocol frames...</p> : null}
-              {recentFrames.map((frame, index) => (
-                <div className="frame-item" key={`${frame.event}-${index}`}>
-                  <div className="frame-meta">
-                    <strong>{frame.event}</strong>
-                    <span>{summarizeFrame(frame.payload)}</span>
-                  </div>
-                  <pre>{JSON.stringify(frame.payload, null, 2)}</pre>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article className="explorer-card">
-            <h3>Saved bundles</h3>
-            <p className="card-copy">Capture recent traffic windows for baseline and comparison experiments.</p>
-            <div className="bundle-list">
-              {bundles.map((bundle) => (
-                <button
-                  className={`bundle-chip ${selectedBundleId === bundle.id ? "bundle-chip-active" : ""}`}
-                  key={bundle.id}
-                  type="button"
-                  onClick={() => setSelectedBundleId(bundle.id)}
-                >
-                  <strong>{bundle.label ?? "Untitled bundle"}</strong>
-                  <span>{bundle.frame_count} frames</span>
-                </button>
-              ))}
-              {bundles.length === 0 ? <p className="empty-state">No saved bundles yet.</p> : null}
-            </div>
-
-            <div className="compare-controls">
-              <label>
-                Baseline bundle
-                <select value={baselineBundleId} onChange={(event) => setBaselineBundleId(event.target.value)}>
-                  <option value="">Select baseline</option>
-                  {bundles.map((bundle) => (
-                    <option key={bundle.id} value={bundle.id}>
-                      {bundle.label ?? bundle.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Comparison bundle
-                <select value={comparisonBundleId} onChange={(event) => setComparisonBundleId(event.target.value)}>
-                  <option value="">Select comparison</option>
-                  {bundles.map((bundle) => (
-                    <option key={bundle.id} value={bundle.id}>
-                      {bundle.label ?? bundle.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="button" onClick={() => void handleBundleCompare()}>
-                Compare bundles
-              </button>
-            </div>
-          </article>
-
-          <article className="explorer-card explorer-card-wide">
-            <h3>Bundle diff</h3>
-            <p className="card-copy">Positional byte-level changes for `bytes_hex` and `payload_hex` fields.</p>
-            {bundleComparison ? (
-              <div className="diff-list">
-                {bundleComparison.frame_pairs.map((pair) => (
-                  <div className="diff-item" key={pair.index}>
-                    <div className="frame-meta">
-                      <strong>Frame {pair.index}</strong>
-                      <span>
-                        {pair.baseline_event ?? "missing"} → {pair.comparison_event ?? "missing"}
-                      </span>
-                    </div>
-                    {pair.changed_fields.length === 0 ? (
-                      <p className="empty-state">No byte-level hex changes for this frame pair.</p>
-                    ) : (
-                      pair.changed_fields.map((field) => (
-                        <div key={`${pair.index}-${field.field}`}>
-                          <p className="field-heading">{field.field}</p>
-                          <ul className="byte-change-list">
-                            {field.byte_changes.map((change) => (
-                              <li key={`${pair.index}-${field.field}-${change.byte_index}`}>
-                                byte {change.byte_index}: <code>{change.baseline || "--"}</code> →{" "}
-                                <code>{change.comparison || "--"}</code>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="empty-state">Select two bundles and run a comparison.</p>
-            )}
-          </article>
-
-          <article className="explorer-card">
-            <h3>Annotations</h3>
-            <p className="card-copy">Confidence-aware byte-range notes for the selected bundle.</p>
-            <form className="stack-form" onSubmit={(event) => void handleAnnotationSubmit(event)}>
-              <label>
-                Frame index
-                <input value={annotationFrameIndex} onChange={(event) => setAnnotationFrameIndex(event.target.value)} />
-              </label>
-              <label>
-                Field name
-                <input value={annotationFieldName} onChange={(event) => setAnnotationFieldName(event.target.value)} />
-              </label>
-              <label>
-                Byte start
-                <input value={annotationByteStart} onChange={(event) => setAnnotationByteStart(event.target.value)} />
-              </label>
-              <label>
-                Byte end
-                <input value={annotationByteEnd} onChange={(event) => setAnnotationByteEnd(event.target.value)} />
-              </label>
-              <label>
-                Confidence
-                <select value={annotationConfidence} onChange={(event) => setAnnotationConfidence(event.target.value as typeof annotationConfidence)}>
-                  <option value="known">known</option>
-                  <option value="inferred">inferred</option>
-                  <option value="unknown">unknown</option>
-                </select>
-              </label>
-              <label>
-                Label
-                <input value={annotationLabel} onChange={(event) => setAnnotationLabel(event.target.value)} />
-              </label>
-              <label>
-                Notes
-                <textarea value={annotationNotes} onChange={(event) => setAnnotationNotes(event.target.value)} />
-              </label>
-              <button type="submit">Save annotation</button>
-            </form>
-            <div className="record-list">
-              {annotations.map((annotation) => (
-                <div className="record-card" key={annotation.id}>
-                  <strong>{annotation.label}</strong>
-                  <span>
-                    {annotation.field_name} bytes {annotation.byte_start}-{annotation.byte_end} · {annotation.confidence}
-                  </span>
-                  {annotation.notes ? <p>{annotation.notes}</p> : null}
-                </div>
-              ))}
-              {selectedBundleId && annotations.length === 0 ? <p className="empty-state">No annotations for this bundle yet.</p> : null}
-            </div>
-          </article>
-
-          <article className="explorer-card">
-            <h3>Operator prompts</h3>
-            <p className="card-copy">Questions that need controller or equipment context from the operator.</p>
-            <form className="stack-form" onSubmit={(event) => void handlePromptSubmit(event)}>
-              <label>
-                Frame index
-                <input value={promptFrameIndex} onChange={(event) => setPromptFrameIndex(event.target.value)} />
-              </label>
-              <label>
-                Field name
-                <input value={promptFieldName} onChange={(event) => setPromptFieldName(event.target.value)} />
-              </label>
-              <label>
-                Prompt
-                <input value={promptQuestion} onChange={(event) => setPromptQuestion(event.target.value)} />
-              </label>
-              <label>
-                Why it matters
-                <textarea value={promptWhy} onChange={(event) => setPromptWhy(event.target.value)} />
-              </label>
-              <label>
-                Expected input type
-                <select value={promptInputType} onChange={(event) => setPromptInputType(event.target.value as typeof promptInputType)}>
-                  <option value="controller_menu_state">controller_menu_state</option>
-                  <option value="equipment_behavior">equipment_behavior</option>
-                  <option value="circuit_name">circuit_name</option>
-                  <option value="configured_rpm">configured_rpm</option>
-                </select>
-              </label>
-              <button type="submit">Save prompt</button>
-            </form>
-            <div className="record-list">
-              {prompts.map((prompt) => (
-                <div className="record-card" key={prompt.id}>
-                  <strong>{prompt.prompt}</strong>
-                  <span>
-                    {prompt.input_type} · {prompt.status}
-                  </span>
-                  <p>{prompt.why}</p>
-                </div>
-              ))}
-              {selectedBundleId && prompts.length === 0 ? <p className="empty-state">No prompts for this bundle yet.</p> : null}
-            </div>
-          </article>
-        </div>
-      </section>
-    </main>
-  );
+  return <AppLayout
+    controller={controller}
+    healthStatus={healthStatus}
+    healthData={healthData}
+    sseStatus={sseStatus}
+    errorMessage={errorMessage}
+    command={command}
+    explorerError={explorerError}
+    systemPageProps={{
+      controller,
+      pump,
+      chlorinator,
+      healthStatus,
+      healthData,
+      connectivityHistory,
+      sseStatus,
+      installedCircuits,
+      controllerCircuitStates,
+      activeCircuitCount,
+      controllerMode,
+      rpmInput,
+      setRpmInput,
+      circuitKeyInput,
+      setCircuitKeyInput,
+      pendingCommand,
+      isRequestingCircuitConfig,
+      circuitConfigRequestMessage,
+      handlePumpSubmit,
+      handleCircuitConfigRequest,
+      handleCircuitToggle,
+      pendingCircuitToggle,
+      isRequestingControllerDatetime,
+      isSyncingControllerDatetime,
+      controllerDatetimeMessage,
+      handleControllerDatetimeRequest,
+      handleControllerDatetimeSync
+    }}
+    diagnosticsPageProps={{
+      bundleLabel,
+      setBundleLabel,
+      remoteLayoutPageIndex,
+      setRemoteLayoutPageIndex,
+      rawFrameHex,
+      setRawFrameHex,
+      activeRequests,
+      isStreamPaused,
+      setIsStreamPaused,
+      autoScrollEnabled,
+      setAutoScrollEnabled,
+      deviceFilter,
+      setDeviceFilter,
+      messageTypeFilter,
+      setMessageTypeFilter,
+      messageLogLimit,
+      setMessageLogLimit,
+      recentFrames,
+      setRecentFrames,
+      visibleFrames,
+      availableDevices,
+      availableMessageTypes,
+      messagesPerSecond,
+      bundles,
+      baselineBundleId,
+      setBaselineBundleId,
+      comparisonBundleId,
+      setComparisonBundleId,
+      bundleComparison,
+      selectedBundleId,
+      setSelectedBundleId,
+      annotations,
+      prompts,
+      annotationLabel,
+      setAnnotationLabel,
+      annotationNotes,
+      setAnnotationNotes,
+      annotationFieldName,
+      setAnnotationFieldName,
+      annotationFrameIndex,
+      setAnnotationFrameIndex,
+      annotationByteStart,
+      setAnnotationByteStart,
+      annotationByteEnd,
+      setAnnotationByteEnd,
+      annotationConfidence,
+      setAnnotationConfidence,
+      promptQuestion,
+      setPromptQuestion,
+      promptWhy,
+      setPromptWhy,
+      promptFieldName,
+      setPromptFieldName,
+      promptFrameIndex,
+      setPromptFrameIndex,
+      promptInputType,
+      setPromptInputType,
+      messageLogTableRef,
+      handleBundleSave,
+      handleRemoteLayoutRequest,
+      handleRawFrameSend,
+      handleBundleCompare,
+      handleAnnotationSubmit,
+      handlePromptSubmit
+    }}
+  />;
 }
 
-function MetricCard({
-  label,
-  value,
-  unit,
-  accent
+function AppLayout({
+      controller,
+      healthStatus,
+      healthData,
+      sseStatus,
+  errorMessage,
+  command,
+  explorerError,
+  systemPageProps,
+  diagnosticsPageProps
 }: {
-  label: string;
-  value: number | null;
-  unit: string;
-  accent: "sky" | "water" | "sand" | "pump";
+  controller: EquipmentRecord | undefined;
+  healthStatus: "unknown" | "ok" | "degraded";
+  healthData: HealthData | null;
+  sseStatus: "connecting" | "connected" | "disconnected";
+  errorMessage: string | null;
+  command: { status: string | null; detail: string | null };
+  explorerError: string | null;
+  systemPageProps: React.ComponentProps<typeof SystemPage>;
+  diagnosticsPageProps: React.ComponentProps<typeof DiagnosticsPage>;
 }) {
-  return (
-    <article className={`metric-card metric-card-${accent}`}>
-      <p>{label}</p>
-      <strong>{formatMetric(value, unit)}</strong>
-    </article>
-  );
-}
+  const location = useLocation();
+  const activeNavItem = getActiveNavItem(location.pathname);
+  const sidebarStatus = getSidebarStatus({
+    healthStatus,
+    sseStatus,
+    errorMessage,
+    commandStatus: command.status,
+    commandDetail: command.detail,
+    lastMessageTime: formatControllerTime(controller?.latest_state.controller_hour_24, controller?.latest_state.controller_minute)
+  });
+  const topbarWeather = getTopbarWeatherSummary();
 
-function StatusPill({ label, value }: { label: string; value: string }) {
   return (
-    <div className={`status-pill status-${value}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
+    <AppShell
+      sidebar={
+        <aside className="sidebar-nav" aria-label="primary navigation">
+          <div className="sidebar-nav-main">
+            <div className="brand-lockup">
+              <div className="brand-mark"><SplashIcon name="brand-drop" size={28} /></div>
+              <div><strong>Splash</strong><span>Smart Pool Management</span></div>
+            </div>
+            <nav className="sidebar-list">
+              {NAV_ITEMS.map((item) => (
+                <NavLink
+                  key={item.id}
+                  to={item.path}
+                  className={({ isActive }) => `sidebar-link ${isActive || (item.id === activeNavItem.id && item.path === "/" ? location.pathname === "/" : false) ? "sidebar-link-active" : ""}`}
+                  aria-current={activeNavItem.id === item.id ? "page" : undefined}
+                >
+                  <SplashIcon name={item.icon} size={22} />
+                  <span><strong>{item.label}</strong><small>{item.description}</small></span>
+                </NavLink>
+              ))}
+            </nav>
+            <section className="sidebar-status-card" aria-label="system status">
+              <div className="sidebar-status-header">
+                <div className={`sidebar-status-indicator sidebar-status-indicator-${sidebarStatus.tone}`} aria-hidden="true" />
+                <div><strong>{sidebarStatus.label}</strong><span>{sidebarStatus.summary}</span></div>
+              </div>
+              <dl className="sidebar-status-details">
+                <div><dt>Last message</dt><dd>{sidebarStatus.lastMessage}</dd></div>
+                <div><dt>Uptime</dt><dd>{sidebarStatus.uptime}</dd></div>
+              </dl>
+              <NavLink className="sidebar-status-button" to="/system/overview">View system status</NavLink>
+            </section>
+          </div>
+          <div className="sidebar-version">Splash Platform v0.1.0</div>
+        </aside>
+      }
+    >
+      <header className="topbar">
+        <div className="topbar-copy">
+          <h1>{`${activeNavItem.label} - ${activeNavItem.description}`}</h1>
+          <p className="topbar-subheader">{PAGE_SUMMARIES[activeNavItem.id]}</p>
+        </div>
+        <div className="topbar-statuses" aria-label="page status indicators">
+          <div className="topbar-status-item"><SplashIcon name="weather" size={24} /><div><strong>{topbarWeather.temperature}</strong><span>{topbarWeather.weatherDescription}</span></div></div>
+          <div className="topbar-status-item"><SplashIcon name="rain" size={24} /><div><strong>{topbarWeather.precipitationPercent}</strong><span>{topbarWeather.precipitationDescription}</span></div></div>
+          <div className="topbar-status-item"><SplashIcon name="schedule" size={22} /><div><strong>{formatTopbarDate(controller?.latest_state.controller_datetime_reply)}</strong><span>{formatTopbarTime(controller?.latest_state.controller_datetime_reply)}</span></div></div>
+          <div className="topbar-status-item topbar-status-help"><SplashIcon name="help" size={20} /><div><strong>Help</strong></div></div>
+        </div>
+      </header>
+      <div className="page-shell" id="system-overview">
+        {errorMessage ? <section className="notice notice-error" role="alert"><SplashIcon name="critical" size={18} />{errorMessage}</section> : null}
+        {command.detail ? <section className="notice" aria-live="polite"><SplashIcon name={getStatusIconName(command.status ?? "idle")} size={18} /><div><strong>{formatCommandStatus(command.status)}</strong><span>{command.detail}</span></div></section> : null}
+        {explorerError ? <section className="notice notice-error" role="alert"><SplashIcon name="warning" size={18} />{explorerError}</section> : null}
+        <Routes>
+          <Route path="/" element={<PlaceholderPage kicker="Home" title="Operational Summary" description="This placeholder keeps the new navigation shell functional while the broader home dashboard composition is defined." />} />
+          <Route path="/system/*" element={<SystemPage {...systemPageProps} />} />
+          <Route path="/diagnostics/*" element={<DiagnosticsPage {...diagnosticsPageProps} />} />
+          <Route path="/routines" element={<PlaceholderPage kicker="Routines" title="Maintenance Workflows" description="Checklist-driven maintenance, reminders, and routine tracking will arrive here in a later milestone." />} />
+          <Route path="/history" element={<PlaceholderPage kicker="History" title="Timeline & Trends" description="Historical operating trends, event timelines, and review workflows will render here once persistence-backed history views are added." />} />
+          <Route path="/automation" element={<PlaceholderPage kicker="Automation" title="Suggestions & Approvals" description="Automation recommendations and approval flows are reserved here while the normalized orchestration workflows are still in progress." />} />
+          <Route path="/alerts" element={<PlaceholderPage kicker="Alerts" title="Messages & Warnings" description="Operator alerts, reminders, and equipment attention items will appear here once the notification model reaches the frontend shell." />} />
+          <Route path="/water-test-log" element={<PlaceholderPage kicker="Water Test Log" title="Chemistry Entries" description="Manual chemistry readings and later chart context will be shown here as the water-testing workflows are implemented." />} />
+          <Route path="/settings" element={<PlaceholderPage kicker="Settings" title="Configuration" description="System configuration, preferences, and setup management will land here as the broader operator controls are implemented." />} />
+          <Route path="*" element={<Navigate to="/system/overview" replace />} />
+        </Routes>
+      </div>
+    </AppShell>
   );
 }
 
 async function loadInitialState({
   setEquipment,
   setHealthStatus,
+  setHealthData,
   setErrorMessage
 }: {
   setEquipment: (records: EquipmentRecord[]) => void;
   setHealthStatus: (status: "unknown" | "ok" | "degraded") => void;
+  setHealthData: (data: HealthData | null) => void;
   setErrorMessage: (message: string | null) => void;
 }): Promise<void> {
   try {
@@ -717,6 +730,7 @@ async function loadInitialState({
     startTransition(() => {
       setEquipment(equipmentResponse.data);
       setHealthStatus(healthResponse.status);
+      setHealthData(healthResponse.data ?? null);
       setErrorMessage(null);
     });
   } catch (error) {
@@ -724,10 +738,7 @@ async function loadInitialState({
   }
 }
 
-async function refreshEquipment(
-  setEquipment: (records: EquipmentRecord[]) => void,
-  setErrorMessage: (message: string | null) => void
-): Promise<void> {
+async function refreshEquipment(setEquipment: (records: EquipmentRecord[]) => void, setErrorMessage: (message: string | null) => void): Promise<void> {
   try {
     const response = await fetchEquipment();
     setEquipment(response.data);
@@ -739,15 +750,62 @@ async function refreshEquipment(
 
 async function refreshHealth(
   setHealthStatus: (status: "unknown" | "ok" | "degraded") => void,
+  setHealthData: (data: HealthData | null) => void,
   setErrorMessage: (message: string | null) => void
 ): Promise<void> {
   try {
     const response = await fetchHealth();
     setHealthStatus(response.status);
+    setHealthData(response.data ?? null);
     setErrorMessage(null);
   } catch (error) {
     setErrorMessage(error instanceof Error ? error.message : String(error));
   }
+}
+
+function createConnectivityHistorySample(healthData: HealthData | null): ConnectivityHistorySample | null {
+  const rs485Rates = healthData?.rates?.rs485;
+  const natsBrokerRates = healthData?.rates?.nats_broker;
+  const sample: ConnectivityHistorySample = {
+    recorded_at: new Date().toISOString(),
+    rs485_in_messages_per_second: normalizeRateSample(rs485Rates?.rx_messages_per_second),
+    rs485_out_messages_per_second: normalizeRateSample(rs485Rates?.tx_messages_per_second),
+    nats_in_messages_per_second: normalizeRateSample(natsBrokerRates?.in_messages_per_second),
+    nats_out_messages_per_second: normalizeRateSample(natsBrokerRates?.out_messages_per_second)
+  };
+
+  if (
+    sample.rs485_in_messages_per_second === null &&
+    sample.rs485_out_messages_per_second === null &&
+    sample.nats_in_messages_per_second === null &&
+    sample.nats_out_messages_per_second === null
+  ) {
+    return null;
+  }
+
+  return sample;
+}
+
+function upsertConnectivityHistorySample(
+  current: ConnectivityHistorySample[],
+  nextSample: ConnectivityHistorySample
+): ConnectivityHistorySample[] {
+  if (current.length === 0) {
+    return [nextSample];
+  }
+
+  const lastSample = current[current.length - 1];
+  const lastTime = Date.parse(lastSample.recorded_at);
+  const nextTime = Date.parse(nextSample.recorded_at);
+  if (!Number.isNaN(lastTime) && !Number.isNaN(nextTime) && nextTime - lastTime <= CONNECTIVITY_SAMPLE_WINDOW_MS) {
+    return [...current.slice(0, -1), nextSample];
+  }
+
+  return [...current, nextSample].slice(-CONNECTIVITY_SAMPLE_MAX_POINTS);
+}
+
+function normalizeRateSample(value: number | null | undefined): number | null {
+  return typeof value === "number" ? value : null;
 }
 
 async function refreshBundles({
@@ -785,10 +843,7 @@ async function refreshExplorerMetadata(
   setExplorerError: (value: string | null) => void
 ): Promise<void> {
   try {
-    const [annotationResponse, promptResponse] = await Promise.all([
-      fetchProtocolAnnotations(bundleId),
-      fetchProtocolPrompts(bundleId)
-    ]);
+    const [annotationResponse, promptResponse] = await Promise.all([fetchProtocolAnnotations(bundleId), fetchProtocolPrompts(bundleId)]);
     setAnnotations(annotationResponse.data);
     setPrompts(promptResponse.data);
     setExplorerError(null);
@@ -802,61 +857,54 @@ function appendFrame(
   event: string,
   payload: Record<string, unknown>
 ): void {
-  setRecentFrames((current) => [{ event, payload }, ...current].slice(0, 12));
+  setRecentFrames((current) => [{ event, payload, received_at: new Date().toISOString() }, ...current].slice(0, 100));
+}
+
+function addActiveRequest(
+  setActiveRequests: Dispatch<SetStateAction<ActivePlatformRequest[]>>,
+  request: Omit<ActivePlatformRequest, "requestedAt">
+): void {
+  setActiveRequests((current) => [...current, { ...request, requestedAt: new Date().toISOString() }]);
+}
+
+function clearActiveRequestByReply(
+  setActiveRequests: Dispatch<SetStateAction<ActivePlatformRequest[]>>,
+  payload: Record<string, unknown>
+): void {
+  const messageType = readNullableString(payload.message_type);
+  if (messageType !== "circuit_configuration" && messageType !== "controller_datetime") {
+    return;
+  }
+  setActiveRequests((current) => removeFirstMatchingRequest(current, (request) => request.replyType === messageType));
+}
+
+function clearActiveRequestByCommandResult(
+  setActiveRequests: Dispatch<SetStateAction<ActivePlatformRequest[]>>,
+  payload: Record<string, unknown>
+): void {
+  const commandId = readNullableString(payload.command_id);
+  const status = readNullableString(payload.status);
+  if (!commandId || !status || !isTerminalCommandStatus(status)) {
+    return;
+  }
+  setActiveRequests((current) => current.filter((request) => request.commandId !== commandId));
+}
+
+function removeFirstMatchingRequest(
+  requests: ActivePlatformRequest[],
+  matcher: (request: ActivePlatformRequest) => boolean
+): ActivePlatformRequest[] {
+  const index = requests.findIndex(matcher);
+  if (index < 0) {
+    return requests;
+  }
+  return requests.filter((_, requestIndex) => requestIndex !== index);
+}
+
+function isTerminalCommandStatus(value: string): boolean {
+  return value === "completed" || value === "failed" || value === "timed_out";
 }
 
 function parseEventPayload(event: MessageEvent<string>): Record<string, unknown> {
   return JSON.parse(event.data) as Record<string, unknown>;
-}
-
-function readMetric(value: unknown): number | null {
-  return typeof value === "number" ? value : null;
-}
-
-function formatMetric(value: number | null, unit: string): string {
-  return value == null ? "Unavailable" : `${value} ${unit}`;
-}
-
-function formatBoolean(value: unknown): string {
-  if (typeof value !== "boolean") {
-    return "Unavailable";
-  }
-
-  return value ? "Yes" : "No";
-}
-
-function formatCircuitKey(value: string): string {
-  return value
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function formatCommandStatus(status: string | null): string {
-  switch (status) {
-    case "completed":
-      return "Command completed";
-    case "failed":
-      return "Command failed";
-    case "timed_out":
-      return "Command timed out";
-    case "transmitted":
-      return "Command transmitted";
-    case "encoded":
-      return "Command encoded";
-    case "accepted":
-      return "Command accepted";
-    default:
-      return "Command update";
-  }
-}
-
-function summarizeFrame(payload: Record<string, unknown>): string {
-  if (typeof payload.action_code === "string") {
-    return payload.action_code;
-  }
-  if (typeof payload.frame_id === "string") {
-    return payload.frame_id;
-  }
-  return "frame";
 }

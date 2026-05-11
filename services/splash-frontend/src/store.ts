@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { CommandResultEvent, EquipmentRecord } from "./types";
+import type { CommandResultEvent, EquipmentRecord, HealthData } from "./types";
 
 export type HealthStatus = "unknown" | "ok" | "degraded";
 export type SseStatus = "connecting" | "connected" | "disconnected";
@@ -15,11 +15,13 @@ export interface CommandUiState {
 export interface FrontendState {
   equipment: Record<string, EquipmentRecord>;
   healthStatus: HealthStatus;
+  healthData: HealthData | null;
   sseStatus: SseStatus;
   errorMessage: string | null;
   command: CommandUiState;
   setEquipment: (records: EquipmentRecord[]) => void;
   setHealthStatus: (status: HealthStatus) => void;
+  setHealthData: (data: HealthData | null) => void;
   setSseStatus: (status: SseStatus) => void;
   setErrorMessage: (message: string | null) => void;
   beginPumpCommand: (input: { commandId: string; rpm: number }) => void;
@@ -39,6 +41,7 @@ const initialCommandState: CommandUiState = {
 export const useFrontendStore = create<FrontendState>((set) => ({
   equipment: {},
   healthStatus: "unknown",
+  healthData: null,
   sseStatus: "connecting",
   errorMessage: null,
   command: initialCommandState,
@@ -49,6 +52,9 @@ export const useFrontendStore = create<FrontendState>((set) => ({
   },
   setHealthStatus(status) {
     set(() => ({ healthStatus: status }));
+  },
+  setHealthData(data) {
+    set(() => ({ healthData: data }));
   },
   setSseStatus(status) {
     set(() => ({ sseStatus: status }));
@@ -112,6 +118,14 @@ function mergeLatestState(
     };
   }
 
+  const normalizedPayload =
+    typeof payload.occurred_at === "string" && typeof payload.updated_at !== "string"
+      ? {
+          ...payload,
+          updated_at: payload.occurred_at
+        }
+      : payload;
+
   return {
     equipment: {
       ...state.equipment,
@@ -119,7 +133,7 @@ function mergeLatestState(
         ...existing,
         latest_state: {
           ...existing.latest_state,
-          ...payload
+          ...normalizedPayload
         }
       }
     }

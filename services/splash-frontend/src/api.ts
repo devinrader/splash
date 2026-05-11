@@ -1,5 +1,6 @@
 import type {
   CommandAcceptedResponse,
+  CircuitConfigRequestResponse,
   EquipmentResponse,
   HealthResponse,
   ProtocolAnnotationConfidence,
@@ -65,6 +66,32 @@ export async function requestPumpSpeed(input: {
   return (await response.json()) as CommandAcceptedResponse;
 }
 
+export async function requestCircuitState(input: {
+  equipmentId: string;
+  circuitKey: string;
+  enabled: boolean;
+}): Promise<CommandAcceptedResponse> {
+  const response = await fetch(buildApiUrl(`/equipment/${encodeURIComponent(input.equipmentId)}/control`), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      command_type: "set_circuit_state",
+      circuit_key: input.circuitKey,
+      arguments: {
+        enabled: input.enabled
+      }
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Circuit state request failed with HTTP ${response.status}.`);
+  }
+
+  return (await response.json()) as CommandAcceptedResponse;
+}
+
 export async function fetchProtocolBundles(): Promise<ProtocolBundleSummaryResponse> {
   const response = await fetch(buildApiUrl("/protocol/bundles"));
   if (!response.ok) {
@@ -89,6 +116,60 @@ export async function createProtocolBundle(input: { label: string | null }): Pro
   }
 
   return (await response.json()) as ProtocolBundleCreatedResponse;
+}
+
+export async function requestCircuitConfig(input: {
+  startIndex?: number;
+  endIndex?: number;
+} = {}): Promise<CircuitConfigRequestResponse> {
+  const response = await fetch(buildApiUrl("/protocol/circuit-config/request"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      start_index: input.startIndex ?? 1,
+      end_index: input.endIndex ?? 20
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Circuit config request failed with HTTP ${response.status}.`);
+  }
+
+  return (await response.json()) as CircuitConfigRequestResponse;
+}
+
+export async function requestControllerDatetime(): Promise<CommandAcceptedResponse> {
+  const response = await fetch(buildApiUrl("/protocol/controller-datetime/request"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({})
+  });
+
+  if (!response.ok) {
+    throw new Error(`Controller datetime request failed with HTTP ${response.status}.`);
+  }
+
+  return (await response.json()) as CommandAcceptedResponse;
+}
+
+export async function syncControllerDatetime(): Promise<CommandAcceptedResponse> {
+  const response = await fetch(buildApiUrl("/protocol/controller-datetime/sync"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({})
+  });
+
+  if (!response.ok) {
+    throw new Error(`Controller datetime sync failed with HTTP ${response.status}.`);
+  }
+
+  return (await response.json()) as CommandAcceptedResponse;
 }
 
 export async function compareProtocolBundles(input: {

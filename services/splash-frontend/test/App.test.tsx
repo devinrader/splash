@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, test, vi, assert } from "vitest";
 import App from "../src/App";
 import { useFrontendStore } from "../src/store";
@@ -33,6 +34,7 @@ beforeEach(() => {
   useFrontendStore.setState({
     equipment: {},
     healthStatus: "unknown",
+    healthData: null,
     sseStatus: "connecting",
     errorMessage: null,
     command: {
@@ -47,6 +49,24 @@ beforeEach(() => {
   FakeEventSource.instances = [];
   vi.stubGlobal("EventSource", FakeEventSource);
 });
+
+async function openDiagnostics(): Promise<void> {
+  fireEvent.click(screen.getByRole("link", { name: /Diagnostics/ }));
+  await waitFor(() => assert.ok(screen.getByRole("tab", { name: "Protocol Explorer" })));
+}
+
+async function openSystemTab(name: "Overview" | "Hardware" | "Sensors" | "Control" | "Connectivity" | "Platform"): Promise<void> {
+  fireEvent.click(screen.getByRole("tab", { name }));
+  await waitFor(() => assert.ok(screen.getByRole("tab", { name, selected: true })));
+}
+
+function renderApp(initialEntries: string[] = ["/system/overview"]) {
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <App />
+    </MemoryRouter>
+  );
+}
 
 test("renders milestone equipment values from the API snapshot", async () => {
   vi.stubGlobal(
@@ -68,8 +88,31 @@ test("renders milestone equipment values from the API snapshot", async () => {
               display_name: "Main Controller",
               protocol_name: "pentair_easytouch",
               latest_state: {
+                controller_hour_24: 14,
+                controller_minute: 5,
+                controller_datetime_reply: {
+                  month: 4,
+                  day: 23,
+                  year: 26,
+                  day_of_week: 4,
+                  hour_24: 14,
+                  minute: 37
+                },
                 air_temp_f: 71,
-                water_temp_f: 79
+                water_temp_f: 79,
+                heater_enabled: true,
+                mode: "pool",
+                controller_mode_byte: 0x09,
+                controller_mode_label: "run + freeze protection",
+                active_circuit_keys: ["pool", "cleaner"],
+                circuits: {
+                  pool: true,
+                  spa: false,
+                  aux1: false,
+                  aux2: false,
+                  aux3: false,
+                  cleaner: true
+                }
               }
             },
             {
@@ -111,13 +154,918 @@ test("renders milestone equipment values from the API snapshot", async () => {
     })
   );
 
-  render(<App />);
+  renderApp();
 
   await waitFor(() => {
-    assert.ok(screen.getAllByText("71 °F").length > 0);
+    assert.ok(screen.getByText("Smart Pool Management"));
+    assert.ok(screen.getByText("Automation"));
+    assert.ok(screen.getByText("Water Test Log"));
+    assert.ok(screen.getByText("System - Equipment & sensors"));
+    assert.ok(screen.getByText("Overview & actions"));
+    assert.ok(screen.getByText("Equipment & sensors"));
+    assert.ok(screen.getByText("Maintenance and tasks"));
+    assert.ok(screen.getByText("Trends & insights"));
+    assert.ok(screen.getByText("Schedules & rules"));
+    assert.ok(screen.getByText("Messages & warnings"));
+    assert.ok(screen.getByText("Protocol explorer"));
+    assert.ok(screen.getByText("Test history & results"));
+    assert.ok(screen.getByText("System & preferences"));
+    assert.ok(
+      screen.getByText(
+        "Live equipment status, controller circuits, system timing, and protocol-level diagnostics for day-to-day pool operations."
+      )
+    );
+    assert.ok(screen.getAllByText("Online").length >= 1);
+    assert.ok(screen.getByText("All systems normal"));
+    assert.ok(screen.getAllByText("14:05").length > 0);
+    assert.ok(screen.getByText("7d 14h"));
+    assert.ok(screen.getByText("Splash Platform v0.1.0"));
+    assert.ok(screen.getByRole("link", { name: "View system status" }));
+    assert.ok(screen.getByRole("tab", { name: "Overview", selected: true }));
+    assert.ok(screen.getByRole("tab", { name: "Hardware" }));
+    assert.ok(screen.getByRole("tab", { name: "Sensors" }));
+    assert.ok(screen.getByRole("tab", { name: "Control" }));
+    assert.ok(screen.getByRole("tab", { name: "Connectivity" }));
+    assert.ok(screen.getByText("Control Surfaces"));
+    assert.ok(screen.getByText("Control Summary"));
+    assert.ok(screen.getAllByText("Circuits").length >= 1);
+    assert.ok(screen.getByText("Advanced Controls"));
     assert.ok(screen.getAllByText("79 °F").length > 0);
-    assert.ok(screen.getAllByText("3200 ppm").length > 0);
-    assert.ok(screen.getAllByText("2750 RPM").length > 0);
+    assert.ok(screen.getAllByText("14:05").length > 0);
+  });
+
+  await openSystemTab("Hardware");
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Installed Hardware"));
+    assert.ok(screen.getByText(/2750 RPM/));
+    assert.ok(screen.getByText(/3200 ppm/));
+  });
+
+  await openSystemTab("Connectivity");
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Controller Status"));
+    assert.ok(screen.getByText("04/23/26 14:37"));
+    assert.ok(screen.getByText("run + freeze protection"));
+  });
+});
+
+test("renders Connectivity metric cards from API health data", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                controller_mode_byte: 0x09,
+                controller_mode_label: "run + freeze protection"
+              }
+            },
+            {
+              id: "pump-main",
+              equipment_type: "pump",
+              display_name: "Main Pump",
+              protocol_name: "pentair_easytouch",
+              bus_address: "0x60",
+              latest_state: {}
+            },
+            {
+              id: "chlorinator-main",
+              equipment_type: "chlorinator",
+              display_name: "Main Chlorinator",
+              protocol_name: "pentair_easytouch",
+              latest_state: {}
+            }
+          ],
+          error: null
+        });
+      }
+
+      return response({
+        status: "ok",
+        data: {
+          dependencies: {
+            nats: "ok"
+          },
+          rates: {
+            rs485: {
+              rx_messages_per_second: 2,
+              tx_messages_per_second: 1.5
+            },
+            nats_broker: {
+              status: "ok",
+              subscriptions: 11,
+              in_messages_per_second: 3,
+              out_messages_per_second: 4
+            }
+          }
+        },
+        error: null
+      });
+    })
+  );
+
+  renderApp();
+  await openSystemTab("Connectivity");
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("RS485 Messages In"));
+    assert.ok(screen.getByText("120 / min"));
+    assert.ok(screen.getByText("90 / min"));
+    assert.ok(screen.getByText("11"));
+    assert.ok(screen.getByText("180 / min"));
+    assert.ok(screen.getByText("240 / min"));
+    assert.ok(screen.getByText("Message Activity"));
+    assert.ok(screen.getByText("The chart shows 10-second message buckets derived from the latest API RS485 and NATS rate samples."));
+    assert.ok(screen.getByLabelText("Connectivity message activity chart"));
+  });
+});
+
+test("renders Platform service health rows from API health data", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {}
+            }
+          ],
+          error: null
+        });
+      }
+
+      return response({
+        status: "ok",
+        data: {
+          dependencies: {
+            nats: "ok"
+          },
+          platform_services: {
+            splash_serial: {
+              status: "degraded",
+              summary: "connected · NATS degraded",
+              detail: "Device /dev/ttyUSB0 · stream stream-1",
+              updated_at: "2026-05-11T14:00:00.000Z"
+            },
+            nats: {
+              status: "ok",
+              summary: "Connected",
+              detail: null,
+              updated_at: null
+            },
+            splash_protocol: {
+              status: "ok",
+              summary: "running_ok · pentair_easytouch",
+              detail: "Active stream stream-1",
+              updated_at: "2026-05-11T14:00:00.000Z"
+            },
+            splash_frontend: {
+              status: "ok",
+              summary: "Browser session active",
+              detail: "Frontend shell is serving the current operator session.",
+              updated_at: "2026-05-11T14:00:00.000Z"
+            }
+          }
+        },
+        error: null
+      });
+    })
+  );
+
+  renderApp(["/system/platform"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Splash Serial"));
+    assert.ok(screen.getByText("NATS"));
+    assert.ok(screen.getByText("Splash Protocol"));
+    assert.ok(screen.getByText("Splash Frontend"));
+    assert.ok(screen.getByText(/connected · NATS degraded/));
+    assert.ok(screen.getByText("Device /dev/ttyUSB0 · stream stream-1"));
+    assert.ok(screen.getByText(/running_ok · pentair_easytouch/));
+    assert.ok(screen.getByText(/Browser session active/));
+    assert.ok(screen.getAllByText("Healthy").length > 0);
+    assert.ok(screen.getAllByText("Degraded").length > 0);
+  });
+});
+
+test("renders Pool on from the bitmask state even when mode disagrees", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({
+          data: [],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                mode: "spa",
+                active_circuit_keys: [],
+                circuits: {
+                  pool: true,
+                  spa: false
+                }
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      return response({
+        status: "ok",
+        error: null
+      });
+    })
+  );
+
+  renderApp();
+  await openSystemTab("Control");
+
+  await waitFor(() => {
+    assert.ok(screen.getAllByText("Pool").length > 0);
+    assert.equal(screen.getAllByText("On").length, 1);
+    assert.ok(screen.getAllByText("Off").length > 0);
+  });
+});
+
+test("renders custom name bank values as text inputs on the EasyTouch hardware detail page", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                custom_name_bank: {
+                  "0": { custom_name_text: "WATERFALL" },
+                  "1": { custom_name_text: "SPA MODE" },
+                  "2": { custom_name_text: "NIGHTSWIM" }
+                }
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      return response({ status: "ok", error: null });
+    })
+  );
+
+  renderApp(["/system/hardware/easytouch8"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Custom Circuit Names"));
+    assert.equal((screen.getByLabelText("Custom name value 0") as HTMLInputElement).value, "WATERFALL");
+    assert.equal((screen.getByLabelText("Custom name value 1") as HTMLInputElement).value, "SPA MODE");
+    assert.equal((screen.getByLabelText("Custom name value 2") as HTMLInputElement).value, "NIGHTSWIM");
+    assert.equal((screen.getByLabelText("Custom name value 9") as HTMLInputElement).value, "");
+    assert.ok(screen.getByLabelText("Save custom name row 0"));
+    assert.ok(screen.getByLabelText("Discard custom name row 0"));
+  });
+});
+
+test("renders EasyTouch circuit configuration rows as staged editors from live controller metadata", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              hardware: {
+                circuits: [
+                  {
+                    circuit_key: "pool",
+                    display_name: "Pool",
+                    circuit_type: "fixed",
+                    installed: true,
+                    writable: true,
+                    configuration_circuit_index: 2,
+                    write_circuit_id: 2
+                  },
+                  {
+                    circuit_key: "feature1",
+                    display_name: "Feature 1",
+                    circuit_type: "feature",
+                    installed: true,
+                    writable: true,
+                    configuration_circuit_index: 10,
+                    write_circuit_id: 11
+                  }
+                ]
+              },
+              latest_state: {
+                circuits: {
+                  pool: true,
+                  pool_low: false
+                },
+                circuit_configurations: {
+                  "2": {
+                    circuit_id: 2,
+                    function_value: 2,
+                    function_label: "Pool",
+                    name_value: 2,
+                    name_label: "POOL",
+                    freeze_flag: false,
+                    high_flag: false
+                  },
+                  "10": {
+                    circuit_id: 10,
+                    function_value: 11,
+                    function_label: "Feature",
+                    name_value: 44,
+                    name_label: "POOL LOW",
+                    freeze_flag: true,
+                    high_flag: true
+                  }
+                }
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      return response({ status: "ok", error: null });
+    })
+  );
+
+  renderApp(["/system/hardware/easytouch8"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Circuit Configuration"));
+    assert.ok(screen.getByText("ID"));
+    assert.ok(screen.getByText("Type"));
+    assert.ok(screen.getByText("Name"));
+    assert.ok(screen.getByText("Function"));
+    assert.ok(screen.getByText("Freeze"));
+    assert.ok(screen.getByText("State"));
+    assert.ok(screen.getAllByText("Action").length >= 2);
+    assert.ok(screen.getByText("11"));
+    assert.equal((screen.getByLabelText("Circuit name pool") as HTMLSelectElement).value, "POOL");
+    assert.equal((screen.getByLabelText("Circuit function pool") as HTMLSelectElement).value, "Pool");
+    assert.equal((screen.getByLabelText("Freeze pool") as HTMLButtonElement).getAttribute("aria-checked"), "false");
+    assert.equal((screen.getByLabelText("State pool") as HTMLButtonElement).getAttribute("aria-checked"), "true");
+    assert.equal((screen.getByLabelText("Circuit name feature1") as HTMLSelectElement).value, "POOL LOW");
+    assert.equal((screen.getByLabelText("Circuit function feature1") as HTMLSelectElement).value, "Feature");
+    assert.equal((screen.getByLabelText("Freeze feature1") as HTMLButtonElement).getAttribute("aria-checked"), "true");
+    assert.equal((screen.getByLabelText("State feature1") as HTMLButtonElement).getAttribute("aria-checked"), "false");
+    assert.ok(screen.getByLabelText("Save circuit row pool"));
+    assert.ok(screen.getByLabelText("Discard circuit row pool"));
+  });
+});
+
+test("switches sidebar views and renders Diagnostics network cards", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (input.endsWith("/protocol/bundles") && (!init || !init.method)) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({ data: [], error: null });
+      }
+
+      return response({ status: "ok", error: null });
+    })
+  );
+
+  renderApp();
+  await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+
+  fireEvent.click(screen.getByRole("link", { name: /Home/ }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByRole("heading", { name: "Home - Overview & actions" }));
+    assert.ok(screen.getByText("Operational Summary"));
+  });
+
+  fireEvent.click(screen.getByRole("link", { name: /Diagnostics/ }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByRole("heading", { name: "Diagnostics - Protocol explorer" }));
+    assert.ok(screen.getByRole("tab", { name: "Protocol Explorer" }));
+  });
+
+  fireEvent.click(screen.getByRole("tab", { name: "Network" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByRole("heading", { name: "Network Overview" }));
+    assert.ok(screen.getByRole("heading", { name: "Network Statistics" }));
+    assert.ok(screen.getByRole("heading", { name: "RS485 Bus" }));
+    assert.ok(screen.getByRole("heading", { name: "Event Bus" }));
+    assert.ok(screen.getByRole("heading", { name: "Network Interfaces" }));
+    assert.ok(screen.getAllByText("RS485 Bus").length >= 2);
+  });
+});
+
+test("requests controller circuit configuration discovery from the dashboard", async () => {
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      requests.push({ input, init });
+
+      if (input.endsWith("/protocol/bundles")) {
+        return response({
+          data: [],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                circuits: {
+                  pool: true
+                }
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/protocol/circuit-config/request")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          start_index?: number;
+          end_index?: number;
+        };
+        assert.equal(body.start_index, 1);
+        assert.equal(body.end_index, 20);
+        return response({
+          data: {
+            command_id: "command-circuit-config",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      return response({
+        status: "ok",
+        error: null
+      });
+    })
+  );
+
+  renderApp();
+  await openSystemTab("Control");
+
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Request controller circuit config" })));
+
+  fireEvent.click(screen.getByRole("button", { name: "Request controller circuit config" }));
+
+  await waitFor(() => {
+    assert.ok(requests.some((request) => request.input.endsWith("/protocol/circuit-config/request")));
+    assert.ok(screen.getByText(/Controller circuit configuration discovery accepted for indexes 1-20/));
+  });
+});
+
+test("automatically requests controller circuit configuration when metadata is missing", async () => {
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      requests.push({ input, init });
+
+      if (input.endsWith("/protocol/bundles")) {
+        return response({
+          data: [],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              hardware: {
+                circuits: [
+                  {
+                    circuit_key: "pool",
+                    display_name: "Pool",
+                    circuit_type: "fixed",
+                    installed: true,
+                    writable: true,
+                    configuration_circuit_index: 2,
+                    write_circuit_id: 2
+                  },
+                  {
+                    circuit_key: "feature1",
+                    display_name: "Feature 1",
+                    circuit_type: "feature",
+                    installed: true,
+                    writable: true,
+                    configuration_circuit_index: 10,
+                    write_circuit_id: 11
+                  }
+                ]
+              },
+              latest_state: {
+                updated_at: "2026-04-24T10:00:00Z",
+                circuits: {
+                  pool: true,
+                  pool_low: false
+                },
+                circuit_configurations: {
+                  "2": {
+                    circuit_id: 2,
+                    function_value: 2,
+                    name_value: 2
+                  }
+                }
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/protocol/circuit-config/request")) {
+        return response({
+          data: {
+            command_id: "command-auto-circuit-config",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      return response({
+        status: "ok",
+        data: {
+          dependencies: {
+            nats: "ok"
+          }
+        },
+        error: null
+      });
+    })
+  );
+
+  renderApp();
+  await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+  await openSystemTab("Control");
+
+  FakeEventSource.instances[0].emit("ready", {});
+
+  await waitFor(() => {
+    assert.equal(
+      requests.filter((request) => request.input.endsWith("/protocol/circuit-config/request")).length,
+      1
+    );
+  });
+});
+
+test("requests and syncs controller date/time from the dashboard", async () => {
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      requests.push({ input, init });
+
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                controller_hour_24: 14,
+                controller_minute: 5
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/protocol/controller-datetime/request")) {
+        return response({
+          data: {
+            command_id: "command-datetime-request",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/protocol/controller-datetime/sync")) {
+        return response({
+          data: {
+            command_id: "command-datetime-sync",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      return response({ status: "ok", error: null });
+    })
+  );
+
+  renderApp();
+  await openSystemTab("Connectivity");
+
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Request controller date/time" })));
+
+  fireEvent.click(screen.getByRole("button", { name: "Request controller date/time" }));
+  await waitFor(() => {
+    assert.ok(requests.some((request) => request.input.endsWith("/protocol/controller-datetime/request")));
+    assert.ok(screen.getByText(/Controller date\/time request accepted/));
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Sync controller date/time" }));
+  await waitFor(() => {
+    assert.ok(requests.some((request) => request.input.endsWith("/protocol/controller-datetime/sync")));
+    assert.ok(screen.getByText(/Controller date\/time sync accepted as a provisional best-effort action/));
+  });
+});
+
+test("automatically requests controller date/time once when 0x05 data is missing", async () => {
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      requests.push({ input, init });
+
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                controller_hour_24: 14,
+                controller_minute: 5
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/protocol/controller-datetime/request")) {
+        return response({
+          data: {
+            command_id: "command-datetime-request-auto",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      return response({ status: "ok", error: null });
+    })
+  );
+
+  renderApp();
+  await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+  await openSystemTab("Connectivity");
+
+  FakeEventSource.instances[0].emit("ready", { client_id: "client-1" });
+
+  await waitFor(() => {
+    assert.equal(requests.filter((request) => request.input.endsWith("/protocol/controller-datetime/request")).length, 1);
+    assert.ok(screen.getByText(/Controller date\/time request accepted/));
+  });
+});
+
+test("tracks active controller date/time requests until a decoded reply is seen", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                controller_hour_24: 14,
+                controller_minute: 5
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/protocol/controller-datetime/request")) {
+        return response({
+          data: {
+            command_id: "command-datetime-track",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      return response({ status: "ok", error: null });
+    })
+  );
+
+  renderApp();
+  await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+  await openSystemTab("Connectivity");
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Request controller date/time" })));
+
+  fireEvent.click(screen.getByRole("button", { name: "Request controller date/time" }));
+  await openDiagnostics();
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Active requests"));
+    assert.ok(screen.getByText("Controller date/time request"));
+    assert.ok(screen.getByText("Command command-datetime-track"));
+    assert.ok(screen.getByText("Waiting for 0x05 controller date/time reply"));
+  });
+
+  FakeEventSource.instances[1].emit("protocol.frame.decoded", {
+    message_type: "controller_datetime",
+    action_code: "0x05",
+    fields: {
+      month: 4,
+      day: 23,
+      year: 26,
+      hour_24: 14,
+      minute: 37
+    }
+  });
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("No active platform requests."));
+  });
+});
+
+test("renders 0x05 date/time from the legacy mis-decoded reply shape", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                controller_datetime_reply: {
+                  month: 18,
+                  day: 34,
+                  year: 16,
+                  day_of_week: 23,
+                  hour_24: 4,
+                  minute: 26
+                }
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      return response({ status: "ok", error: null });
+    })
+  );
+
+  renderApp();
+  await openSystemTab("Connectivity");
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("04/23/26 18:34"));
+  });
+});
+
+test("tracks active Remote Layout requests until command completion is seen", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/protocol/remote-layout/request") && init?.method === "POST") {
+        return response({
+          data: {
+            command_id: "command-remote-layout-track",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      return response({ status: "ok", error: null });
+    })
+  );
+
+  renderApp();
+  await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+  await openDiagnostics();
+
+  fireEvent.click(screen.getByRole("button", { name: "Request page" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Remote Layout page 0"));
+    assert.ok(screen.getByText("Command command-remote-layout-track"));
+    assert.ok(screen.getByText("Waiting for command completion"));
+  });
+
+  FakeEventSource.instances[0].emit("command.result", {
+    command_id: "command-remote-layout-track",
+    status: "completed",
+    detail: "Remote Layout request completed."
+  });
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("No active platform requests."));
   });
 });
 
@@ -141,8 +1089,23 @@ test("merges SSE updates into the equipment cards", async () => {
               display_name: "Main Controller",
               protocol_name: "pentair_easytouch",
               latest_state: {
+                controller_hour_24: 14,
+                controller_minute: 0,
                 air_temp_f: 70,
-                water_temp_f: 78
+                water_temp_f: 78,
+                heater_enabled: false,
+                mode: "pool",
+                controller_mode_byte: 0x00,
+                controller_mode_label: "idle",
+                active_circuit_keys: ["pool"],
+                circuits: {
+                  pool: true,
+                  spa: false,
+                  aux1: false,
+                  aux2: false,
+                  aux3: false,
+                  cleaner: false
+                }
               }
             },
             {
@@ -179,7 +1142,7 @@ test("merges SSE updates into the equipment cards", async () => {
     })
   );
 
-  render(<App />);
+  renderApp();
   await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
 
   const source = FakeEventSource.instances[0];
@@ -188,12 +1151,45 @@ test("merges SSE updates into the equipment cards", async () => {
     running: true
   });
   source.emit("equipment.state", {
+    controller_hour_24: 14,
+    controller_minute: 5,
+    heater_enabled: true,
+    mode: "pool",
+    controller_mode_byte: 0x09,
+    controller_mode_label: "run + freeze protection",
+    freeze_protection: true,
+    active_circuit_keys: ["pool", "cleaner"],
+    circuits: {
+      pool: true,
+      spa: false,
+      aux1: false,
+      cleaner: true
+    }
+  });
+  source.emit("equipment.state", {
     salt_ppm: 3450
   });
 
+  await openSystemTab("Hardware");
+
   await waitFor(() => {
-    assert.ok(screen.getAllByText("2900 RPM").length > 0);
-    assert.ok(screen.getAllByText("3450 ppm").length > 0);
+    assert.ok(screen.getByText(/2900 RPM/));
+    assert.ok(screen.getByText(/3450 ppm/));
+  });
+
+  await openSystemTab("Control");
+
+  await waitFor(() => {
+    assert.ok(screen.getAllByText("On").length > 0);
+    assert.ok(screen.getAllByText("Pool").length > 0);
+  });
+
+  await openSystemTab("Connectivity");
+
+  await waitFor(() => {
+    assert.ok(screen.getAllByText("14:05").length > 0);
+    assert.ok(screen.getByText("0x09"));
+    assert.ok(screen.getByText("run + freeze protection"));
   });
 });
 
@@ -277,8 +1273,9 @@ test("submits pump speed control and resolves the pending command from SSE", asy
     })
   );
 
-  render(<App />);
+  renderApp();
   await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+  await openSystemTab("Control");
 
   fireEvent.change(screen.getByLabelText("Requested RPM"), { target: { value: "2800" } });
   fireEvent.click(screen.getByRole("button", { name: "Set pump speed" }));
@@ -295,8 +1292,174 @@ test("submits pump speed control and resolves the pending command from SSE", asy
 
   await waitFor(() => {
     assert.ok(screen.getByText("Command completed"));
-    assert.ok(screen.getByText("Observed pump state matched the requested RPM."));
+    assert.ok(screen.getAllByText("Observed pump state matched the requested RPM.").length >= 1);
     assert.ok(screen.getByRole("button", { name: "Set pump speed" }));
+  });
+});
+
+test("toggles a writable controller circuit pill without optimistic state changes", async () => {
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      requests.push({ input, init });
+
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment") && (!init || !init.method)) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                updated_at: "2026-04-23T22:00:00Z",
+                circuits: {
+                  pool: true,
+                  spa: false,
+                  aux1: false
+                }
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      if (input.includes("/equipment/controller-main/control")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          command_type?: string;
+          circuit_key?: string | null;
+          arguments?: { enabled?: boolean };
+        };
+        assert.equal(body.command_type, "set_circuit_state");
+        assert.equal(body.circuit_key, "pool");
+        assert.equal(body.arguments?.enabled, false);
+        return response({
+          data: {
+            command_id: "command-circuit-toggle",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      return response({
+        status: "ok",
+        error: null
+      });
+    })
+  );
+
+  renderApp();
+  await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+  await openSystemTab("Control");
+
+  const poolRow = screen.getByText("Pool").closest(".circuit-row");
+  assert.ok(poolRow instanceof HTMLElement);
+
+  const poolPill = within(poolRow).getByRole("button", { name: "On" });
+  fireEvent.click(poolPill);
+
+  await waitFor(() => {
+    assert.ok(requests.some((request) => request.input.includes("/equipment/controller-main/control")));
+    assert.ok(within(poolRow).getByRole("button", { name: "Pending..." }));
+    assert.equal(within(poolRow).queryByText("Off"), null);
+  });
+
+  FakeEventSource.instances[0].emit("equipment.state", {
+    updated_at: "2026-04-23T22:00:05Z",
+    circuits: {
+      pool: false,
+      spa: false,
+      aux1: false
+    }
+  });
+
+  await waitFor(() => {
+    assert.ok(within(poolRow).getByText("Off"));
+  });
+});
+
+test("clears pending circuit toggle when controller SSE update arrives with occurred_at", async () => {
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      requests.push({ input, init });
+
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment") && (!init || !init.method)) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                updated_at: "2026-04-24T12:00:00Z",
+                circuits: {
+                  pool: true,
+                  spa: false,
+                  aux1: false
+                }
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      if (input.includes("/equipment/controller-main/control")) {
+        return response({
+          data: {
+            command_id: "command-circuit-toggle-occurred-at",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      return response({
+        status: "ok",
+        error: null
+      });
+    })
+  );
+
+  renderApp();
+  await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+  await openSystemTab("Control");
+
+  const poolRow = screen.getByText("Pool").closest(".circuit-row");
+  assert.ok(poolRow instanceof HTMLElement);
+
+  fireEvent.click(within(poolRow).getByRole("button", { name: "On" }));
+
+  await waitFor(() => {
+    assert.ok(requests.some((request) => request.input.includes("/equipment/controller-main/control")));
+    assert.ok(within(poolRow).getByRole("button", { name: "Pending..." }));
+  });
+
+  FakeEventSource.instances[0].emit("equipment.state", {
+    occurred_at: "2026-04-24T12:00:05Z",
+    circuits: {
+      pool: false,
+      spa: false,
+      aux1: false
+    }
+  });
+
+  await waitFor(() => {
+    assert.ok(within(poolRow).getByText("Off"));
   });
 });
 
@@ -421,8 +1584,9 @@ test("captures explorer bundles and creates annotation and prompt records", asyn
     })
   );
 
-  render(<App />);
+  renderApp();
   await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+  await openDiagnostics();
 
   FakeEventSource.instances[1].emit("protocol.command.encoded", {
     command_id: "command-remote-layout",
@@ -435,8 +1599,9 @@ test("captures explorer bundles and creates annotation and prompt records", asyn
   });
 
   await waitFor(() => {
-    assert.ok(screen.getByText(/protocol.command.encoded/));
-    assert.ok(screen.getByText(/serial.tx.raw/));
+    assert.ok(screen.getAllByText(/COMMAND/).length >= 1);
+    assert.ok(screen.getAllByText(/TX RAW/).length >= 1);
+    assert.ok(screen.getAllByText(/ff00ffa5011021e1010001b9/).length >= 1);
   });
 
   fireEvent.change(screen.getByLabelText("Bundle label"), { target: { value: "captured" } });
@@ -510,8 +1675,9 @@ test("submits a manual raw frame send from Protocol Explorer", async () => {
     })
   );
 
-  render(<App />);
+  renderApp();
   await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+  await openDiagnostics();
 
   fireEvent.change(screen.getByLabelText("Raw frame hex"), {
     target: { value: "ff00ffa5011022e1010001ba" }
@@ -526,6 +1692,92 @@ test("submits a manual raw frame send from Protocol Explorer", async () => {
         return typeof url === "string" && url.endsWith("/protocol/raw-frame/send") && init?.method === "POST";
       })
     );
+  });
+});
+
+test("renders and filters the live message log component", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (input.endsWith("/equipment") && (!init || !init.method)) {
+        return response({
+          data: [],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/health")) {
+        return response({ status: "ok", error: null });
+      }
+
+      if (input.endsWith("/protocol/bundles") && (!init || !init.method)) {
+        return response({ data: [], error: null });
+      }
+
+      throw new Error(`Unhandled fetch call for ${input}`);
+    })
+  );
+
+  renderApp();
+  await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+  await openDiagnostics();
+
+  FakeEventSource.instances[1].emit("protocol.frame.decoded", {
+    action_code: "0x02",
+    message_type: "controller_status",
+    source: "controller",
+    detail: "System status: All good",
+    frame_id: "frame-1"
+  });
+  FakeEventSource.instances[1].emit("protocol.frame.decoded", {
+    action_code: "0x05",
+    message_type: "controller_datetime",
+    source: "pump",
+    detail: "RPM: 2100",
+    frame_id: "frame-2"
+  });
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Message Log (Live)"));
+    assert.ok(screen.getByText("Streaming"));
+    assert.ok(screen.getByText(/System status: All good/));
+    assert.ok(screen.getByText(/RPM: 2100/));
+    assert.ok(screen.getByText(/Messages per second:/));
+  });
+
+  fireEvent.change(screen.getByLabelText("Filter devices"), { target: { value: "Pump" } });
+
+  await waitFor(() => {
+    assert.equal(screen.queryByText(/System status: All good/), null);
+    assert.ok(screen.getByText(/RPM: 2100/));
+  });
+
+  fireEvent.change(screen.getByLabelText("Filter devices"), { target: { value: "all" } });
+  fireEvent.change(screen.getByLabelText("Filter message types"), { target: { value: "CONTROLLER DATETIME" } });
+
+  await waitFor(() => {
+    assert.equal(screen.queryByText(/System status: All good/), null);
+    assert.ok(screen.getByText(/RPM: 2100/));
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+  FakeEventSource.instances[1].emit("protocol.frame.decoded", {
+    action_code: "0x11",
+    message_type: "system_query",
+    source: "controller",
+    detail: "Request system status",
+    frame_id: "frame-3"
+  });
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Paused"));
+    assert.equal(screen.queryByText(/Request system status/), null);
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("No protocol frames match the current filter."));
   });
 });
 

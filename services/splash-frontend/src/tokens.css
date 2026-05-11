@@ -1,0 +1,76 @@
+:root {
+  --font-sans: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+
+  --color-sidebar-top: #061d33;
+  --color-sidebar-bottom: #04182b;
+  --color-sidebar-active: #0646a7;
+  --color-sidebar-active-accent: #1d8cff;
+  --color-sidebar-focus: #3b82f6;
+  --color-sidebar-text: #ffffff;
+  --color-sidebar-text-secondary: #a8b6c8;
+  --color-sidebar-text-muted: #6f8197;
+  --color-sidebar-divider: rgba(255, 255, 255, 0.12);
+  --color-sidebar-card-bg: rgba(7, 31, 55, 0.85);
+  --color-sidebar-card-border: rgba(255, 255, 255, 0.12);
+  --color-sidebar-button-bg: rgba(41, 148, 255, 0.08);
+  --color-sidebar-button-border: rgba(41, 148, 255, 0.4);
+  --color-sidebar-button-text: #42a5ff;
+  --color-sidebar-button-hover: rgba(41, 148, 255, 0.16);
+  --color-sidebar-success: #18c768;
+  --color-sidebar-warning: #f59e0b;
+  --color-sidebar-critical: #ef4444;
+  --color-sidebar-success-glow: rgba(24, 199, 104, 0.12);
+  --color-sidebar-warning-glow: rgba(245, 158, 11, 0.12);
+  --color-sidebar-critical-glow: rgba(239, 68, 68, 0.12);
+
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-500: #2563eb;
+  --color-brand-600: #1d4ed8;
+  --color-brand-700: #1e40af;
+  --color-brand-900: #0b1f33;
+
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f5f9;
+  --color-border: #e2e8f0;
+  --color-text: #0f172a;
+  --color-text-muted: #475569;
+  --color-text-subtle: #64748b;
+
+  --color-good: #16a34a;
+  --color-good-bg: #dcfce7;
+  --color-watch: #f59e0b;
+  --color-watch-bg: #fef3c7;
+  --color-critical: #dc2626;
+  --color-critical-bg: #fee2e2;
+  --color-info: #2563eb;
+  --color-info-bg: #dbeafe;
+  --color-unknown: #94a3b8;
+  --color-unknown-bg: #e2e8f0;
+  --color-stale: #7c3aed;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-panel: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-focus: 0 0 0 3px rgba(37, 99, 235, 0.24);
+
+  --layout-sidebar-width: 240px;
+  --layout-topbar-height: 72px;
+  --layout-content-max-width: 1600px;
+}

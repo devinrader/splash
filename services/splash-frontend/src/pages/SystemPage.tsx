@@ -1,0 +1,821 @@
+import { useEffect, useState } from "react";
+import type React from "react";
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import { MetricTrendChart } from "../components/MetricTrendChart";
+import { SplashIcon } from "../components/icons/SplashIcon";
+import { Card, MetricCard, MockEntityRow, MockModeRow } from "../components/mockUi";
+import type { SystemHardwareDetailId } from "../navigation";
+import { SYSTEM_TABS, getActiveSystemTab } from "../navigation";
+import type { ConnectivityHistorySample, EquipmentRecord, HealthData, PlatformServiceHealthRecord } from "../types";
+import type { ControllerCircuitDefinition, PendingCircuitToggle } from "../viewUtils";
+import {
+  formatBoolean,
+  formatCircuitKey,
+  formatCircuitStatePill,
+  formatControllerDatetimeReply,
+  formatControllerTime,
+  formatHexByte,
+  formatLabel,
+  formatMetric,
+  formatValueWithLabel,
+  getCircuitFunctionOptions,
+  getCircuitStateClassName,
+  getCircuitNameOptions,
+  getHardwareDetailCode,
+  getHardwareDetailFacts,
+  getHardwareDetailStatus,
+  getHardwareDetailSubtitle,
+  getHardwareDetailTitle,
+  getStatusChipClassName,
+  humanizeCircuitType,
+  readMetric,
+  readNullableString,
+  resolveCircuitIconName
+} from "../viewUtils";
+
+export function SystemPage(props: SystemPageProps) {
+  const location = useLocation();
+  const activeTab = getActiveSystemTab(location.pathname);
+
+  return (
+    <section className="system-page-shell">
+      <div className="system-tabs" role="tablist" aria-label="System tabs">
+        {SYSTEM_TABS.map((tab) => (
+          <NavLink
+            key={tab.id}
+            id={`system-tab-${tab.id}`}
+            className={`system-tab ${activeTab === tab.id ? "system-tab-active" : ""}`}
+            to={tab.path}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`system-panel-${tab.id}`}
+          >
+            {tab.label}
+          </NavLink>
+        ))}
+      </div>
+      <div id={`system-panel-${activeTab}`} className="system-tab-panel" role="tabpanel" aria-labelledby={`system-tab-${activeTab}`}>
+        <Routes>
+          <Route index element={<Navigate to="overview" replace />} />
+          <Route path="overview" element={<SystemOverviewTab {...props} />} />
+          <Route path="hardware" element={<HardwareListTab {...props} />} />
+          <Route path="hardware/:hardwareId" element={<HardwareDetailTab {...props} />} />
+          <Route path="sensors" element={<SensorsTab {...props} />} />
+          <Route path="control" element={<ControlTab {...props} />} />
+          <Route path="connectivity" element={<ConnectivityTab {...props} />} />
+          <Route path="platform" element={<PlatformTab {...props} />} />
+          <Route path="*" element={<Navigate to="overview" replace />} />
+        </Routes>
+      </div>
+    </section>
+  );
+}
+
+function SystemOverviewTab({ controller, pump, chlorinator, installedCircuits, activeCircuitCount, controllerMode, rpmInput }: SystemPageProps) {
+  const hardwareRows = getHardwareRows(controller, pump, chlorinator);
+  const navigate = useNavigate();
+
+  return (
+    <section className="mock-system-page">
+      <section className="mock-system-grid">
+        <Card title="Control Surfaces" className="mock-card-span-2">
+          <div className="mock-entity-list">
+            <MockEntityRow
+              badge="HW"
+              badgeTone="hardware"
+              title={controller?.display_name ?? "EasyTouch 8 Controller"}
+              summary="Hardware controller · RS485 connected"
+              statusLabel="Online"
+              statusTone="good"
+              actionLabel="Details"
+            />
+            <MockEntityRow
+              badge="SW"
+              badgeTone="software"
+              title="Splash Software Controller"
+              summary="Software control layer · automation engine available"
+              statusLabel="Ready"
+              statusTone="good"
+              actionLabel="Details"
+            />
+          </div>
+          <p className="ownership-note">
+            Manual controls below resolve to the correct source: hardware controller, Splash software control, or direct device control.
+          </p>
+        </Card>
+
+        <Card title="Control Summary">
+          <div className="mock-summary-grid">
+            <div><strong>{installedCircuits.length}</strong><span>Circuits</span></div>
+            <div><strong>{activeCircuitCount}</strong><span>Active</span></div>
+            <div><strong>3</strong><span>Modes</span></div>
+            <div><strong>2</strong><span>Sources</span></div>
+          </div>
+        </Card>
+
+        <Card title="Circuits" className="mock-card-span-2" status="Manage circuits">
+          <div className="mock-circuit-list">
+            {installedCircuits.slice(0, 4).map((entry) => (
+              <div className="mock-circuit-row" key={entry.circuit.key}>
+                <div>
+                  <strong>{entry.circuit.nameLabel ?? entry.circuit.defaultName}</strong>
+                  <span>{entry.circuit.defaultName} · {entry.circuit.functionLabel ?? "Controller circuit"}</span>
+                </div>
+                <span className={`mock-state-label ${entry.state ? "mock-state-label-on" : "mock-state-label-off"}`}>{formatCircuitStatePill(entry.state)}</span>
+                <span className={`mock-switch ${entry.state ? "mock-switch-on" : ""}`} aria-hidden="true"><span /></span>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card title="Modes" status="View mode details">
+          <div className="mock-mode-list">
+            <MockModeRow title="Pool Mode" summary="Default circulation and heating behavior" active={controllerMode === "pool" || controllerMode === "pool_spa"} />
+            <MockModeRow title="Spa Mode" summary="Valves, heat, and pump target change together" active={controllerMode === "spa"} />
+            <MockModeRow title="Night Swim" summary="Lights on, heater enabled, pump quiet profile" active={false} />
+          </div>
+        </Card>
+
+        <Card title="Advanced Controls" status="Use carefully">
+          <div className="mock-advanced-list">
+            <details className="mock-advanced-details">
+              <summary>Pump override</summary>
+              <div className="mock-advanced-body">
+                <div className="simple-row"><span>Current speed</span><strong>{formatMetric(readMetric(pump?.latest_state.rpm), "RPM")}</strong></div>
+                <div className="simple-row"><span>Desired speed</span><strong>{rpmInput} RPM</strong></div>
+              </div>
+            </details>
+            <details className="mock-advanced-details">
+              <summary>Heater setpoint</summary>
+              <div className="mock-advanced-body">
+                <div className="simple-row"><span>Current setpoint</span><strong>{formatMetric(readMetric(controller?.latest_state.water_temp_f), "°F")}</strong></div>
+                <div className="simple-row"><span>Current temp</span><strong>{formatMetric(readMetric(controller?.latest_state.air_temp_f), "°F")}</strong></div>
+              </div>
+            </details>
+            <details className="mock-advanced-details">
+              <summary>Manual relay command</summary>
+              <div className="mock-advanced-body"><p className="panel-copy">Send a direct command to a mapped circuit or relay.</p></div>
+            </details>
+          </div>
+        </Card>
+
+        <Card title="Installed Hardware" className="mock-card-span-2">
+          <div className="mock-entity-list">
+            {hardwareRows.map((hardware) => (
+              <MockEntityRow
+                key={hardware.id}
+                badge={hardware.shortCode}
+                badgeTone={hardware.id === "intelliflo" ? "software" : "hardware"}
+                title={hardware.title}
+                summary={hardware.summary}
+                statusLabel={hardware.status}
+                statusTone={hardware.status === "Idle" ? "muted" : "good"}
+                actionLabel="Details"
+                onAction={() => navigate(`/system/hardware/${hardware.id}`)}
+              />
+            ))}
+          </div>
+        </Card>
+      </section>
+    </section>
+  );
+}
+
+function HardwareListTab({ controller, pump, chlorinator }: SystemPageProps) {
+  const navigate = useNavigate();
+  const hardwareRows = getHardwareRows(controller, pump, chlorinator);
+
+  return (
+    <section className="mock-system-page">
+      <Card title="Installed Hardware">
+        <div className="mock-entity-list">
+          {hardwareRows.map((hardware) => (
+            <MockEntityRow
+              key={hardware.id}
+              badge={hardware.shortCode}
+              badgeTone={hardware.id === "intelliflo" ? "software" : "hardware"}
+              title={hardware.title}
+              summary={hardware.summary}
+              statusLabel={hardware.status}
+              statusTone={hardware.status === "Idle" ? "muted" : "good"}
+              actionLabel="Details"
+              onAction={() => navigate(`/system/hardware/${hardware.id}`)}
+            />
+          ))}
+        </div>
+        <div className="mock-card-footer">
+          <button className="mock-link-button" type="button">Add hardware</button>
+        </div>
+      </Card>
+    </section>
+  );
+}
+
+function HardwareDetailTab({ controller, pump, chlorinator, installedCircuits }: SystemPageProps) {
+  const params = useParams<{ hardwareId: string }>();
+  const detail = isHardwareDetailId(params.hardwareId) ? params.hardwareId : "easytouch8";
+  const [draftRows, setDraftRows] = useState<EditableCircuitConfigRow[]>(() => getEditableCircuitRows(installedCircuits));
+
+  useEffect(() => {
+    setDraftRows(getEditableCircuitRows(installedCircuits));
+  }, [installedCircuits]);
+
+  return (
+    <section className="mock-system-page">
+      <Card title={getHardwareDetailTitle(detail, controller?.display_name, pump?.display_name, chlorinator?.display_name)} className="mock-hardware-hero-card">
+        <div className="mock-hardware-hero">
+          <div className="mock-hardware-mark">
+            <div className="mock-hardware-mark-box">{getHardwareDetailCode(detail)}</div>
+            <small>{getHardwareDetailSubtitle(detail)}</small>
+          </div>
+          <div className="mock-hardware-main">
+            <div className="mock-hardware-heading">
+              <h2>{getHardwareDetailTitle(detail, controller?.display_name, pump?.display_name, chlorinator?.display_name)}</h2>
+              <span className={`system-status-chip ${getStatusChipClassName("good")}`}>{getHardwareDetailStatus(detail, pump?.latest_state.running)}</span>
+            </div>
+            <div className="mock-hardware-info-grid">
+              {getHardwareDetailFacts(detail, {
+                pump,
+                controllerTime: formatControllerTime(controller?.latest_state.controller_hour_24, controller?.latest_state.controller_minute),
+                waterTemp: formatMetric(readMetric(controller?.latest_state.water_temp_f), "°F"),
+                saltLevel: formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm"),
+                pumpRpm: formatMetric(readMetric(pump?.latest_state.rpm), "RPM")
+              }).map((fact) => (
+                <div key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong></div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <NavLink className="page-back-link" to="/system/hardware">Back to System (Hardware)</NavLink>
+      </Card>
+
+      {detail === "easytouch8" ? (
+        <>
+          <Card title="Circuit Configuration">
+            <div className="mock-table-shell mock-table-shell-scroll">
+              <table className="system-data-table">
+                <thead>
+                  <tr><th>ID</th><th>Type</th><th>Name</th><th>Function</th><th>Freeze</th><th>State</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                  {draftRows.map((row) => (
+                    <tr key={row.key}>
+                      <td>{row.circuitId ?? "Unavailable"}</td>
+                      <td>{humanizeCircuitType(row.circuitType)}</td>
+                      <td>
+                        <select
+                          className="system-table-select"
+                          aria-label={`Circuit name ${row.key}`}
+                          value={row.nameLabel}
+                          onChange={(event) => {
+                            setDraftRows((current) =>
+                              current.map((entry) => entry.key === row.key ? { ...entry, nameLabel: event.target.value } : entry)
+                            );
+                          }}
+                        >
+                          {row.nameOptions.map((option) => (
+                            <option key={`${row.key}-name-${option}`} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          className="system-table-select"
+                          aria-label={`Circuit function ${row.key}`}
+                          value={row.functionLabel}
+                          onChange={(event) => {
+                            setDraftRows((current) =>
+                              current.map((entry) => entry.key === row.key ? { ...entry, functionLabel: event.target.value } : entry)
+                            );
+                          }}
+                        >
+                          {row.functionOptions.map((option) => (
+                            <option key={`${row.key}-function-${option}`} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <button
+                          className={`mock-switch ${row.freezeEnabled ? "mock-switch-on" : ""}`}
+                          type="button"
+                          role="switch"
+                          aria-label={`Freeze ${row.key}`}
+                          aria-checked={row.freezeEnabled}
+                          onClick={() => {
+                            setDraftRows((current) =>
+                              current.map((entry) => entry.key === row.key ? { ...entry, freezeEnabled: !entry.freezeEnabled } : entry)
+                            );
+                          }}
+                        >
+                          <span />
+                        </button>
+                      </td>
+                      <td>
+                        {row.canToggleState ? (
+                          <button
+                            className={`mock-switch ${row.stateEnabled ? "mock-switch-on" : ""}`}
+                            type="button"
+                            role="switch"
+                            aria-label={`State ${row.key}`}
+                            aria-checked={row.stateEnabled}
+                            onClick={() => {
+                              setDraftRows((current) =>
+                                current.map((entry) => entry.key === row.key ? { ...entry, stateEnabled: !entry.stateEnabled } : entry)
+                              );
+                            }}
+                          >
+                            <span />
+                          </button>
+                        ) : (
+                          formatCircuitStatePill(row.state)
+                        )}
+                      </td>
+                      <td>
+                        <div className="system-table-actions">
+                          <button
+                            className="system-icon-button"
+                            type="button"
+                            aria-label={`Save circuit row ${row.key}`}
+                            disabled
+                          >
+                            <SplashIcon name="confirm" size={16} />
+                          </button>
+                          <button
+                            className="system-icon-button system-icon-button-secondary"
+                            type="button"
+                            aria-label={`Discard circuit row ${row.key}`}
+                            disabled
+                          >
+                            <SplashIcon name="cancel" size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+          <Card title="Custom Circuit Names">
+            <div className="mock-table-shell mock-table-shell-scroll">
+              <table className="system-data-table">
+                <thead>
+                  <tr><th>Index</th><th>Value</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                  {getCustomNameRows(controller).map((entry) => (
+                    <tr key={`custom-name-${entry.index}`}>
+                      <td>{entry.index}</td>
+                      <td>
+                        <input
+                          className="system-table-input"
+                          type="text"
+                          value={entry.value}
+                          readOnly
+                          aria-label={`Custom name value ${entry.index}`}
+                        />
+                      </td>
+                      <td>
+                        <div className="system-table-actions">
+                          <button
+                            className="system-icon-button"
+                            type="button"
+                            aria-label={`Save custom name row ${entry.index}`}
+                            disabled
+                          >
+                            <SplashIcon name="confirm" size={16} />
+                          </button>
+                          <button
+                            className="system-icon-button system-icon-button-secondary"
+                            type="button"
+                            aria-label={`Discard custom name row ${entry.index}`}
+                            disabled
+                          >
+                            <SplashIcon name="cancel" size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function SensorsTab({ controller, chlorinator }: SystemPageProps) {
+  return (
+    <section className="mock-system-page">
+      <Card title="Sensors">
+        <p className="panel-copy">The Sensors tab is read-only and concentrates current readings, health, and freshness for inputs that drive automation and operator decisions.</p>
+      </Card>
+      <section className="mock-kpi-grid">
+        <MetricCard label="Water Temperature" value={formatMetric(readMetric(controller?.latest_state.water_temp_f), "°F")} accent="water" icon="temperature" />
+        <MetricCard label="Air Temperature" value={formatMetric(readMetric(controller?.latest_state.air_temp_f), "°F")} accent="sky" icon="air-temperature" />
+        <MetricCard label="Salt Level" value={formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")} accent="sand" icon="salt" />
+      </section>
+      <Card title="Sensor Readings" status="Current values">
+        <table className="system-data-table">
+          <thead><tr><th>Sensor</th><th>Type</th><th>Location</th><th>Current value</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>Pool Temp</td><td>Temperature</td><td>Pool</td><td>{formatMetric(readMetric(controller?.latest_state.water_temp_f), "°F")}</td><td><span className="system-status-chip system-status-chip-good">Good</span></td></tr>
+            <tr><td>Air Temp</td><td>Temperature</td><td>Pad</td><td>{formatMetric(readMetric(controller?.latest_state.air_temp_f), "°F")}</td><td><span className="system-status-chip system-status-chip-good">Good</span></td></tr>
+            <tr><td>Salt Reading</td><td>Chemistry</td><td>Cell</td><td>{formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")}</td><td><span className="system-status-chip system-status-chip-watch">Watch</span></td></tr>
+          </tbody>
+        </table>
+      </Card>
+    </section>
+  );
+}
+
+function ControlTab(props: SystemPageProps) {
+  const { pump, controllerMode, pendingCommand, circuitKeyInput, setCircuitKeyInput, rpmInput, setRpmInput, handlePumpSubmit, controllerCircuitStates, isRequestingCircuitConfig, handleCircuitConfigRequest, circuitConfigRequestMessage, pendingCircuitToggle, handleCircuitToggle } = props;
+
+  return (
+    <section className="mock-system-page">
+      <Card title="Live Control">
+        <p className="panel-copy">The Control tab concentrates real-time actions for circuits, modes, pump speed, and controller-initiated commands. It is intentionally execution-focused.</p>
+      </Card>
+      <section className="mock-control-grid">
+        <section className="control-panel control-panel-stack">
+          <div>
+            <p className="panel-kicker">Pump control</p>
+            <h2>{pump?.display_name ?? "Main Pump"}</h2>
+            <p className="panel-copy">Adjust the variable-speed pump without leaving the System workspace.</p>
+            <dl className="detail-grid detail-grid-compact">
+              <div><dt>Current RPM</dt><dd>{formatMetric(readMetric(pump?.latest_state.rpm), "RPM")}</dd></div>
+              <div><dt>Running</dt><dd>{formatBoolean(pump?.latest_state.running)}</dd></div>
+              <div><dt>Bus address</dt><dd>{readNullableString(pump?.bus_address) ?? "Unavailable"}</dd></div>
+            </dl>
+          </div>
+          <form className="control-form" onSubmit={(event) => void handlePumpSubmit(event)}>
+            <label htmlFor="pump-circuit">Controller circuit</label>
+            <select id="pump-circuit" value={circuitKeyInput} onChange={(event) => setCircuitKeyInput(event.target.value)} disabled={pendingCommand || !pump}>
+              {(pump?.control_circuit_keys ?? []).map((circuitKey) => <option key={circuitKey} value={circuitKey}>{formatCircuitKey(circuitKey)}</option>)}
+            </select>
+            <label htmlFor="pump-rpm">Requested RPM</label>
+            <input id="pump-rpm" inputMode="numeric" pattern="[0-9]*" value={rpmInput} onChange={(event) => setRpmInput(event.target.value)} disabled={pendingCommand || !pump} />
+            <button type="submit" disabled={pendingCommand || !pump}>{pendingCommand ? "Waiting for command result..." : "Set pump speed"}</button>
+            <p className="form-caption">Pump speed changes remain disabled while the prior command is unresolved.</p>
+          </form>
+        </section>
+        <Card title="Modes" status="Immediate transitions">
+          <div className="mock-mode-list">
+            <MockModeRow title="Pool Mode" summary="Default circulation and heating behavior" active={controllerMode === "pool" || controllerMode === "pool_spa"} />
+            <MockModeRow title="Spa Mode" summary="Valves, heat, and pump target change together" active={controllerMode === "spa"} />
+            <MockModeRow title="Night Swim" summary="Lights on, heater enabled, pump quiet profile" active={false} />
+          </div>
+        </Card>
+      </section>
+      <Card title="Controller Circuits" status="Direct control">
+        <div className="mock-card-toolbar">
+          <p className="panel-copy">Known EasyTouch circuits show live controller state. Unmapped states remain unavailable rather than being implied off.</p>
+          <button className="secondary-action" type="button" disabled={isRequestingCircuitConfig} onClick={() => void handleCircuitConfigRequest()}>
+            {isRequestingCircuitConfig ? "Requesting circuit config..." : "Request controller circuit config"}
+          </button>
+        </div>
+        {circuitConfigRequestMessage ? <p className="form-caption">{circuitConfigRequestMessage}</p> : null}
+        <div className="circuit-list" role="list" aria-label="known controller circuits">
+          {controllerCircuitStates.length === 0 ? (
+            <p className="empty-state">No controller circuit state available yet.</p>
+          ) : (
+            controllerCircuitStates.map((entry) => (
+              <div className="circuit-row" key={entry.circuit.key} role="listitem">
+                <div className="circuit-row-main">
+                  <div className="circuit-icon"><SplashIcon name={resolveCircuitIconName(entry.circuit)} size={18} /></div>
+                  <strong>{entry.circuit.nameLabel ?? entry.circuit.defaultName}</strong>
+                  <dl className="circuit-details">
+                    <div><dt>Write ID</dt><dd>{entry.circuit.circuitId ?? "Unavailable"}</dd></div>
+                    <div><dt>Config Index</dt><dd>{entry.circuit.configurationCircuitId ?? "Unavailable"}</dd></div>
+                    <div><dt>Function</dt><dd>{formatValueWithLabel(entry.circuit.functionValue, entry.circuit.functionLabel)}</dd></div>
+                    <div><dt>Name</dt><dd>{formatValueWithLabel(entry.circuit.nameValue, entry.circuit.nameLabel)}</dd></div>
+                  </dl>
+                </div>
+                {entry.circuit.writable && entry.state !== null ? (
+                  <button className={`circuit-state-pill circuit-state-button ${getCircuitStateClassName(entry.state)}`} type="button" disabled={pendingCircuitToggle !== null} onClick={() => void handleCircuitToggle(entry.circuit, entry.state)}>
+                    {pendingCircuitToggle?.circuitKey === entry.circuit.key ? "Pending..." : formatCircuitStatePill(entry.state)}
+                  </button>
+                ) : (
+                  <span className={`circuit-state-pill ${getCircuitStateClassName(entry.state)}`}>{formatCircuitStatePill(entry.state)}</span>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </Card>
+    </section>
+  );
+}
+
+function ConnectivityTab({ controller, pump, chlorinator, healthData, connectivityHistory, isRequestingControllerDatetime, handleControllerDatetimeRequest, isSyncingControllerDatetime, handleControllerDatetimeSync, controllerDatetimeMessage }: SystemPageProps) {
+  const rs485Rates = healthData?.rates?.rs485;
+  const natsBrokerRates = healthData?.rates?.nats_broker;
+  return (
+    <section className="mock-system-page">
+      <section className="mock-kpi-grid">
+        <MetricCard label="RS485 Messages In" value={formatRatePerMinute(rs485Rates?.rx_messages_per_second)} accent="sky" icon="system" />
+        <MetricCard label="RS485 Messages Out" value={formatRatePerMinute(rs485Rates?.tx_messages_per_second)} accent="water" icon="system" />
+        <MetricCard label="NATS Subscriptions" value={formatCountValue(natsBrokerRates?.subscriptions)} accent="sand" icon="diagnostics" />
+        <MetricCard label="NATS In Messages" value={formatRatePerMinute(natsBrokerRates?.in_messages_per_second)} accent="sky" icon="diagnostics" />
+        <MetricCard label="NATS Out Messages" value={formatRatePerMinute(natsBrokerRates?.out_messages_per_second)} accent="pump" icon="diagnostics" />
+      </section>
+      <Card title="Message Activity" status="10-second intervals">
+        <p className="panel-copy">The chart shows 10-second message buckets derived from the latest API RS485 and NATS rate samples.</p>
+        <MetricTrendChart samples={connectivityHistory} />
+      </Card>
+      <section className="mock-connectivity-grid">
+        <Card title="Controller Status" status="Connectivity">
+          <dl className="system-summary-list">
+            <div><dt>Mode byte</dt><dd>{formatHexByte(controller?.latest_state.controller_mode_byte)}</dd></div>
+            <div><dt>Decoded label</dt><dd>{formatLabel(controller?.latest_state.controller_mode_label)}</dd></div>
+            <div><dt>Controller date/time</dt><dd>{formatControllerDatetimeReply(controller?.latest_state.controller_datetime_reply)}</dd></div>
+          </dl>
+          <div className="panel-actions">
+            <button className="secondary-action" type="button" disabled={isRequestingControllerDatetime} onClick={() => void handleControllerDatetimeRequest()}>
+              {isRequestingControllerDatetime ? "Requesting controller date/time..." : "Request controller date/time"}
+            </button>
+            <button className="secondary-action" type="button" disabled={isSyncingControllerDatetime} onClick={() => void handleControllerDatetimeSync()}>
+              {isSyncingControllerDatetime ? "Syncing controller date/time..." : "Sync controller date/time"}
+            </button>
+          </div>
+          <p className="form-caption">Controller date/time actions are provisional until the EasyTouch command family is live-validated.</p>
+          {controllerDatetimeMessage ? <p className="form-caption">{controllerDatetimeMessage}</p> : null}
+        </Card>
+        <Card title="RS485 Bus Health">
+          <dl className="system-summary-list">
+            <div><dt>Adapter</dt><dd>/dev/ttyUSB0</dd></div>
+            <div><dt>Baud Rate</dt><dd>9600</dd></div>
+            <div><dt>Last frame received</dt><dd>1s ago</dd></div>
+            <div><dt>Checksum Errors (1h)</dt><dd>0</dd></div>
+          </dl>
+        </Card>
+        <Card title="Device Status" className="mock-card-span-2">
+          <table className="system-data-table">
+            <thead>
+              <tr>
+                <th>Device</th>
+                <th>Address</th>
+                <th>Last seen</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>{controller?.display_name ?? "EasyTouch 8"}</td><td>0x10</td><td>1s ago</td><td><span className="system-status-chip system-status-chip-good">Online</span></td></tr>
+              <tr><td>{pump?.display_name ?? "IntelliFlo"}</td><td>{readNullableString(pump?.bus_address) ?? "0x60"}</td><td>2s ago</td><td><span className="system-status-chip system-status-chip-good">Online</span></td></tr>
+              <tr><td>{chlorinator?.display_name ?? "IntelliChlor"}</td><td>0x30</td><td>3s ago</td><td><span className="system-status-chip system-status-chip-good">Online</span></td></tr>
+            </tbody>
+          </table>
+        </Card>
+        <Card title="Platform Service Bus">
+          <div className="record-list">
+            <div className="record-card"><strong>Splash API</strong><span>Online · 18 ms</span></div>
+            <div className="record-card"><strong>Event Stream</strong><span>Active · Live</span></div>
+            <div className="record-card"><strong>Database</strong><span>Connected · 4s ago</span></div>
+          </div>
+        </Card>
+        <Card title="Network Overview">
+          <dl className="system-summary-list">
+            <div><dt>LAN IP</dt><dd>10.0.10.42</dd></div>
+            <div><dt>Gateway</dt><dd>10.0.10.1</dd></div>
+            <div><dt>DNS</dt><dd>Healthy</dd></div>
+            <div><dt>Internet</dt><dd>Reachable</dd></div>
+          </dl>
+        </Card>
+      </section>
+    </section>
+  );
+}
+
+function PlatformTab({ healthStatus, sseStatus, controller, healthData }: SystemPageProps) {
+  const platformServices = healthData?.platform_services;
+  const serviceRows = [
+    { key: "splash_serial", label: "Splash Serial", record: platformServices?.splash_serial },
+    { key: "nats", label: "NATS", record: platformServices?.nats },
+    { key: "splash_protocol", label: "Splash Protocol", record: platformServices?.splash_protocol },
+    { key: "splash_frontend", label: "Splash Frontend", record: platformServices?.splash_frontend }
+  ];
+
+  return (
+    <section className="mock-system-page">
+      <Card title="Platform">
+        <p className="panel-copy">The Platform tab concentrates current health for the core Splash services that power transport, messaging, protocol decoding, and the operator UI.</p>
+      </Card>
+      <section className="mock-platform-grid">
+        <Card title="Services" status="Runtime" className="mock-card-span-2">
+          <div className="record-list">
+            {serviceRows.map((service) => (
+              <div className="record-card" key={service.key}>
+                <strong>{service.label}</strong>
+                <span>{formatPlatformServiceSummary(service.record)}</span>
+                <span>{readNullableString(service.record?.detail) ?? "No additional detail available."}</span>
+                <span className={`system-status-chip ${getPlatformServiceStatusClassName(service.record?.status)}`}>
+                  {formatPlatformServiceStatus(service.record?.status)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card title="Platform Health" status="Operations">
+          <dl className="system-summary-list">
+            <div><dt>Shell uptime</dt><dd>14d 6h</dd></div>
+            <div><dt>Event stream</dt><dd>{sseStatus === "connected" ? "Connected" : "Connecting"}</dd></div>
+            <div><dt>Last controller time</dt><dd>{formatControllerTime(controller?.latest_state.controller_hour_24, controller?.latest_state.controller_minute)}</dd></div>
+            <div><dt>API Health</dt><dd>{healthStatus === "ok" ? "Healthy" : "Degraded"}</dd></div>
+          </dl>
+        </Card>
+      </section>
+    </section>
+  );
+}
+
+function getHardwareRows(controller: EquipmentRecord | undefined, pump: EquipmentRecord | undefined, chlorinator: EquipmentRecord | undefined) {
+  return [
+    {
+      id: "easytouch8" as const,
+      shortCode: "CTL",
+      title: controller?.display_name ?? "EasyTouch 8 Controller",
+      summary: "Pool automation controller · RS485",
+      status: "Online"
+    },
+    {
+      id: "intelliflo" as const,
+      shortCode: "PMP",
+      title: pump?.display_name ?? "IntelliFlo Pump",
+      summary: `${formatMetric(readMetric(pump?.latest_state.rpm), "RPM")} · ${typeof pump?.latest_state.running === "boolean" && pump.latest_state.running ? "Running" : "Idle"}`,
+      status: typeof pump?.latest_state.running === "boolean" && pump.latest_state.running ? "Running" : "Idle"
+    },
+    {
+      id: "ultratemp" as const,
+      shortCode: "HTR",
+      title: "Pool Heater",
+      summary: `Setpoint ${formatMetric(readMetric(controller?.latest_state.water_temp_f), "°F")}`,
+      status: readMetric(controller?.latest_state.water_temp_f) != null ? "Heating" : "Idle"
+    },
+    {
+      id: "intellichlor" as const,
+      shortCode: "CL",
+      title: chlorinator?.display_name ?? "Salt Chlorinator",
+      summary: `Output 40% · salt ${formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")}`,
+      status: readMetric(chlorinator?.latest_state.salt_ppm) != null ? "Producing" : "Online"
+    }
+  ];
+}
+
+function getCustomNameRows(controller: EquipmentRecord | undefined): Array<{ index: number; value: string }> {
+  const latestState = controller?.latest_state;
+  const customNameBankRaw =
+    latestState && typeof latestState === "object" && !Array.isArray(latestState)
+      ? (latestState as Record<string, unknown>).custom_name_bank
+      : null;
+  const customNameBank =
+    customNameBankRaw && typeof customNameBankRaw === "object" && !Array.isArray(customNameBankRaw)
+      ? (customNameBankRaw as Record<string, unknown>)
+      : {};
+
+  return Array.from({ length: 10 }, (_, index) => {
+    const entry = customNameBank[String(index)];
+    const value =
+      entry && typeof entry === "object" && !Array.isArray(entry)
+        ? typeof (entry as Record<string, unknown>).custom_name_text === "string"
+          ? ((entry as Record<string, unknown>).custom_name_text as string)
+          : ""
+        : "";
+
+    return {
+      index,
+      value
+    };
+  });
+}
+
+interface EditableCircuitConfigRow {
+  key: string;
+  circuitId: number | null;
+  circuitType: string;
+  nameLabel: string;
+  nameOptions: string[];
+  functionLabel: string;
+  functionOptions: string[];
+  freezeEnabled: boolean;
+  canToggleState: boolean;
+  stateEnabled: boolean;
+  state: boolean | null;
+}
+
+function getEditableCircuitRows(
+  installedCircuits: Array<{ circuit: ControllerCircuitDefinition; state: boolean | null }>
+): EditableCircuitConfigRow[] {
+  return installedCircuits.map(({ circuit, state }) => {
+    const nameLabel = circuit.nameLabel ?? circuit.defaultName;
+    const functionLabel = circuit.functionLabel ?? "Generic";
+    return {
+      key: circuit.key,
+      circuitId: circuit.circuitId,
+      circuitType: circuit.circuitType,
+      nameLabel,
+      nameOptions: getCircuitNameOptions(nameLabel),
+      functionLabel,
+      functionOptions: getCircuitFunctionOptions(functionLabel),
+      freezeEnabled: circuit.freezeFlag === true,
+      canToggleState: circuit.writable && typeof state === "boolean",
+      stateEnabled: state === true,
+      state
+    };
+  });
+}
+
+function isHardwareDetailId(value: string | undefined): value is SystemHardwareDetailId {
+  return value === "easytouch8" || value === "intelliflo" || value === "intellichlor" || value === "ultratemp";
+}
+
+export interface SystemPageProps {
+  controller: EquipmentRecord | undefined;
+  pump: EquipmentRecord | undefined;
+  chlorinator: EquipmentRecord | undefined;
+  healthStatus: "unknown" | "ok" | "degraded";
+  healthData: HealthData | null;
+  connectivityHistory: ConnectivityHistorySample[];
+  sseStatus: "connecting" | "connected" | "disconnected";
+  installedCircuits: Array<{ circuit: ControllerCircuitDefinition; state: boolean | null }>;
+  controllerCircuitStates: Array<{ circuit: ControllerCircuitDefinition; state: boolean | null }>;
+  activeCircuitCount: number;
+  controllerMode: string;
+  rpmInput: string;
+  setRpmInput: React.Dispatch<React.SetStateAction<string>>;
+  circuitKeyInput: string;
+  setCircuitKeyInput: React.Dispatch<React.SetStateAction<string>>;
+  pendingCommand: boolean;
+  isRequestingCircuitConfig: boolean;
+  circuitConfigRequestMessage: string | null;
+  handlePumpSubmit: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
+  handleCircuitConfigRequest: (trigger?: "auto" | "manual") => Promise<void>;
+  handleCircuitToggle: (circuit: ControllerCircuitDefinition, currentState: boolean | null) => Promise<void>;
+  pendingCircuitToggle: PendingCircuitToggle | null;
+  isRequestingControllerDatetime: boolean;
+  isSyncingControllerDatetime: boolean;
+  controllerDatetimeMessage: string | null;
+  handleControllerDatetimeRequest: () => Promise<void>;
+  handleControllerDatetimeSync: () => Promise<void>;
+}
+
+function formatRatePerMinute(valuePerSecond: number | null | undefined): string {
+  if (typeof valuePerSecond !== "number") {
+    return "Unavailable";
+  }
+  return `${Math.round(valuePerSecond * 60)} / min`;
+}
+
+function formatCountValue(value: number | null | undefined): string {
+  return typeof value === "number" ? value.toString() : "Unavailable";
+}
+
+function formatPlatformServiceStatus(value: PlatformServiceHealthRecord["status"]): string {
+  if (value === "ok") {
+    return "Healthy";
+  }
+  if (value === "degraded") {
+    return "Degraded";
+  }
+  if (value === "error") {
+    return "Error";
+  }
+  return "Unavailable";
+}
+
+function formatPlatformServiceSummary(record: PlatformServiceHealthRecord | undefined): string {
+  const summary = readNullableString(record?.summary);
+  const updatedAt = readNullableString(record?.updated_at);
+  if (summary && updatedAt) {
+    return `${summary} · updated ${formatUpdatedAt(updatedAt)}`;
+  }
+  if (summary) {
+    return summary;
+  }
+  return "Unavailable";
+}
+
+function getPlatformServiceStatusClassName(value: PlatformServiceHealthRecord["status"]): string {
+  if (value === "ok") {
+    return "system-status-chip-good";
+  }
+  if (value === "degraded" || value === "error") {
+    return "system-status-chip-watch";
+  }
+  return "system-status-chip-muted";
+}
+
+function formatUpdatedAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}

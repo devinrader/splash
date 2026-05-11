@@ -6,7 +6,20 @@ export interface EquipmentRecord {
   bus_address?: string | null;
   control_circuit_keys?: string[];
   default_control_circuit_key?: string | null;
+  hardware?: {
+    circuits?: ControllerCircuitHardwareRecord[];
+  };
   latest_state: Record<string, unknown>;
+}
+
+export interface ControllerCircuitHardwareRecord {
+  circuit_key: string;
+  display_name: string;
+  circuit_type: string;
+  installed: boolean;
+  writable: boolean;
+  configuration_circuit_index: number | null;
+  write_circuit_id: number | null;
 }
 
 export interface EquipmentResponse {
@@ -16,10 +29,47 @@ export interface EquipmentResponse {
 
 export interface HealthResponse {
   status: "ok" | "degraded";
-  data?: {
-    dependencies?: Record<string, string>;
-  };
+  data?: HealthData;
   error: unknown;
+}
+
+export interface HealthData {
+  dependencies?: Record<string, string>;
+  rates?: {
+    rs485?: {
+      rx_messages_per_second?: number | null;
+      tx_messages_per_second?: number | null;
+    };
+    nats_broker?: {
+      status?: "ok" | "unavailable" | "error";
+      subscriptions?: number | null;
+      in_messages_per_second?: number | null;
+      out_messages_per_second?: number | null;
+      last_sample_at?: string | null;
+      error_code?: string | null;
+    };
+  };
+  platform_services?: {
+    splash_serial?: PlatformServiceHealthRecord;
+    nats?: PlatformServiceHealthRecord;
+    splash_protocol?: PlatformServiceHealthRecord;
+    splash_frontend?: PlatformServiceHealthRecord;
+  };
+}
+
+export interface PlatformServiceHealthRecord {
+  status?: "ok" | "degraded" | "error" | "unavailable";
+  summary?: string | null;
+  detail?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ConnectivityHistorySample {
+  recorded_at: string;
+  rs485_in_messages_per_second: number | null;
+  rs485_out_messages_per_second: number | null;
+  nats_in_messages_per_second: number | null;
+  nats_out_messages_per_second: number | null;
 }
 
 export interface CommandAcceptedResponse {
@@ -46,6 +96,14 @@ export interface RawFrameSendResponse {
   error: unknown;
 }
 
+export interface CircuitConfigRequestResponse {
+  data: {
+    command_id: string;
+    status: string;
+  };
+  error: unknown;
+}
+
 export interface CommandResultEvent {
   command_id?: string;
   status?: string;
@@ -63,6 +121,7 @@ export interface DashboardCardValue {
 export interface ProtocolFrameEvent {
   event: string;
   payload: Record<string, unknown>;
+  received_at: string;
 }
 
 export interface ProtocolBundleSummary {

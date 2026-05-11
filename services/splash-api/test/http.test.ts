@@ -4,6 +4,7 @@ import {
   HttpRequestError,
   corsHeaders,
   readBundleCompareRequest,
+  readCustomNameIndex,
   readRawFrameRequest,
   readWatchSessionRequest
 } from "../src/http.js";
@@ -77,6 +78,28 @@ test("readWatchSessionRequest rejects unsupported watch events", () => {
     (error: unknown) => {
       assert.ok(error instanceof HttpRequestError);
       assert.match(error.message, /unsupported/);
+      return true;
+    }
+  );
+});
+
+test("readCustomNameIndex accepts explicit custom-name-bank indexes", () => {
+  const request = readCustomNameIndex({
+    name_index: 4
+  });
+
+  assert.equal(request.nameIndex, 4);
+});
+
+test("readCustomNameIndex rejects out-of-range indexes", () => {
+  assert.throws(
+    () =>
+      readCustomNameIndex({
+        name_index: 10
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpRequestError);
+      assert.match(error.message, /between 0 and 9/);
       return true;
     }
   );

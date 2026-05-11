@@ -26,6 +26,12 @@ interface PendingCommand {
         pumpSlot: number;
         selectorValue: number;
         targetRpm: number;
+      }
+    | {
+        kind: "controller_circuit_config";
+        phase: "awaiting_transport" | "awaiting_reply";
+        nextWriteIndex: number;
+        receivedReplies: number;
       };
 }
 
@@ -127,6 +133,13 @@ export class CommandCoordinator {
                 selectorValue: encoded.correlation.selectorValue ?? 0,
                 targetRpm: encoded.correlation.targetRpm ?? 0
               }
+            : encoded.correlation?.kind === "controller_circuit_config"
+              ? {
+                  kind: "controller_circuit_config",
+                  phase: "awaiting_transport",
+                  nextWriteIndex: 1,
+                  receivedReplies: 0
+                }
             : null,
         timeout: setTimeout(() => {
           void this.endPending(
@@ -140,8 +153,12 @@ export class CommandCoordinator {
       };
       this.pending.set(intent.command_id, pending);
 
-      for (const [index, write] of encoded.writes.entries()) {
-        await this.publishWriteRequest(intent, encoded, write, index);
+      if (pending.workflow?.kind === "controller_circuit_config") {
+        await this.publishWriteRequest(intent, encoded, encoded.writes[0], 0);
+      } else {
+        for (const [index, write] of encoded.writes.entries()) {
+          await this.publishWriteRequest(intent, encoded, write, index);
+        }
       }
     } catch (error) {
       const commandError = normalizeCommandError(error);
@@ -217,6 +234,11 @@ export class CommandCoordinator {
     }
 
     pending.acknowledgedWrites += 1;
+    if (pending.workflow?.kind === "controller_circuit_config") {
+      await this.handleControllerCircuitConfigTransportAck(commandId, pending);
+      return;
+    }
+
     if (pending.acknowledgedWrites === pending.encoded.writes.length) {
       if (pending.workflow?.kind === "controller_circuit_speed") {
         await this.handleControllerCircuitTransportAck(commandId, pending);
@@ -232,6 +254,16 @@ export class CommandCoordinator {
 
   private async handleDecodedFrame(payload: Record<string, unknown>): Promise<void> {
     const messageType = readString(payload, "message_type");
+    if (messageType === "circuit_configuration") {
+      await this.handleControllerCircuitConfigReply();
+      return;
+    }
+
+    if (messageType === "controller_ack") {
+      await this.handleControllerAckReply();
+      return;
+    }
+
     if (messageType !== "pump_info") {
       return;
     }
@@ -297,6 +329,17 @@ export class CommandCoordinator {
           await this.completePending(commandId, "command_completed", "Verified controller pump config reflects the requested RPM.");
         }
       }
+    }
+  }
+
+  private async handleControllerAckReply(): Promise<void> {
+    for (const [commandId, pending] of this.pending.entries()) {
+      const expectation = pending.encoded.correlation;
+      if (!expectation || expectation.kind !== "controller_ack") {
+        continue;
+      }
+
+      await this.completePending(commandId, "controller_ack_observed", "Observed controller ACK for the command write.");
     }
   }
 
@@ -462,6 +505,50 @@ export class CommandCoordinator {
         "transport_write_observed",
         "Controller config write and verification request reached the transport layer."
       );
+    }
+  }
+
+  private async handleControllerCircuitConfigTransportAck(commandId: string, pending: PendingCommand): Promise<void> {
+    const workflow = pending.workflow;
+    if (!workflow || workflow.kind !== "controller_circuit_config") {
+      return;
+    }
+
+    workflow.phase = "awaiting_reply";
+    await this.publishResult(
+      pending.intent.pool_id,
+      pending.intent.command_id,
+      "transmitted",
+      null,
+      "circuit_config_request_transmitted",
+      "Controller circuit configuration request reached the transport layer."
+    );
+  }
+
+  private async handleControllerCircuitConfigReply(): Promise<void> {
+    for (const [commandId, pending] of this.pending.entries()) {
+      const workflow = pending.workflow;
+      if (!workflow || workflow.kind !== "controller_circuit_config" || workflow.phase !== "awaiting_reply") {
+        continue;
+      }
+
+      workflow.receivedReplies += 1;
+
+      if (workflow.nextWriteIndex >= pending.encoded.writes.length) {
+        await this.completePending(
+          commandId,
+          "circuit_config_discovery_completed",
+          "Observed controller circuit configuration replies for the requested range."
+        );
+        return;
+      }
+
+      const nextIndex = workflow.nextWriteIndex;
+      workflow.nextWriteIndex += 1;
+      workflow.phase = "awaiting_transport";
+      pending.acknowledgedWrites = nextIndex;
+      await this.publishWriteRequest(pending.intent, pending.encoded, pending.encoded.writes[nextIndex], nextIndex);
+      return;
     }
   }
 }

@@ -68,6 +68,7 @@ test("decodePentairFrame validates checksum and decodes controller status identi
     circuits_byte_2: 0x00,
     circuits_byte_3: 0x00,
     controller_mode_byte: 0x08,
+    controller_mode_label: "freeze protection",
     service_mode: false,
     celsius_mode: false,
     freeze_protection_active: true,
@@ -80,6 +81,10 @@ test("decodePentairFrame validates checksum and decodes controller status identi
     heat_setting_byte: 0x06,
     pool_heat_mode: "solar_preferred",
     spa_heat_mode: "heater",
+    controller_sub_model_byte: null,
+    controller_model_byte: null,
+    controller_model_family: null,
+    controller_model_label: null,
     active_circuit_keys: ["pool"],
     mode: "pool",
     circuits: {
@@ -102,11 +107,27 @@ test("decodePentairFrame validates checksum and decodes controller status identi
 });
 
 test("decodePentairFrame classifies pump and chlorinator action codes", () => {
+  const controllerAck = decodePentairFrame(buildPentairFrame(0x01, []));
   const pump = decodePentairFrame(buildPentairFrame(0x07, [0x01, 0x02]));
   const chlorinator = decodePentairFrame(buildPentairFrame(0x19, [0x10, 0x20]));
+  const controllerDatetime = decodePentairFrame(buildPentairFrame(0x05, [0x12, 0x34, 0x10, 0x17, 0x04, 0x1a, 0x00, 0x00]));
 
+  assert.equal(controllerAck.messageType, "controller_ack");
   assert.equal(pump.messageType, "pump_status");
   assert.equal(chlorinator.messageType, "chlorinator_status");
+  assert.equal(controllerDatetime.messageType, "controller_datetime");
+  assert.deepEqual(controllerDatetime.fields, {
+    payload_hex: "12341017041a0000",
+    payload_length: 8,
+    hour_24: 18,
+    minute: 52,
+    day_of_week: 16,
+    day: 23,
+    month: 4,
+    year: 26,
+    unknown_byte_6: 0,
+    daylight_savings_auto: false
+  });
 });
 
 test("decodePentairFrame rejects invalid checksum", () => {
@@ -123,10 +144,10 @@ test("decodePentairFrame rejects invalid checksum", () => {
 test("decodePentairFrame rejects invalid pentair protocol bytes", () => {
   const frame = Uint8Array.from([
     0xff, 0x00, 0xff, 0xa5,
-    0x34,
+    0x35,
     0x0f, 0x10, 0x02, 0x01,
     0x00,
-    0x00, 0x5a
+    0x00, 0x5b
   ]);
 
   assert.throws(() => decodePentairFrame(frame), (error: unknown) => {
@@ -134,6 +155,22 @@ test("decodePentairFrame rejects invalid pentair protocol bytes", () => {
     assert.equal(error.errorCode, "protocol_byte_invalid");
     return true;
   });
+});
+
+test("decodePentairFrame accepts controller-family protocol byte 0x34 for live controller status", () => {
+  const frame = buildPentairFrameWithProtocol(0x34, 0x0f, 0x10, 0x02, [
+    0x15, 0x2f, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00,
+    0x08, 0x00, 0x00, 0x80, 0x4a, 0x4a, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x5f, 0x4e, 0x03, 0x0d,
+    0x03, 0x38, 0x00, 0x00, 0x00
+  ]);
+
+  const decoded = decodePentairFrame(frame);
+
+  assert.equal(decoded.messageType, "controller_status");
+  assert.equal(decoded.actionCode, "0x02");
+  assert.equal(decoded.checksumStatus, "valid");
+  assert.equal(decoded.fields.payload_length, 29);
 });
 
 test("decodePentairFrame emits partial normalized events for trusted message families", () => {
@@ -158,9 +195,13 @@ test("decodePentairFrame emits partial normalized events for trusted message fam
   });
 
   assert.equal(controller.normalizedEvents?.[0].subject, "equipment.state.controller");
+  assert.equal(controller.normalizedEvents?.[0].payload.controller_hour_24, 0x15);
+  assert.equal(controller.normalizedEvents?.[0].payload.controller_minute, 0x37);
   assert.equal(controller.normalizedEvents?.[0].payload.water_temp_f, 63);
   assert.equal(controller.normalizedEvents?.[0].payload.air_temp_f, 73);
   assert.equal(controller.normalizedEvents?.[0].payload.solar_temp_f, 32);
+  assert.equal(controller.normalizedEvents?.[0].payload.controller_mode_byte, 0x08);
+  assert.equal(controller.normalizedEvents?.[0].payload.controller_mode_label, "freeze protection");
   assert.equal(controller.normalizedEvents?.[0].payload.freeze_protection, true);
   const controllerHeater = controller.normalizedEvents?.[0].payload.heater as Record<string, unknown>;
   assert.equal(controllerHeater.enabled, true);
@@ -217,6 +258,117 @@ test("decodePentairFrame derives controller mode hints from trusted circuit bits
   assert.deepEqual(auxOnly.fields.active_circuit_keys, ["aux3"]);
   assert.equal(featureOnly.fields.mode, "aux_only");
   assert.deepEqual(featureOnly.fields.active_circuit_keys, ["pool_low"]);
+});
+
+test("decodePentairFrame derives diagnostic controller mode labels from payload byte 9", () => {
+  const idle = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]));
+  const runFreeze = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09]));
+  const timeoutCelsius = decodePentairFrame(buildPentairFrame(0x02, [70, 65, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x84]));
+
+  assert.equal(idle.fields.controller_mode_label, "idle");
+  assert.equal(runFreeze.fields.controller_mode_label, "run + freeze protection");
+  assert.equal(timeoutCelsius.fields.controller_mode_label, "timeout + celsius");
+});
+
+test("decodePentairFrame decodes circuit configuration replies", () => {
+  const decoded = decodePentairFrame(buildPentairFrame(0x0b, [0x0a, 0x00, 0x00, 0x00, 0x00]));
+
+  assert.equal(decoded.messageType, "circuit_configuration");
+  assert.equal(decoded.fields.circuit_id, 0x0a);
+  assert.equal(decoded.fields.function_id, 0x00);
+  assert.equal(decoded.fields.base_function_id, 0);
+  assert.equal(decoded.fields.base_function_label, "Generic");
+  assert.equal(decoded.fields.freeze_flag, false);
+  assert.equal(decoded.fields.high_flag, false);
+  assert.equal(decoded.fields.name_id, 0x00);
+  assert.equal(decoded.fields.name_label, "NOT USED");
+});
+
+test("decodePentairFrame decodes custom name bank payloads", () => {
+  const decoded = decodePentairFrame(
+    buildPentairFrame(0x0a, [0x02, 0x53, 0x50, 0x41, 0x20, 0x4d, 0x4f, 0x44, 0x45, 0x20, 0x32])
+  );
+
+  assert.equal(decoded.messageType, "custom_name");
+  assert.equal(decoded.fields.name_index, 0x02);
+  assert.deepEqual(decoded.fields.custom_name_bytes, [0x53, 0x50, 0x41, 0x20, 0x4d, 0x4f, 0x44, 0x45, 0x20, 0x32]);
+  assert.equal(decoded.fields.custom_name_text, "SPA MODE 2");
+});
+
+test("decodePentairFrame decodes controller software version broadcasts", () => {
+  const decoded = decodePentairFrame(buildPentairFrame(0xfc, [0x00, 0x01, 0x22, 0x00, 0x00, 0x03, 0x15]));
+
+  assert.equal(decoded.messageType, "controller_software_version");
+  assert.equal(decoded.fields.controller_firmware_major, 0x01);
+  assert.equal(decoded.fields.controller_firmware_minor, 0x22);
+  assert.equal(decoded.fields.bootloader_major, 0x03);
+  assert.equal(decoded.fields.bootloader_minor, 0x15);
+});
+
+test("decodePentairFrame derives controller family identity from status bytes 27 and 28", () => {
+  const decoded = decodePentairFrame(
+    buildPentairFrame(0x02, [
+      0x15, 0x21, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04,
+      0x00, 0x00, 0x00, 0x80, 0x3f, 0x3f, 0x02, 0x46, 0x3e, 0x00,
+      0x00, 0x00, 0x00, 0x10, 0x00, 0xab, 0xbb, 0x17, 0x03
+    ]),
+    {
+      frameId: "frame-identity-1",
+      occurredAt: "2026-03-30T00:00:00Z"
+    }
+  );
+
+  assert.equal(decoded.fields.controller_sub_model_byte, 0x17);
+  assert.equal(decoded.fields.controller_model_byte, 0x03);
+  assert.equal(decoded.fields.controller_model_family, "intellicenter");
+  assert.equal(decoded.fields.controller_model_label, "IntelliCenter");
+  assert.deepEqual(decoded.normalizedEvents, [
+    {
+      subject: "equipment.state.controller",
+      payload: {
+        event_id: null,
+        occurred_at: "2026-03-30T00:00:00Z",
+        source: {
+          service: "splash-protocol",
+          protocol_name: "pentair_easytouch",
+          frame_id: "frame-identity-1"
+        },
+        controller_hour_24: 0x15,
+        controller_minute: 0x21,
+        water_temp_f: 0x3f,
+        air_temp_f: 0x3e,
+        solar_temp_f: 0x00,
+        controller_mode_byte: 0x04,
+        controller_mode_label: "celsius",
+        controller_sub_model_byte: 0x17,
+        controller_model_byte: 0x03,
+        controller_model_family: "intellicenter",
+        controller_model_label: "IntelliCenter",
+        heater: {
+          enabled: false
+        },
+        freeze_protection: false,
+        mode: "pool",
+        active_circuit_keys: ["pool"],
+        circuits: {
+          pool: true,
+          spa: false,
+          aux1: false,
+          aux2: false,
+          aux3: false,
+          pool_low: false,
+          pool_high: false,
+          cleaner: false,
+          feature4: false,
+          feature5: false,
+          feature6: false,
+          feature7: false,
+          feature8: false,
+          aux_extra: false
+        }
+      }
+    }
+  ]);
 });
 
 test("decodePentairFrame decodes live 0x02 pool-only and pool-plus-0x08 circuit bytes", () => {
@@ -421,6 +573,32 @@ test("pentairEasyTouchPlugin encodes a manual Remote Layout page request", () =>
   assert.equal(encoded.correlation?.kind, "transport_ack");
 });
 
+test("pentairEasyTouchPlugin encodes a controller circuit state write", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-circuit-state",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "circuit",
+        circuit_key: "feature4"
+      },
+      command_type: "set_circuit_state",
+      arguments: {
+        circuit_id: 14,
+        enabled: true
+      },
+      dry_run: false
+    },
+    {}
+  );
+
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0].bytesHex, "ff00ffa534102186020e0101a1");
+  assert.equal(encoded.correlation?.kind, "controller_ack");
+});
+
 test("pentairEasyTouchPlugin encodes a manual pump info request for Pump #1", () => {
   const encoded = pentairEasyTouchPlugin.encodeCommand(
     {
@@ -468,6 +646,143 @@ test("pentairEasyTouchPlugin encodes a manual pump info request for Pump #2", ()
 
   assert.equal(encoded.writes.length, 1);
   assert.equal(encoded.writes[0].bytesHex, "ff00ffa5341021d8010201e5");
+  assert.equal(encoded.correlation?.kind, "transport_ack");
+});
+
+test("pentairEasyTouchPlugin encodes a provisional controller datetime request", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-controller-datetime-request",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_controller_datetime",
+      arguments: {},
+      dry_run: false
+    },
+    {}
+  );
+
+  const expected = buildPentairFrameWithProtocol(0x01, 0x10, 0x21, 0xc5, [0x00]);
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0].bytesHex, Buffer.from(expected).toString("hex"));
+  assert.equal(encoded.correlation?.kind, "transport_ack");
+});
+
+test("pentairEasyTouchPlugin encodes a provisional controller datetime sync", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-controller-datetime-sync",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "sync_controller_datetime",
+      arguments: {
+        month: 4,
+        day: 23,
+        year: 26,
+        day_of_week: 4,
+        hour_24: 14,
+        minute: 37
+      },
+      dry_run: false
+    },
+    {}
+  );
+
+  const expected = buildPentairFrameWithProtocol(0x01, 0x10, 0x21, 0x85, [0x04, 0x17, 0x1a, 0x04, 0x0e, 0x25]);
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0].bytesHex, Buffer.from(expected).toString("hex"));
+  assert.equal(encoded.correlation?.kind, "transport_ack");
+});
+
+test("pentairEasyTouchPlugin encodes manual circuit configuration requests", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-circuit-config",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_circuit_config",
+      arguments: {
+        start_index: 1,
+        end_index: 3
+      },
+      dry_run: false
+    },
+    {}
+  );
+
+  const expectedFirst = buildPentairFrameWithProtocol(0x34, 0x10, 0x21, 0xcb, [0x01]);
+  const expectedLast = buildPentairFrameWithProtocol(0x34, 0x10, 0x21, 0xcb, [0x03]);
+
+  assert.equal(encoded.writes.length, 3);
+  assert.equal(encoded.writes[0].bytesHex, Buffer.from(expectedFirst).toString("hex"));
+  assert.equal(encoded.writes[2].bytesHex, Buffer.from(expectedLast).toString("hex"));
+  assert.equal(encoded.correlation?.kind, "controller_circuit_config");
+  assert.equal(encoded.correlation?.startIndex, 1);
+  assert.equal(encoded.correlation?.endIndex, 3);
+});
+
+test("pentairEasyTouchPlugin encodes manual custom name requests", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-custom-name",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_custom_name",
+      arguments: {
+        name_index: 2
+      },
+      dry_run: false
+    },
+    {}
+  );
+
+  const expected = buildPentairFrameWithProtocol(0x34, 0x10, 0x21, 0xca, [0x02]);
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0].bytesHex, Buffer.from(expected).toString("hex"));
+  assert.equal(encoded.correlation?.kind, "transport_ack");
+});
+
+test("pentairEasyTouchPlugin encodes a manual controller software version request", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-controller-software-version",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_controller_software_version",
+      arguments: {},
+      dry_run: false
+    },
+    {}
+  );
+
+  const expected = buildPentairFrameWithProtocol(0x34, 0x10, 0x21, 0xfd, []);
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0].bytesHex, Buffer.from(expected).toString("hex"));
   assert.equal(encoded.correlation?.kind, "transport_ack");
 });
 
