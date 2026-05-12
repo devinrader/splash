@@ -47,6 +47,14 @@ const CONTROLLER_CIRCUIT_BITS_3 = [
   { key: "feature8", mask: 0x02 },
   { key: "aux_extra", mask: 0x08 }
 ] as const;
+const EASYTOUCH_SCHEDULE_ACTIONS = new Set([0x11, 0x91]);
+const EASYTOUCH_SCHEDULE_MIN_PAYLOAD_LENGTH = 7;
+const EASYTOUCH_EGG_TIMER_MARKER = 25;
+const EASYTOUCH_RUN_ONCE_TYPE_MARKER = 26;
+// ASSUMPTION: Until Splash captures per-circuit EasyTouch egg-timer runtime
+// configuration separately, schedule-type 26 falls back to a platform default
+// runtime of 12 hours when computing end_time_minutes.
+const EASYTOUCH_DEFAULT_EGG_TIMER_RUNTIME_MINUTES = 720;
 
 function decodePumpConfigSlots(payload: Uint8Array): Array<Record<string, number | null>> {
   return Array.from({ length: 8 }, (_, index) => {
@@ -410,7 +418,111 @@ function calculateChecksum(bytes: Uint8Array): number {
   return [...bytes].reduce((sum, byte) => (sum + byte) & 0xffff, 0);
 }
 
+function isEasyTouchScheduleFrame(actionCode: number): boolean {
+  return EASYTOUCH_SCHEDULE_ACTIONS.has(actionCode);
+}
+
+function decodeEasyTouchSchedulePayload(actionCode: number, payload: Uint8Array): Record<string, unknown> {
+  const warnings: string[] = [];
+  const rawPayload = [...payload];
+  const payloadHex = bytesToHex(payload);
+
+  if (payload.length < EASYTOUCH_SCHEDULE_MIN_PAYLOAD_LENGTH) {
+    return {
+      controller_family: "EasyTouch",
+      frame_type: "easytouch_schedule",
+      action: actionCode,
+      raw_payload: rawPayload,
+      payload_hex: payloadHex,
+      payload_length: payload.length,
+      parse_confidence: "invalid",
+      warnings: ["EasyTouch schedule payload must contain at least 7 bytes."]
+    };
+  }
+
+  const scheduleId = payload[0] ?? null;
+  const circuitId = (payload[1] ?? 0) & 0x7f;
+  const eggTimerRunTimeMinutes = ((payload[4] ?? 0) * 60) + (payload[5] ?? 0);
+  const eggTimerActive =
+    (payload[2] ?? null) === EASYTOUCH_EGG_TIMER_MARKER &&
+    circuitId > 0 &&
+    eggTimerRunTimeMinutes !== 256;
+  const scheduleActive = !eggTimerActive && circuitId > 0;
+
+  if ((payload[1] ?? 0) !== circuitId) {
+    warnings.push("Circuit id high bit was masked off with 0x7f.");
+  }
+
+  if (eggTimerActive) {
+    return {
+      controller_family: "EasyTouch",
+      frame_type: "easytouch_egg_timer",
+      action: actionCode,
+      schedule_id: scheduleId,
+      circuit_id: circuitId,
+      active: true,
+      egg_timer_run_time_minutes: eggTimerRunTimeMinutes,
+      raw_payload: rawPayload,
+      payload_hex: payloadHex,
+      payload_length: payload.length,
+      parse_confidence: "high",
+      warnings
+    };
+  }
+
+  if (!scheduleActive) {
+    return {
+      controller_family: "EasyTouch",
+      frame_type: "easytouch_schedule",
+      action: actionCode,
+      schedule_id: scheduleId,
+      active: false,
+      raw_payload: rawPayload,
+      payload_hex: payloadHex,
+      payload_length: payload.length,
+      parse_confidence: "medium",
+      warnings: [...warnings, "Schedule inactive because circuitId is 0"]
+    };
+  }
+
+  const startTimeMinutes = ((payload[2] ?? 0) * 60) + (payload[3] ?? 0);
+  const scheduleDays = (payload[6] ?? 0) & 0x7f;
+  let scheduleType = 0;
+  let scheduleTypeLabel = "repeat";
+  let endTimeMinutes = ((payload[4] ?? 0) * 60) + (payload[5] ?? 0);
+
+  if ((payload[4] ?? null) === EASYTOUCH_RUN_ONCE_TYPE_MARKER) {
+    scheduleType = EASYTOUCH_RUN_ONCE_TYPE_MARKER;
+    scheduleTypeLabel = "run_once_or_egg_timer_controlled";
+    endTimeMinutes = startTimeMinutes + EASYTOUCH_DEFAULT_EGG_TIMER_RUNTIME_MINUTES;
+    warnings.push("Used platform default egg timer runtime because no circuit-specific egg timer runtime is known.");
+  }
+
+  return {
+    controller_family: "EasyTouch",
+    frame_type: "easytouch_schedule",
+    action: actionCode,
+    schedule_id: scheduleId,
+    circuit_id: circuitId,
+    active: true,
+    schedule_type: scheduleType,
+    schedule_type_label: scheduleTypeLabel,
+    start_time_minutes: startTimeMinutes,
+    end_time_minutes: endTimeMinutes,
+    schedule_days: scheduleDays,
+    raw_payload: rawPayload,
+    payload_hex: payloadHex,
+    payload_length: payload.length,
+    parse_confidence: "high",
+    warnings
+  };
+}
+
 function decodeMessageType(actionCode: number): string {
+  if (isEasyTouchScheduleFrame(actionCode)) {
+    return "controller_schedule";
+  }
+
   switch (actionCode) {
     case 0x0a:
       return "custom_name";
@@ -424,8 +536,6 @@ function decodeMessageType(actionCode: number): string {
       return "controller_status";
     case 0x0b:
       return "circuit_configuration";
-    case 0x11:
-      return "controller_schedule";
     case 0x18:
       return "pump_info";
     case 0x07:
@@ -458,6 +568,10 @@ function decodeUnknownFields(payload: Uint8Array): string[] {
 
 function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: number, destinationAddress: number): Record<string, unknown> {
   const payloadHex = bytesToHex(payload);
+
+  if (isEasyTouchScheduleFrame(actionCode)) {
+    return decodeEasyTouchSchedulePayload(actionCode, payload);
+  }
 
   switch (actionCode) {
     case 0x0a:
@@ -566,11 +680,6 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
           reserved_4: payload[4] ?? null
         };
       }
-    case 0x11:
-      return {
-        payload_hex: payloadHex,
-        payload_length: payload.length
-      };
     case 0x19:
       return {
         payload_hex: payloadHex,
@@ -662,9 +771,9 @@ function decodeNormalizedEvents(
             source,
             controller_hour_24: payload[0] ?? null,
             controller_minute: payload[1] ?? null,
-            water_temp_f: payload[14] ?? null,
-            air_temp_f: payload[18] ?? null,
-            solar_temp_f: payload[19] ?? null,
+            water_temp_f: decodeTemperatureReading(payload[14] ?? null, controllerModeByte).normalizedF,
+            air_temp_f: decodeTemperatureReading(payload[18] ?? null, controllerModeByte).normalizedF,
+            solar_temp_f: decodeTemperatureReading(payload[19] ?? null, controllerModeByte).normalizedF,
             controller_mode_byte: controllerModeByte,
             controller_mode_label: decodeControllerModeLabel(controllerModeByte),
             controller_sub_model_byte: payload[27] ?? null,
@@ -678,6 +787,27 @@ function decodeNormalizedEvents(
             mode: decodeControllerMode(circuits),
             active_circuit_keys: decodeActiveCircuitKeys(circuitsByte, circuitsByte2, circuitsByte3),
             circuits
+          }
+        },
+        {
+          subject: "telemetry.temperature.easytouch",
+          payload: {
+            occurred_at: occurredAt,
+            source: {
+              ...source,
+              action: actionCode,
+              label: "easytouch.action2"
+            },
+            controller: {
+              controller_id: "default",
+              controller_type: "easytouch",
+              timestamp: {
+                hour_24: payload[0] ?? null,
+                minute: payload[1] ?? null
+              }
+            },
+            temperatures: buildTemperatureTelemetryPayload(payload, controllerModeByte),
+            raw_payload: [...payload]
           }
         }
       ];
@@ -727,6 +857,64 @@ function decodeNormalizedEvents(
     default:
       return [];
   }
+}
+
+function buildTemperatureTelemetryPayload(payload: Uint8Array, controllerModeByte: number | null): Record<string, Record<string, unknown>> {
+  return {
+    pool_water: temperaturePayloadEntry(payload[14] ?? null, controllerModeByte),
+    air: temperaturePayloadEntry(payload[18] ?? null, controllerModeByte),
+    solar: temperaturePayloadEntry(payload[19] ?? null, controllerModeByte)
+  };
+}
+
+function temperaturePayloadEntry(rawByte: number | null, controllerModeByte: number | null): Record<string, unknown> {
+  const reading = decodeTemperatureReading(rawByte, controllerModeByte);
+  return {
+    value: reading.originalValue,
+    unit: reading.originalUnit,
+    original_value: reading.originalValue,
+    original_unit: reading.originalUnit,
+    normalized_f: reading.normalizedF,
+    normalized_c: reading.normalizedC,
+    raw_byte: rawByte
+  };
+}
+
+function decodeTemperatureReading(rawByte: number | null, controllerModeByte: number | null): {
+  originalValue: number | null;
+  originalUnit: "F" | "C";
+  normalizedF: number | null;
+  normalizedC: number | null;
+} {
+  const celsiusMode = controllerModeByte !== null && (controllerModeByte & 0x04) !== 0;
+  if (rawByte === null) {
+    return {
+      originalValue: null,
+      originalUnit: celsiusMode ? "C" : "F",
+      normalizedF: null,
+      normalizedC: null
+    };
+  }
+
+  if (celsiusMode) {
+    return {
+      originalValue: rawByte,
+      originalUnit: "C",
+      normalizedF: roundTemperature(((rawByte * 9) / 5) + 32),
+      normalizedC: roundTemperature(rawByte)
+    };
+  }
+
+  return {
+    originalValue: rawByte,
+    originalUnit: "F",
+    normalizedF: roundTemperature(rawByte),
+    normalizedC: roundTemperature((rawByte - 32) * (5 / 9))
+  };
+}
+
+function roundTemperature(value: number): number {
+  return Math.round(value * 10) / 10;
 }
 
 export function decodePentairFrame(
@@ -1056,6 +1244,33 @@ function encodePentairCommand(intent: NormalizedCommandIntent, protocolConfig: R
     };
   }
 
+  if (intent.command_type === "request_controller_schedule") {
+    const scheduleId = intent.arguments.schedule_id;
+    if (typeof scheduleId !== "number" || !Number.isInteger(scheduleId) || scheduleId < 1 || scheduleId > 12) {
+      throw new ProtocolCommandError(
+        "Pentair controller schedule requests require integer schedule_id between 1 and 12.",
+        "command_arguments_invalid"
+      );
+    }
+
+    const bytes = buildPentairFrame(0x34, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0xd1, [scheduleId]);
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "transport_ack"
+      }
+    };
+  }
+
   if (intent.command_type === "request_controller_datetime") {
     const bytes = buildPentairFrame(0x01, CONTROLLER_ADDRESS, SPLASH_REMOTE_ADDRESS, 0xc5, [0x00]);
     return {
@@ -1241,7 +1456,7 @@ function encodePentairCommand(intent: NormalizedCommandIntent, protocolConfig: R
 
   if (intent.command_type !== "set_speed") {
     throw new ProtocolCommandError(
-      "pentair_easytouch only supports controller-circuit set_speed and set_circuit_state, manual circuit config requests, manual custom name requests, manual controller software-version requests, controller date/time requests and sync, manual pump info requests, manual pump config writes, manual Remote Layout requests, and Explorer raw frame sends in the current command slice.",
+      "pentair_easytouch only supports controller-circuit set_speed and set_circuit_state, manual circuit config requests, manual controller schedule requests, manual custom name requests, manual controller software-version requests, controller date/time requests and sync, manual pump info requests, manual pump config writes, manual Remote Layout requests, and Explorer raw frame sends in the current command slice.",
       "unsupported_command_encode"
     );
   }

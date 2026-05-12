@@ -55,14 +55,22 @@ export interface PlatformStatusResponse {
 }
 
 export interface ControllerScheduleRecord {
-  id?: string;
-  name?: string | null;
-  action?: string | null;
-  days?: string | null;
-  time?: string | null;
-  season?: string | null;
-  status?: string | null;
-  next_run?: string | null;
+  controller_family: "EasyTouch";
+  frame_type: "easytouch_schedule" | "easytouch_egg_timer";
+  action: number | null;
+  schedule_id: number | null;
+  circuit_id?: number | null;
+  active: boolean | null;
+  schedule_type?: number | null;
+  schedule_type_label?: string | null;
+  start_time_minutes?: number | null;
+  end_time_minutes?: number | null;
+  schedule_days?: number | null;
+  egg_timer_run_time_minutes?: number | null;
+  parse_confidence: "high" | "medium" | "invalid" | null;
+  warnings: string[];
+  raw_payload: number[];
+  updated_at: string | null;
 }
 
 export interface ControllerSchedulesData {

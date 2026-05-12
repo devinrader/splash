@@ -5,6 +5,7 @@ export interface ControllerLatestState {
   controllerMinute: number | null;
   controllerDateReply: ControllerDatetimeReply | null;
   controllerSoftwareVersionReply: ControllerSoftwareVersionReply | null;
+  controllerSchedules: Record<string, ControllerScheduleRecord>;
   controllerScheduleObservations: ControllerScheduleObservation[];
   controllerSubModelByte: number | null;
   controllerModelByte: number | null;
@@ -102,13 +103,51 @@ export interface ControllerScheduleObservationView {
   updated_at: string | null;
 }
 
+export interface ControllerScheduleRecord {
+  controllerFamily: "EasyTouch";
+  frameType: "easytouch_schedule" | "easytouch_egg_timer";
+  action: number | null;
+  scheduleId: number | null;
+  circuitId: number | null;
+  active: boolean | null;
+  scheduleType: number | null;
+  scheduleTypeLabel: string | null;
+  startTimeMinutes: number | null;
+  endTimeMinutes: number | null;
+  scheduleDays: number | null;
+  eggTimerRunTimeMinutes: number | null;
+  parseConfidence: "high" | "medium" | "invalid" | null;
+  warnings: string[];
+  rawPayload: number[];
+  updatedAt: string | null;
+}
+
+export interface ControllerScheduleRecordView {
+  controller_family: "EasyTouch";
+  frame_type: "easytouch_schedule" | "easytouch_egg_timer";
+  action: number | null;
+  schedule_id: number | null;
+  circuit_id?: number | null;
+  active: boolean | null;
+  schedule_type?: number | null;
+  schedule_type_label?: string | null;
+  start_time_minutes?: number | null;
+  end_time_minutes?: number | null;
+  schedule_days?: number | null;
+  egg_timer_run_time_minutes?: number | null;
+  parse_confidence: "high" | "medium" | "invalid" | null;
+  warnings: string[];
+  raw_payload: number[];
+  updated_at: string | null;
+}
+
 export interface ControllerSchedulesView {
   source: "controller_native";
   controller_type: "easytouch";
   status: "available" | "unavailable" | "stale";
   message: string;
   last_checked: string | null;
-  schedules: Array<Record<string, unknown>>;
+  schedules: ControllerScheduleRecordView[];
   observed_payloads: ControllerScheduleObservationView[];
 }
 
@@ -143,6 +182,7 @@ export class LatestStateProjection {
     controllerMinute: null,
     controllerDateReply: null,
     controllerSoftwareVersionReply: null,
+    controllerSchedules: {},
     controllerScheduleObservations: [],
     controllerSubModelByte: null,
     controllerModelByte: null,
@@ -181,6 +221,7 @@ export class LatestStateProjection {
       controllerDateReply: this.controller.controllerDateReply == null ? null : { ...this.controller.controllerDateReply },
       controllerSoftwareVersionReply:
         this.controller.controllerSoftwareVersionReply == null ? null : { ...this.controller.controllerSoftwareVersionReply },
+      controllerSchedules: { ...this.controller.controllerSchedules },
       controllerScheduleObservations: [...this.controller.controllerScheduleObservations],
       controllerSubModelByte: readNumber(payload, "controller_sub_model_byte"),
       controllerModelByte: readNumber(payload, "controller_model_byte"),
@@ -266,9 +307,43 @@ export class LatestStateProjection {
       payloadLength: readNumber(payload, "payload_length"),
       updatedAt: readString(payload, "occurred_at")
     };
+    const scheduleId = readNumber(payload, "schedule_id");
+    const frameType = readString(payload, "frame_type");
+    const parseConfidence = readParseConfidence(payload, "parse_confidence");
+    const rawPayload = readNumberArray(payload, "raw_payload");
+    const warnings = readStringArray(payload, "warnings");
+    const controllerFamily = readString(payload, "controller_family");
+    const nextSchedules = { ...this.controller.controllerSchedules };
+
+    if (
+      scheduleId !== null &&
+      controllerFamily === "EasyTouch" &&
+      (frameType === "easytouch_schedule" || frameType === "easytouch_egg_timer") &&
+      parseConfidence !== "invalid"
+    ) {
+      nextSchedules[String(scheduleId)] = {
+        controllerFamily: "EasyTouch",
+        frameType,
+        action: readNumber(payload, "action"),
+        scheduleId,
+        circuitId: readNumber(payload, "circuit_id"),
+        active: readBoolean(payload, "active"),
+        scheduleType: readNumber(payload, "schedule_type"),
+        scheduleTypeLabel: readString(payload, "schedule_type_label"),
+        startTimeMinutes: readNumber(payload, "start_time_minutes"),
+        endTimeMinutes: readNumber(payload, "end_time_minutes"),
+        scheduleDays: readNumber(payload, "schedule_days"),
+        eggTimerRunTimeMinutes: readNumber(payload, "egg_timer_run_time_minutes"),
+        parseConfidence,
+        warnings,
+        rawPayload,
+        updatedAt: readString(payload, "occurred_at")
+      };
+    }
 
     this.controller = {
       ...this.controller,
+      controllerSchedules: nextSchedules,
       controllerScheduleObservations: [nextObservation, ...this.controller.controllerScheduleObservations].slice(0, 4)
     };
 
@@ -398,19 +473,37 @@ export class LatestStateProjection {
   }
 
   getControllerSchedulesView(): ControllerSchedulesView {
+    const schedules = Object.values(this.controller.controllerSchedules)
+      .sort((left, right) => (left.scheduleId ?? 0) - (right.scheduleId ?? 0))
+      .map((value) => this.toControllerScheduleView(value));
     const observedPayloads = this.controller.controllerScheduleObservations.map((value) => ({
       payload_hex: value.payloadHex,
       payload_length: value.payloadLength,
       updated_at: value.updatedAt
     }));
-    const lastChecked = observedPayloads[0]?.updated_at ?? null;
+    const lastChecked =
+      schedules.at(-1)?.updated_at ??
+      observedPayloads[0]?.updated_at ??
+      null;
+
+    if (schedules.length > 0) {
+      return {
+        source: "controller_native",
+        controller_type: "easytouch",
+        status: "available",
+        message: "Validated EasyTouch controller schedule frames observed.",
+        last_checked: lastChecked,
+        schedules,
+        observed_payloads: observedPayloads
+      };
+    }
 
     if (observedPayloads.length > 0) {
       return {
         source: "controller_native",
         controller_type: "easytouch",
         status: "unavailable",
-        message: "Observed EasyTouch schedule payloads, but field mapping is not yet validated.",
+        message: "Observed EasyTouch schedule payloads, but no validated schedule records are available yet.",
         last_checked: lastChecked,
         schedules: [],
         observed_payloads: observedPayloads
@@ -492,6 +585,44 @@ export class LatestStateProjection {
       ])
     );
   }
+
+  private toControllerScheduleView(value: ControllerScheduleRecord): ControllerScheduleRecordView {
+    const view: ControllerScheduleRecordView = {
+      controller_family: value.controllerFamily,
+      frame_type: value.frameType,
+      action: value.action,
+      schedule_id: value.scheduleId,
+      active: value.active,
+      parse_confidence: value.parseConfidence,
+      warnings: [...value.warnings],
+      raw_payload: [...value.rawPayload],
+      updated_at: value.updatedAt
+    };
+
+    if (value.circuitId !== null) {
+      view.circuit_id = value.circuitId;
+    }
+    if (value.scheduleType !== null) {
+      view.schedule_type = value.scheduleType;
+    }
+    if (value.scheduleTypeLabel !== null) {
+      view.schedule_type_label = value.scheduleTypeLabel;
+    }
+    if (value.startTimeMinutes !== null) {
+      view.start_time_minutes = value.startTimeMinutes;
+    }
+    if (value.endTimeMinutes !== null) {
+      view.end_time_minutes = value.endTimeMinutes;
+    }
+    if (value.scheduleDays !== null) {
+      view.schedule_days = value.scheduleDays;
+    }
+    if (value.eggTimerRunTimeMinutes !== null) {
+      view.egg_timer_run_time_minutes = value.eggTimerRunTimeMinutes;
+    }
+
+    return view;
+  }
 }
 
 function readNumber(payload: Record<string, unknown>, key: string): number | null {
@@ -525,6 +656,14 @@ function readNumberArray(payload: Record<string, unknown>, key: string): number[
   }
 
   return value.filter((entry): entry is number => typeof entry === "number");
+}
+
+function readParseConfidence(
+  payload: Record<string, unknown>,
+  key: string
+): "high" | "medium" | "invalid" | null {
+  const value = payload[key];
+  return value === "high" || value === "medium" || value === "invalid" ? value : null;
 }
 
 function readBooleanRecord(payload: Record<string, unknown>, key: string): Record<string, boolean> {

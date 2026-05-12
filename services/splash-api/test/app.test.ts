@@ -129,6 +129,31 @@ test("app publishes a manual pump info request intent for Protocol Explorer", as
   assert.equal((session.published[0].payload.arguments as { pump_slot: number }).pump_slot, 2);
 });
 
+test("app publishes a manual controller schedule request intent for Protocol Explorer", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  });
+  const session = new FakeSession();
+
+  const result = await app.publishControllerScheduleRequest({ scheduleId: 5 }, session);
+
+  assert.ok(result.commandId);
+  assert.equal(session.published.length, 1);
+  assert.equal(session.published[0].subject, "protocol.command.intent");
+  assert.equal(session.published[0].payload.command_type, "request_controller_schedule");
+  assert.deepEqual(session.published[0].payload.arguments, {
+    schedule_id: 5
+  });
+});
+
 test("app publishes a manual circuit config discovery intent for Protocol Explorer", async () => {
   const app = new App({
     config: {
@@ -869,8 +894,22 @@ test("app records observed controller schedule payloads without inventing fields
     message_type: "controller_schedule",
     action_code: "0x11",
     fields: {
-      payload_hex: "019b0000000000",
-      payload_length: 7
+      controller_family: "EasyTouch",
+      frame_type: "easytouch_schedule",
+      action: 17,
+      schedule_id: 1,
+      circuit_id: 6,
+      active: true,
+      schedule_type: 0,
+      schedule_type_label: "repeat",
+      start_time_minutes: 480,
+      end_time_minutes: 1020,
+      schedule_days: 127,
+      raw_payload: [1, 6, 8, 0, 17, 0, 127],
+      payload_hex: "0106080011007f",
+      payload_length: 7,
+      parse_confidence: "high",
+      warnings: []
     }
   });
 
@@ -880,13 +919,31 @@ test("app records observed controller schedule payloads without inventing fields
   assert.deepEqual(app.getControllerSchedules(), {
     source: "controller_native",
     controller_type: "easytouch",
-    status: "unavailable",
-    message: "Observed EasyTouch schedule payloads, but field mapping is not yet validated.",
+    status: "available",
+    message: "Validated EasyTouch controller schedule frames observed.",
     last_checked: "2026-05-12T01:52:00Z",
-    schedules: [],
+    schedules: [
+      {
+        controller_family: "EasyTouch",
+        frame_type: "easytouch_schedule",
+        action: 17,
+        schedule_id: 1,
+        circuit_id: 6,
+        active: true,
+        schedule_type: 0,
+        schedule_type_label: "repeat",
+        start_time_minutes: 480,
+        end_time_minutes: 1020,
+        schedule_days: 127,
+        parse_confidence: "high",
+        warnings: [],
+        raw_payload: [1, 6, 8, 0, 17, 0, 127],
+        updated_at: "2026-05-12T01:52:00Z"
+      }
+    ],
     observed_payloads: [
       {
-        payload_hex: "019b0000000000",
+        payload_hex: "0106080011007f",
         payload_length: 7,
         updated_at: "2026-05-12T01:52:00Z"
       }
@@ -1081,6 +1138,98 @@ test("app auto-requests custom name bank indexes once when controller state firs
     customNameRequests.map((entry) => (entry.payload.arguments as { name_index: number }).name_index),
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
   );
+  const scheduleRequests = published.filter(
+    (entry) => entry.subject === "protocol.command.intent" && entry.payload.command_type === "request_controller_schedule"
+  );
+  assert.equal(scheduleRequests.length, 12);
+  assert.deepEqual(
+    scheduleRequests.map((entry) => (entry.payload.arguments as { schedule_id: number }).schedule_id),
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  );
+});
+
+test("app does not repeat startup schedule warmup after validated schedule cache is populated", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  }) as unknown as {
+    runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
+  };
+
+  const published: Array<{ subject: string; payload: Record<string, unknown> }> = [];
+  const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+  const session: MessagingSession & {
+    emit(subject: string, payload: Record<string, unknown>): Promise<void>;
+  } = {
+    async publish(subject, payload) {
+      published.push({ subject, payload });
+    },
+    subscribe(subject, handler) {
+      const list = handlers.get(subject) ?? [];
+      list.push(handler);
+      handlers.set(subject, list);
+    },
+    async emit(subject, payload) {
+      for (const handler of handlers.get(subject) ?? []) {
+        await handler(payload);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  const running = app.runNatsSession(session, controller.signal);
+
+  await session.emit("equipment.state.controller", {
+    controller_hour_24: 14,
+    controller_minute: 5,
+    occurred_at: "2026-03-30T00:00:00Z"
+  });
+
+  await session.emit("protocol.frame.decoded", {
+    frame_id: "frame-schedule-1",
+    decoded_at: "2026-05-12T01:52:00Z",
+    message_type: "controller_schedule",
+    action_code: "0x11",
+    fields: {
+      controller_family: "EasyTouch",
+      frame_type: "easytouch_schedule",
+      action: 17,
+      schedule_id: 1,
+      circuit_id: 6,
+      active: true,
+      schedule_type: 0,
+      schedule_type_label: "repeat",
+      start_time_minutes: 480,
+      end_time_minutes: 1020,
+      schedule_days: 127,
+      raw_payload: [1, 6, 8, 0, 17, 0, 127],
+      payload_hex: "0106080011007f",
+      payload_length: 7,
+      parse_confidence: "high",
+      warnings: []
+    }
+  });
+
+  await session.emit("equipment.state.controller", {
+    controller_hour_24: 14,
+    controller_minute: 6,
+    occurred_at: "2026-03-30T00:00:05Z"
+  });
+
+  controller.abort();
+  await running;
+
+  const scheduleRequests = published.filter(
+    (entry) => entry.subject === "protocol.command.intent" && entry.payload.command_type === "request_controller_schedule"
+  );
+  assert.equal(scheduleRequests.length, 12);
 });
 
 test("app saves protocol frame bundles from recent observed frame traffic", async () => {

@@ -223,6 +223,36 @@ test("decodePentairFrame emits partial normalized events for trusted message fam
     feature8: false,
     aux_extra: false
   });
+  assert.equal(controller.normalizedEvents?.[1]?.subject, "telemetry.temperature.easytouch");
+  assert.deepEqual(controller.normalizedEvents?.[1]?.payload.temperatures, {
+    pool_water: {
+      value: 63,
+      unit: "F",
+      original_value: 63,
+      original_unit: "F",
+      normalized_f: 63,
+      normalized_c: 17.2,
+      raw_byte: 63
+    },
+    air: {
+      value: 73,
+      unit: "F",
+      original_value: 73,
+      original_unit: "F",
+      normalized_f: 73,
+      normalized_c: 22.8,
+      raw_byte: 73
+    },
+    solar: {
+      value: 32,
+      unit: "F",
+      original_value: 32,
+      original_unit: "F",
+      normalized_f: 32,
+      normalized_c: 0,
+      raw_byte: 32
+    }
+  });
 
   assert.equal(pump.normalizedEvents?.[0].subject, "equipment.state.pump");
   assert.equal(pump.normalizedEvents?.[0].payload.rpm, 2300);
@@ -232,6 +262,50 @@ test("decodePentairFrame emits partial normalized events for trusted message fam
   assert.equal(chlorinator.normalizedEvents?.[0].subject, "equipment.state.chlorinator");
   assert.equal(chlorinator.normalizedEvents?.[0].payload.salt_ppm, 3100);
   assert.equal(chlorinator.normalizedEvents?.[0].payload.output_percent, 40);
+});
+
+test("decodePentairFrame normalizes controller temperatures from celsius-mode action 0x02 frames", () => {
+  const controller = decodePentairFrame(buildPentairFrame(0x02, [
+    0x07, 0x15, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04,
+    0x00, 0x00, 0x00, 0x00, 28, 0x00, 0x01, 0x02, 24, 35,
+    0x00, 0x00, 0x06
+  ]), {
+    frameId: "frame-celsius",
+    occurredAt: "2026-05-12T12:00:00Z"
+  });
+
+  assert.equal(controller.normalizedEvents?.[0]?.payload.water_temp_f, 82.4);
+  assert.equal(controller.normalizedEvents?.[0]?.payload.air_temp_f, 75.2);
+  assert.equal(controller.normalizedEvents?.[0]?.payload.solar_temp_f, 95);
+  assert.deepEqual(controller.normalizedEvents?.[1]?.payload.temperatures, {
+    pool_water: {
+      value: 28,
+      unit: "C",
+      original_value: 28,
+      original_unit: "C",
+      normalized_f: 82.4,
+      normalized_c: 28,
+      raw_byte: 28
+    },
+    air: {
+      value: 24,
+      unit: "C",
+      original_value: 24,
+      original_unit: "C",
+      normalized_f: 75.2,
+      normalized_c: 24,
+      raw_byte: 24
+    },
+    solar: {
+      value: 35,
+      unit: "C",
+      original_value: 35,
+      original_unit: "C",
+      normalized_f: 95,
+      normalized_c: 35,
+      raw_byte: 35
+    }
+  });
 });
 
 test("decodePentairFrame does not emit normalized pump state for controller poll frames", () => {
@@ -335,9 +409,9 @@ test("decodePentairFrame derives controller family identity from status bytes 27
         },
         controller_hour_24: 0x15,
         controller_minute: 0x21,
-        water_temp_f: 0x3f,
-        air_temp_f: 0x3e,
-        solar_temp_f: 0x00,
+        water_temp_f: 145.4,
+        air_temp_f: 143.6,
+        solar_temp_f: 32,
         controller_mode_byte: 0x04,
         controller_mode_label: "celsius",
         controller_sub_model_byte: 0x17,
@@ -366,6 +440,61 @@ test("decodePentairFrame derives controller family identity from status bytes 27
           feature8: false,
           aux_extra: false
         }
+      }
+    },
+    {
+      subject: "telemetry.temperature.easytouch",
+      payload: {
+        occurred_at: "2026-03-30T00:00:00Z",
+        source: {
+          service: "splash-protocol",
+          protocol_name: "pentair_easytouch",
+          frame_id: "frame-identity-1",
+          action: 0x02,
+          label: "easytouch.action2"
+        },
+        controller: {
+          controller_id: "default",
+          controller_type: "easytouch",
+          timestamp: {
+            hour_24: 0x15,
+            minute: 0x21
+          }
+        },
+        temperatures: {
+          pool_water: {
+            value: 0x3f,
+            unit: "C",
+            original_value: 0x3f,
+            original_unit: "C",
+            normalized_f: 145.4,
+            normalized_c: 63,
+            raw_byte: 0x3f
+          },
+          air: {
+            value: 0x3e,
+            unit: "C",
+            original_value: 0x3e,
+            original_unit: "C",
+            normalized_f: 143.6,
+            normalized_c: 62,
+            raw_byte: 0x3e
+          },
+          solar: {
+            value: 0x00,
+            unit: "C",
+            original_value: 0x00,
+            original_unit: "C",
+            normalized_f: 32,
+            normalized_c: 0,
+            raw_byte: 0x00
+          }
+        },
+        raw_payload: [
+          0x15, 0x21, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04,
+          0x00, 0x00, 0x00, 0x80, 0x3f, 0x3f, 0x02, 0x46, 0x3e, 0x00,
+          0x00, 0x00, 0x00, 0x10, 0x00, 0xab, 0xbb, 0x17, 0x03
+        ]
       }
     }
   ]);
@@ -518,17 +647,120 @@ test("decodePentairFrame classifies intellichlor framed traffic generically", ()
   assert.deepEqual(decoded.normalizedEvents, []);
 });
 
-test("decodePentairFrame classifies EasyTouch schedule payloads without inventing fields", () => {
-  const payload = [0x01, 0x9b, 0x00, 0x00, 0x00, 0x00, 0x00];
+test("decodePentairFrame classifies EasyTouch action 17 as a schedule frame", () => {
+  const payload = [0x01, 0x06, 0x08, 0x00, 0x11, 0x00, 0x7f];
   const decoded = decodePentairFrame(buildPentairFrameWithAddresses(0x10, 0x21, 0x11, payload));
 
   assert.equal(decoded.messageType, "controller_schedule");
   assert.equal(decoded.actionCode, "0x11");
   assert.deepEqual(decoded.fields, {
-    payload_hex: "019b0000000000",
+    controller_family: "EasyTouch",
+    frame_type: "easytouch_schedule",
+    action: 17,
+    schedule_id: 1,
+    circuit_id: 6,
+    active: true,
+    schedule_type: 0,
+    schedule_type_label: "repeat",
+    start_time_minutes: 480,
+    end_time_minutes: 1020,
+    schedule_days: 127,
+    raw_payload: [1, 6, 8, 0, 17, 0, 127],
+    payload_hex: "0106080011007f",
     payload_length: 7
+    ,
+    parse_confidence: "high",
+    warnings: []
   });
   assert.deepEqual(decoded.normalizedEvents, []);
+});
+
+test("decodePentairFrame classifies EasyTouch action 145 as a schedule frame", () => {
+  const payload = [0x02, 0x06, 0x09, 0x1e, 0x11, 0x2d, 0x3e];
+  const decoded = decodePentairFrame(buildPentairFrameWithAddresses(0x10, 0x21, 0x91, payload));
+
+  assert.equal(decoded.messageType, "controller_schedule");
+  assert.equal(decoded.actionCode, "0x91");
+  assert.equal(decoded.fields.action, 145);
+  assert.equal(decoded.fields.frame_type, "easytouch_schedule");
+});
+
+test("decodePentairFrame does not classify EasyTouch action 30 as a schedule frame", () => {
+  const decoded = decodePentairFrame(buildPentairFrameWithAddresses(0x10, 0x21, 0x1e, [0x03, 0x01, 0x02]));
+
+  assert.notEqual(decoded.messageType, "controller_schedule");
+});
+
+test("decodePentairFrame returns an invalid parse result for short EasyTouch schedule payloads", () => {
+  const decoded = decodePentairFrame(buildPentairFrameWithAddresses(0x10, 0x21, 0x11, [0x01, 0x06, 0x08]));
+
+  assert.equal(decoded.messageType, "controller_schedule");
+  assert.deepEqual(decoded.fields, {
+    controller_family: "EasyTouch",
+    frame_type: "easytouch_schedule",
+    action: 17,
+    raw_payload: [1, 6, 8],
+    payload_hex: "010608",
+    payload_length: 3,
+    parse_confidence: "invalid",
+    warnings: ["EasyTouch schedule payload must contain at least 7 bytes."]
+  });
+});
+
+test("decodePentairFrame decodes run-once marker schedules using the platform default egg timer runtime", () => {
+  const decoded = decodePentairFrame(buildPentairFrameWithAddresses(0x10, 0x21, 0x11, [0x03, 0x06, 0x06, 0x1e, 0x1a, 0x00, 0x15]));
+
+  assert.equal(decoded.fields.schedule_type, 26);
+  assert.equal(decoded.fields.schedule_type_label, "run_once_or_egg_timer_controlled");
+  assert.equal(decoded.fields.start_time_minutes, 390);
+  assert.equal(decoded.fields.end_time_minutes, 1110);
+  assert.deepEqual(decoded.fields.warnings, [
+    "Used platform default egg timer runtime because no circuit-specific egg timer runtime is known."
+  ]);
+});
+
+test("decodePentairFrame decodes EasyTouch egg timer frames", () => {
+  const decoded = decodePentairFrame(buildPentairFrameWithAddresses(0x10, 0x21, 0x11, [0x01, 0x06, 0x19, 0x00, 0x02, 0x00, 0x00]));
+
+  assert.deepEqual(decoded.fields, {
+    controller_family: "EasyTouch",
+    frame_type: "easytouch_egg_timer",
+    action: 17,
+    schedule_id: 1,
+    circuit_id: 6,
+    active: true,
+    egg_timer_run_time_minutes: 120,
+    raw_payload: [1, 6, 25, 0, 2, 0, 0],
+    payload_hex: "01061900020000",
+    payload_length: 7,
+    parse_confidence: "high",
+    warnings: []
+  });
+});
+
+test("decodePentairFrame masks the EasyTouch circuit id high bit", () => {
+  const decoded = decodePentairFrame(buildPentairFrameWithAddresses(0x10, 0x21, 0x11, [0x01, 0x86, 0x08, 0x00, 0x11, 0x00, 0xff]));
+
+  assert.equal(decoded.fields.circuit_id, 6);
+  assert.equal(decoded.fields.schedule_days, 127);
+  assert.deepEqual(decoded.fields.warnings, ["Circuit id high bit was masked off with 0x7f."]);
+});
+
+test("decodePentairFrame decodes circuit id 0 as an inactive EasyTouch schedule", () => {
+  const decoded = decodePentairFrame(buildPentairFrameWithAddresses(0x10, 0x21, 0x11, [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]));
+
+  assert.deepEqual(decoded.fields, {
+    controller_family: "EasyTouch",
+    frame_type: "easytouch_schedule",
+    action: 17,
+    schedule_id: 1,
+    active: false,
+    raw_payload: [1, 0, 0, 0, 0, 0, 0],
+    payload_hex: "01000000000000",
+    payload_length: 7,
+    parse_confidence: "medium",
+    warnings: ["Schedule inactive because circuitId is 0"]
+  });
 });
 
 test("pentairEasyTouchPlugin encodes the milestone-1 controller circuit baseline request for set_speed", () => {
@@ -659,6 +891,31 @@ test("pentairEasyTouchPlugin encodes a manual pump info request for Pump #2", ()
 
   assert.equal(encoded.writes.length, 1);
   assert.equal(encoded.writes[0].bytesHex, "ff00ffa5341021d8010201e5");
+  assert.equal(encoded.correlation?.kind, "transport_ack");
+});
+
+test("pentairEasyTouchPlugin encodes a manual controller schedule request", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-controller-schedule",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_controller_schedule",
+      arguments: {
+        schedule_id: 5
+      },
+      dry_run: false
+    },
+    {}
+  );
+
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0].bytesHex, "ff00ffa5341021d1010501e1");
   assert.equal(encoded.correlation?.kind, "transport_ack");
 });
 

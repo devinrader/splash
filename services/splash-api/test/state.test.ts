@@ -179,7 +179,7 @@ test("projection exposes controller schedule visibility as unavailable until fie
     source: "controller_native",
     controller_type: "easytouch",
     status: "unavailable",
-    message: "Observed EasyTouch schedule payloads, but field mapping is not yet validated.",
+    message: "Observed EasyTouch schedule payloads, but no validated schedule records are available yet.",
     last_checked: "2026-05-12T01:50:00Z",
     schedules: [],
     observed_payloads: [
@@ -187,6 +187,64 @@ test("projection exposes controller schedule visibility as unavailable until fie
         payload_hex: "019b0000000000",
         payload_length: 7,
         updated_at: "2026-05-12T01:50:00Z"
+      }
+    ]
+  });
+});
+
+test("projection exposes validated EasyTouch schedule records when decoded fields are available", () => {
+  const projection = new LatestStateProjection();
+
+  const updated = projection.updateControllerScheduleObservation({
+    controller_family: "EasyTouch",
+    frame_type: "easytouch_schedule",
+    action: 17,
+    schedule_id: 1,
+    circuit_id: 6,
+    active: true,
+    schedule_type: 0,
+    schedule_type_label: "repeat",
+    start_time_minutes: 480,
+    end_time_minutes: 1020,
+    schedule_days: 127,
+    raw_payload: [1, 6, 8, 0, 17, 0, 127],
+    payload_hex: "0106080011007f",
+    payload_length: 7,
+    parse_confidence: "high",
+    warnings: [],
+    occurred_at: "2026-05-12T01:55:00Z"
+  });
+
+  assert.deepEqual(updated, {
+    source: "controller_native",
+    controller_type: "easytouch",
+    status: "available",
+    message: "Validated EasyTouch controller schedule frames observed.",
+    last_checked: "2026-05-12T01:55:00Z",
+    schedules: [
+      {
+        controller_family: "EasyTouch",
+        frame_type: "easytouch_schedule",
+        action: 17,
+        schedule_id: 1,
+        circuit_id: 6,
+        active: true,
+        schedule_type: 0,
+        schedule_type_label: "repeat",
+        start_time_minutes: 480,
+        end_time_minutes: 1020,
+        schedule_days: 127,
+        parse_confidence: "high",
+        warnings: [],
+        raw_payload: [1, 6, 8, 0, 17, 0, 127],
+        updated_at: "2026-05-12T01:55:00Z"
+      }
+    ],
+    observed_payloads: [
+      {
+        payload_hex: "0106080011007f",
+        payload_length: 7,
+        updated_at: "2026-05-12T01:55:00Z"
       }
     ]
   });

@@ -41,6 +41,7 @@ export interface HttpHandlers {
   createProtocolPrompt(input: ProtocolPromptInput): ProtocolPrompt;
   publishRemoteLayoutRequest(input: { pageIndex: number }): Promise<{ commandId: string }>;
   publishPumpInfoRequest(input: { pumpSlot: number }): Promise<{ commandId: string }>;
+  publishControllerScheduleRequest(input: { scheduleId: number }): Promise<{ commandId: string }>;
   publishCircuitConfigRequest(input: { startIndex: number; endIndex: number }): Promise<{ commandId: string }>;
   publishCustomNameRequest(input: { nameIndex: number }): Promise<{ commandId: string }>;
   publishControllerSoftwareVersionRequest(): Promise<{ commandId: string }>;
@@ -219,6 +220,20 @@ export class LocalHttpServer implements HttpServer {
         const body = await readJsonBody(req);
         const result = await this.handlers.publishPumpInfoRequest({
           pumpSlot: readPumpSlot(body)
+        });
+        return json(req, res, 202, {
+          data: {
+            command_id: result.commandId,
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      if (req.method === "POST" && req.url === "/protocol/controller-schedule/request") {
+        const body = await readJsonBody(req);
+        const result = await this.handlers.publishControllerScheduleRequest({
+          scheduleId: readScheduleIndex(body)
         });
         return json(req, res, 202, {
           data: {
@@ -485,6 +500,15 @@ function readPumpSlot(body: Record<string, unknown>): number {
   }
 
   return pumpSlot;
+}
+
+function readScheduleIndex(body: Record<string, unknown>): number {
+  const scheduleId = body.schedule_id;
+  if (typeof scheduleId !== "number" || !Number.isInteger(scheduleId) || scheduleId < 1 || scheduleId > 12) {
+    throw new HttpRequestError("Controller schedule request requires integer schedule_id between 1 and 12.");
+  }
+
+  return scheduleId;
 }
 
 function readCircuitConfigRange(body: Record<string, unknown>): { startIndex: number; endIndex: number } {

@@ -72,10 +72,11 @@ test("protocol runtime publishes decoded and normalized output for live serial c
     byte_count: 16
   });
 
-  assert.equal(session.published.length, 3);
+  assert.equal(session.published.length, 4);
   assert.equal(session.published[0].subject, "protocol.frame.raw");
   assert.equal(session.published[1].subject, "protocol.frame.decoded");
   assert.equal(session.published[2].subject, "equipment.state.controller");
+  assert.equal(session.published[3].subject, "telemetry.temperature.easytouch");
 });
 
 test("protocol runtime publishes unidentified byte diagnostics for discarded receive bytes", async () => {
@@ -100,6 +101,7 @@ test("protocol runtime publishes unidentified byte diagnostics for discarded rec
   assert.equal(session.published[1]?.subject, "protocol.frame.raw");
   assert.equal(session.published[2]?.subject, "protocol.frame.decoded");
   assert.equal(session.published[3]?.subject, "equipment.state.controller");
+  assert.equal(session.published[4]?.subject, "telemetry.temperature.easytouch");
 });
 
 test("protocol runtime publishes buffered byte diagnostics for partial receive state", async () => {

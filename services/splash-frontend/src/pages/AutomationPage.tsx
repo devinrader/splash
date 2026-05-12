@@ -3,7 +3,7 @@ import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { fetchControllerSchedules } from "../api";
 import { Card } from "../components/mockUi";
 import { AUTOMATION_TABS, getActiveAutomationTab } from "../navigation";
-import type { ControllerSchedulesData } from "../types";
+import type { ControllerScheduleRecord, ControllerSchedulesData } from "../types";
 
 const AUTOMATION_SUMMARY = {
   schedules: 4,
@@ -47,6 +47,73 @@ const LOG_ROWS = [
   { when: "Today 9:00 AM", source: "Rule", result: "Rain response suggestion published", detail: "Task created for chemistry retest after forecasted rain." },
   { when: "Yesterday 7:30 PM", source: "Schedule", result: "Evening Lights executed", detail: "Controller-managed lighting schedule completed successfully." }
 ];
+
+function formatMinutesAfterMidnight(value: number | null | undefined): string {
+  if (typeof value !== "number") {
+    return "Unknown";
+  }
+
+  const normalizedMinutes = ((value % 1440) + 1440) % 1440;
+  const hour24 = Math.floor(normalizedMinutes / 60);
+  const minute = normalizedMinutes % 60;
+  const period = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour12}:${String(minute).padStart(2, "0")} ${period}`;
+}
+
+function formatScheduleDays(bitmask: number | null | undefined): string {
+  if (typeof bitmask !== "number") {
+    return "Unknown";
+  }
+  if ((bitmask & 0x7f) === 0x7f) {
+    return "Sun-Sat";
+  }
+
+  const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].filter((_, index) => ((bitmask & 0x7f) & (1 << index)) !== 0);
+  return labels.length > 0 ? labels.join(", ") : "None";
+}
+
+function describeScheduleName(row: ControllerScheduleRecord): string {
+  return typeof row.schedule_id === "number" ? String(row.schedule_id) : "";
+}
+
+function describeScheduleAction(row: ControllerScheduleRecord): string {
+  if (row.frame_type === "easytouch_egg_timer") {
+    return `Circuit ${row.circuit_id ?? "?"} egg timer`;
+  }
+
+  const circuit = row.circuit_id ?? "?";
+  const kind = row.schedule_type_label === "run_once_or_egg_timer_controlled" ? "Run Once" : "Repeat";
+  return `Circuit ${circuit} · ${kind}`;
+}
+
+function describeScheduleTime(row: ControllerScheduleRecord): string {
+  if (row.frame_type === "easytouch_egg_timer") {
+    return `${row.egg_timer_run_time_minutes ?? "Unknown"} min runtime`;
+  }
+
+  return `${formatMinutesAfterMidnight(row.start_time_minutes)} - ${formatMinutesAfterMidnight(row.end_time_minutes)}`;
+}
+
+function formatScheduleNextRun(value: string | null | undefined): string {
+  if (typeof value !== "string" || value.length === 0) {
+    return "Unknown";
+  }
+
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC"
+  }).format(new Date(timestamp));
+}
 
 export function AutomationPage() {
   const location = useLocation();
@@ -184,40 +251,49 @@ function AutomationSchedulesTab({
             </p>
             <button type="button" className="automation-primary-button">Create Schedule</button>
           </div>
-          {showLiveTable ? (
-            <div className="mock-table-shell">
-              <table className="system-data-table" aria-label="automation schedules">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Action</th>
-                    <th>Days</th>
-                    <th>Time</th>
-                    <th>Season</th>
-                    <th>Status</th>
-                    <th>Next Run</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {liveSchedules.map((row, index) => (
-                    <tr key={row.id ?? row.name ?? `schedule-${index}`}>
-                      <td>{row.name ?? "Unknown"}</td>
-                      <td>{row.action ?? "Unknown"}</td>
-                      <td>{row.days ?? "Unknown"}</td>
-                      <td>{row.time ?? "Unknown"}</td>
-                      <td>{row.season ?? "Unknown"}</td>
+          <div className="mock-table-shell">
+            <table className="system-data-table" aria-label="automation schedules">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Action</th>
+                  <th>Days</th>
+                  <th>Time</th>
+                  <th>Season</th>
+                  <th>Status</th>
+                  <th>Next Run</th>
+                </tr>
+              </thead>
+              <tbody>
+                {showLiveTable ? (
+                  liveSchedules.map((row, index) => (
+                    <tr key={row.schedule_id ?? `${row.frame_type}-${index}`}>
+                      <td>{describeScheduleName(row)}</td>
+                      <td>{describeScheduleAction(row)}</td>
+                      <td>{row.frame_type === "easytouch_egg_timer" ? "Egg Timer" : formatScheduleDays(row.schedule_days)}</td>
+                      <td>{describeScheduleTime(row)}</td>
+                      <td></td>
                       <td>
-                        <span className={`system-status-chip ${row.status === "Enabled" ? "system-status-chip-good" : "system-status-chip-watch"}`}>
-                          {row.status ?? "Unknown"}
+                        <span className={`system-status-chip ${row.active ? "system-status-chip-good" : "system-status-chip-watch"}`}>
+                          {row.active ? "Active" : "Inactive"}
                         </span>
                       </td>
-                      <td>{row.next_run ?? "Unknown"}</td>
+                      <td>{formatScheduleNextRun(row.updated_at)}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7}>
+                      {controllerSchedulesError
+                        ?? controllerSchedules?.message
+                        ?? "Controller schedule visibility has not been initialized yet."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {!showLiveTable ? (
             <div className="automation-record-list" aria-label="controller schedules unavailable">
               <div className="automation-record-row">
                 <strong>Controller schedules unavailable</strong>
@@ -238,7 +314,7 @@ function AutomationSchedulesTab({
                 </div>
               ) : null}
             </div>
-          )}
+          ) : null}
         </Card>
 
         <div className="automation-side-stack">

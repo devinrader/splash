@@ -402,6 +402,27 @@ export class App {
     return { commandId };
   }
 
+  async publishControllerScheduleRequest(input: { scheduleId: number }, session: MessagingSession): Promise<{ commandId: string }> {
+    const commandId = randomUUID();
+    await session.publish("protocol.command.intent", {
+      pool_id: this.config.poolId,
+      command_id: commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_controller_schedule",
+      arguments: {
+        schedule_id: input.scheduleId
+      },
+      requested_by: "protocol_explorer",
+      dry_run: false
+    });
+    return { commandId };
+  }
+
   async publishCircuitConfigRequest(
     input: { startIndex: number; endIndex: number },
     session: MessagingSession
@@ -590,6 +611,13 @@ export class App {
           }
           return this.publishPumpInfoRequest({ pumpSlot }, session);
         },
+        publishControllerScheduleRequest: async ({ scheduleId }) => {
+          const session = this.currentSession;
+          if (!session) {
+            throw new Error("NATS session unavailable.");
+          }
+          return this.publishControllerScheduleRequest({ scheduleId }, session);
+        },
         publishCircuitConfigRequest: async ({ startIndex, endIndex }) => {
           const session = this.currentSession;
           if (!session) {
@@ -664,6 +692,7 @@ export class App {
 
   private currentSession: MessagingSession | null = null;
   private hasRequestedStartupCustomNames = false;
+  private hasRequestedStartupSchedules = false;
 
   private async runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void> {
     this.currentSession = session;
@@ -673,6 +702,16 @@ export class App {
       if (!this.hasRequestedStartupCustomNames && this.shouldRequestStartupCustomNames()) {
         this.hasRequestedStartupCustomNames = true;
         await this.requestAllCustomNames(session);
+      }
+      if (!this.hasRequestedStartupSchedules && this.shouldRequestStartupSchedules()) {
+        this.hasRequestedStartupSchedules = true;
+        try {
+          await this.requestAllControllerSchedules(session);
+        } catch (error) {
+          this.logger.warn("startup_schedule_warmup_failed", "Controller schedule startup warmup failed.", {
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
       }
     });
     session.subscribe("equipment.state.pump", async (payload) => {
@@ -793,9 +832,20 @@ export class App {
       || (typeof customNameBank === "object" && !Array.isArray(customNameBank) && Object.keys(customNameBank).length === 0);
   }
 
+  private shouldRequestStartupSchedules(): boolean {
+    const schedules = this.getControllerSchedules().schedules;
+    return Array.isArray(schedules) && schedules.length === 0;
+  }
+
   private async requestAllCustomNames(session: MessagingSession): Promise<void> {
     for (let nameIndex = 0; nameIndex <= 9; nameIndex += 1) {
       await this.publishCustomNameRequest({ nameIndex }, session);
+    }
+  }
+
+  private async requestAllControllerSchedules(session: MessagingSession): Promise<void> {
+    for (let scheduleId = 1; scheduleId <= 12; scheduleId += 1) {
+      await this.publishControllerScheduleRequest({ scheduleId }, session);
     }
   }
 

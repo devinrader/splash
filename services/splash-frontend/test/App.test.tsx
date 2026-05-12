@@ -312,18 +312,25 @@ test("renders working Automation tabs from the approved mockup slice", async () 
             source: "controller_native",
             controller_type: "easytouch",
             status: "available",
-            message: "Validated controller schedules available.",
+            message: "Validated EasyTouch controller schedule frames observed.",
             last_checked: "2026-05-12T01:55:00Z",
             schedules: [
               {
-                id: "schedule-1",
-                name: "Morning Circulation",
-                action: "Pool Mode: Circulate",
-                days: "Mon-Sun",
-                time: "8:00 AM",
-                season: "All Year",
-                status: "Enabled",
-                next_run: "Tomorrow 8:00 AM"
+                controller_family: "EasyTouch",
+                frame_type: "easytouch_schedule",
+                action: 17,
+                schedule_id: 1,
+                circuit_id: 6,
+                active: true,
+                schedule_type: 0,
+                schedule_type_label: "repeat",
+                start_time_minutes: 480,
+                end_time_minutes: 1020,
+                schedule_days: 127,
+                parse_confidence: "high",
+                warnings: [],
+                raw_payload: [1, 6, 8, 0, 17, 0, 127],
+                updated_at: "2026-05-12T01:55:00Z"
               }
             ]
           },
@@ -394,11 +401,19 @@ test("renders working Automation tabs from the approved mockup slice", async () 
 
   await waitFor(() => {
     assert.ok(screen.getByRole("tab", { name: "Schedules", selected: true }));
-    assert.ok(screen.getByRole("table", { name: "automation schedules" }));
-    assert.ok(screen.getByText("Morning Circulation"));
+    const table = screen.getByRole("table", { name: "automation schedules" });
+    assert.ok(table);
+    assert.ok(screen.getByText("Circuit 6 · Repeat"));
+    assert.ok(screen.getByText("8:00 AM - 5:00 PM"));
     assert.ok(screen.getByText("The table below is using controller-backed schedule data returned by Splash API."));
     assert.ok(screen.getByRole("button", { name: "Controller Managed" }));
     assert.ok(screen.getByRole("button", { name: "Migrate to Platform Scheduling" }));
+    const scheduleRow = within(table).getByText("Circuit 6 · Repeat").closest("tr");
+    assert.ok(scheduleRow);
+    const cells = within(scheduleRow).getAllByRole("cell");
+    assert.equal(cells[0]?.textContent, "1");
+    assert.equal(cells[4]?.textContent, "");
+    assert.equal(cells[6]?.textContent, "05/12/2026, 1:55 AM");
   });
 
   fireEvent.click(screen.getByRole("tab", { name: "Logs" }));
@@ -424,7 +439,7 @@ test("renders an explicit unavailable state when controller schedules are not ye
             source: "controller_native",
             controller_type: "easytouch",
             status: "unavailable",
-            message: "Observed EasyTouch schedule payloads, but field mapping is not yet validated.",
+            message: "Observed EasyTouch schedule payloads, but no validated schedule records are available yet.",
             last_checked: "2026-05-12T01:57:00Z",
             schedules: [],
             observed_payloads: [
@@ -461,8 +476,12 @@ test("renders an explicit unavailable state when controller schedules are not ye
   renderApp(["/automation/schedules"]);
 
   await waitFor(() => {
+    assert.ok(screen.getByRole("table", { name: "automation schedules" }));
     assert.ok(screen.getByText("Controller schedules unavailable"));
-    assert.ok(screen.getByText("Observed EasyTouch schedule payloads, but field mapping is not yet validated."));
+    assert.equal(
+      screen.getAllByText("Observed EasyTouch schedule payloads, but no validated schedule records are available yet.").length,
+      2
+    );
     assert.ok(screen.getByText("Observed raw schedule payloads"));
     assert.ok(screen.getByText("1 schedule payload sample captured, but not yet field-decoded."));
   });

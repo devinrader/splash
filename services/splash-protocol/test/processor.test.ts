@@ -78,10 +78,11 @@ test("processor publishes protocol.frame.raw, protocol.frame.decoded, and normal
 
   await processor.processChunk(chunk, frames);
 
-  assert.equal(publisher.messages.length, 3);
+  assert.equal(publisher.messages.length, 4);
   assert.equal(publisher.messages[0].subject, "protocol.frame.raw");
   assert.equal(publisher.messages[1].subject, "protocol.frame.decoded");
   assert.equal(publisher.messages[2].subject, "equipment.state.controller");
+  assert.equal(publisher.messages[3].subject, "telemetry.temperature.easytouch");
   assert.equal(publisher.messages[0].payload.frame_family, "pentair");
   assert.equal(publisher.messages[1].payload.frame_family, "pentair");
   assert.equal(publisher.messages[1].payload.message_type, "controller_status");
