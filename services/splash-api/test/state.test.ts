@@ -155,3 +155,39 @@ test("projection exposes initial milestone equipment values through the bridge",
   assert.equal(pump.default_control_circuit_key, "pool");
   assert.equal(chlorinator.latest_state.salt_ppm, 3100);
 });
+
+test("projection exposes controller schedule visibility as unavailable until fields are validated", () => {
+  const projection = new LatestStateProjection();
+
+  assert.deepEqual(projection.getControllerSchedulesView(), {
+    source: "controller_native",
+    controller_type: "easytouch",
+    status: "unavailable",
+    message: "EasyTouch schedule payload is not yet fully decoded.",
+    last_checked: null,
+    schedules: [],
+    observed_payloads: []
+  });
+
+  const updated = projection.updateControllerScheduleObservation({
+    payload_hex: "019b0000000000",
+    payload_length: 7,
+    occurred_at: "2026-05-12T01:50:00Z"
+  });
+
+  assert.deepEqual(updated, {
+    source: "controller_native",
+    controller_type: "easytouch",
+    status: "unavailable",
+    message: "Observed EasyTouch schedule payloads, but field mapping is not yet validated.",
+    last_checked: "2026-05-12T01:50:00Z",
+    schedules: [],
+    observed_payloads: [
+      {
+        payload_hex: "019b0000000000",
+        payload_length: 7,
+        updated_at: "2026-05-12T01:50:00Z"
+      }
+    ]
+  });
+});

@@ -23,6 +23,7 @@ import {
 import { AppShell } from "./components/AppShell";
 import { SplashIcon } from "./components/icons/SplashIcon";
 import { NAV_ITEMS, PAGE_SUMMARIES, getActiveNavItem } from "./navigation";
+import { AutomationPage } from "./pages/AutomationPage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { SystemPage } from "./pages/SystemPage";
@@ -700,10 +701,10 @@ function AppLayout({
         <Routes>
           <Route path="/" element={<PlaceholderPage kicker="Home" title="Operational Summary" description="This placeholder keeps the new navigation shell functional while the broader home dashboard composition is defined." />} />
           <Route path="/system/*" element={<SystemPage {...systemPageProps} />} />
+          <Route path="/automation/*" element={<AutomationPage />} />
           <Route path="/diagnostics/*" element={<DiagnosticsPage {...diagnosticsPageProps} />} />
           <Route path="/routines" element={<PlaceholderPage kicker="Routines" title="Maintenance Workflows" description="Checklist-driven maintenance, reminders, and routine tracking will arrive here in a later milestone." />} />
           <Route path="/history" element={<PlaceholderPage kicker="History" title="Timeline & Trends" description="Historical operating trends, event timelines, and review workflows will render here once persistence-backed history views are added." />} />
-          <Route path="/automation" element={<PlaceholderPage kicker="Automation" title="Suggestions & Approvals" description="Automation recommendations and approval flows are reserved here while the normalized orchestration workflows are still in progress." />} />
           <Route path="/alerts" element={<PlaceholderPage kicker="Alerts" title="Messages & Warnings" description="Operator alerts, reminders, and equipment attention items will appear here once the notification model reaches the frontend shell." />} />
           <Route path="/water-test-log" element={<PlaceholderPage kicker="Water Test Log" title="Chemistry Entries" description="Manual chemistry readings and later chart context will be shown here as the water-testing workflows are implemented." />} />
           <Route path="/settings" element={<PlaceholderPage kicker="Settings" title="Configuration" description="System configuration, preferences, and setup management will land here as the broader operator controls are implemented." />} />

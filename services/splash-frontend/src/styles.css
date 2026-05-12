@@ -419,6 +419,49 @@ textarea:focus-visible {
   gap: var(--space-4);
 }
 
+.automation-page-shell,
+.automation-shell {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.automation-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.automation-tab {
+  padding: 0.75rem 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.automation-tab + .automation-tab {
+  margin-left: 20px;
+}
+
+.automation-tab:hover {
+  color: var(--color-brand-600);
+}
+
+.automation-tab-active {
+  border-bottom-color: var(--color-brand-500);
+  color: var(--color-brand-600);
+}
+
+.automation-tab-panel {
+  min-width: 0;
+}
+
 .diagnostics-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -533,7 +576,8 @@ textarea:focus-visible {
 
 .system-summary-grid,
 .system-filter-row,
-.system-two-column-grid {
+.system-two-column-grid,
+.automation-grid {
   display: grid;
   gap: var(--space-4);
 }
@@ -549,6 +593,102 @@ textarea:focus-visible {
 
 .system-two-column-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.automation-grid-overview {
+  grid-template-columns: minmax(0, 1.5fr) minmax(18rem, 1fr);
+}
+
+.automation-grid-two-column {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.automation-grid-schedules {
+  grid-template-columns: minmax(0, 1.6fr) minmax(20rem, 1fr);
+  align-items: start;
+}
+
+.automation-card-hero,
+.automation-card-table {
+  min-width: 0;
+}
+
+.automation-side-stack,
+.automation-record-list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.automation-record-row {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+}
+
+.automation-record-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.automation-record-row strong,
+.automation-mode-summary strong {
+  display: block;
+}
+
+.automation-record-row span,
+.automation-mode-summary span {
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.automation-mode-summary {
+  display: grid;
+  gap: 4px;
+}
+
+.automation-mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.automation-mode-button,
+.automation-primary-button,
+.automation-secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.85rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.automation-primary-button {
+  background: var(--color-brand-500);
+  color: white;
+}
+
+.automation-primary-button:hover {
+  background: var(--color-brand-600);
+}
+
+.automation-secondary-button,
+.automation-mode-button {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--color-brand-600);
+}
+
+.automation-mode-button-active {
+  background: var(--color-brand-500);
+  color: white;
 }
 
 .system-filter {
@@ -1981,7 +2121,11 @@ textarea:focus-visible {
   .network-grid,
   .system-summary-grid,
   .system-filter-row,
-  .system-two-column-grid {
+  .system-two-column-grid,
+  .automation-grid-overview,
+  .automation-grid-two-column,
+  .automation-grid-schedules,
+  .automation-mode-toggle {
     grid-template-columns: 1fr;
   }
 

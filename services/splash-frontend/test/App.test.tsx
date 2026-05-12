@@ -298,6 +298,176 @@ test("renders Connectivity metric cards from API health data", async () => {
   });
 });
 
+test("renders working Automation tabs from the approved mockup slice", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/controller/schedules")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "available",
+            message: "Validated controller schedules available.",
+            last_checked: "2026-05-12T01:55:00Z",
+            schedules: [
+              {
+                id: "schedule-1",
+                name: "Morning Circulation",
+                action: "Pool Mode: Circulate",
+                days: "Mon-Sun",
+                time: "8:00 AM",
+                season: "All Year",
+                status: "Enabled",
+                next_run: "Tomorrow 8:00 AM"
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                controller_hour_24: 14,
+                controller_minute: 5,
+                controller_datetime_reply: {
+                  month: 4,
+                  day: 23,
+                  year: 26,
+                  day_of_week: 4,
+                  hour_24: 14,
+                  minute: 37
+                }
+              }
+            },
+            {
+              id: "pump-main",
+              equipment_type: "pump",
+              display_name: "Main Pump",
+              protocol_name: "pentair_easytouch",
+              latest_state: {}
+            },
+            {
+              id: "chlorinator-main",
+              equipment_type: "chlorinator",
+              display_name: "Main Chlorinator",
+              protocol_name: "pentair_easytouch",
+              latest_state: {}
+            }
+          ],
+          error: null
+        });
+      }
+
+      return platformStatusResponse();
+    })
+  );
+
+  renderApp(["/automation/overview"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Automation - Schedules & rules"));
+    assert.ok(screen.getByRole("tab", { name: "Overview", selected: true }));
+    assert.ok(screen.getByRole("tab", { name: "Schedules" }));
+    assert.ok(screen.getByRole("tab", { name: "Rules" }));
+    assert.ok(screen.getByRole("tab", { name: "Scenes" }));
+    assert.ok(screen.getByRole("tab", { name: "Triggers" }));
+    assert.ok(screen.getByRole("tab", { name: "Logs" }));
+    assert.ok(screen.getByText("Automation Overview"));
+    assert.ok(screen.getByText("Upcoming Automation"));
+    assert.ok(screen.getByText("Recent Activity"));
+  });
+
+  fireEvent.click(screen.getByRole("tab", { name: "Schedules" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByRole("tab", { name: "Schedules", selected: true }));
+    assert.ok(screen.getByRole("table", { name: "automation schedules" }));
+    assert.ok(screen.getByText("Morning Circulation"));
+    assert.ok(screen.getByText("The table below is using controller-backed schedule data returned by Splash API."));
+    assert.ok(screen.getByRole("button", { name: "Controller Managed" }));
+    assert.ok(screen.getByRole("button", { name: "Migrate to Platform Scheduling" }));
+  });
+
+  fireEvent.click(screen.getByRole("tab", { name: "Logs" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByRole("tab", { name: "Logs", selected: true }));
+    assert.ok(screen.getByRole("table", { name: "automation logs" }));
+    assert.ok(screen.getByText("Rain response suggestion published"));
+  });
+});
+
+test("renders an explicit unavailable state when controller schedules are not yet decoded", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/controller/schedules")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "unavailable",
+            message: "Observed EasyTouch schedule payloads, but field mapping is not yet validated.",
+            last_checked: "2026-05-12T01:57:00Z",
+            schedules: [],
+            observed_payloads: [
+              {
+                payload_hex: "019b0000000000",
+                payload_length: 7,
+                updated_at: "2026-05-12T01:57:00Z"
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {}
+            }
+          ],
+          error: null
+        });
+      }
+
+      return platformStatusResponse();
+    })
+  );
+
+  renderApp(["/automation/schedules"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Controller schedules unavailable"));
+    assert.ok(screen.getByText("Observed EasyTouch schedule payloads, but field mapping is not yet validated."));
+    assert.ok(screen.getByText("Observed raw schedule payloads"));
+    assert.ok(screen.getByText("1 schedule payload sample captured, but not yet field-decoded."));
+  });
+});
+
 test("renders Platform service health rows from API health data", async () => {
   vi.stubGlobal(
     "fetch",

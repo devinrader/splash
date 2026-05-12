@@ -20,6 +20,7 @@ export class HttpRequestError extends Error {}
 export interface HttpHandlers {
   getEquipment(): Array<Record<string, unknown>>;
   getHealth(): Record<string, unknown>;
+  getControllerSchedules(): Record<string, unknown>;
   getPlatformStatus(): Promise<Record<string, unknown>>;
   getMetrics(): string;
   getEventBroker(): EventBroker;
@@ -107,6 +108,10 @@ export class LocalHttpServer implements HttpServer {
 
       if (req.method === "GET" && req.url === "/equipment") {
         return json(req, res, 200, { data: this.handlers.getEquipment(), error: null });
+      }
+
+      if (req.method === "GET" && req.url === "/controller/schedules") {
+        return json(req, res, 200, { data: this.handlers.getControllerSchedules(), error: null });
       }
 
       if (req.method === "GET" && req.url === "/health") {

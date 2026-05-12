@@ -271,6 +271,30 @@ test("app publishes a controller datetime sync intent", async () => {
   }
 });
 
+test("app exposes controller schedules as unavailable by default", () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  });
+
+  assert.deepEqual(app.getControllerSchedules(), {
+    source: "controller_native",
+    controller_type: "easytouch",
+    status: "unavailable",
+    message: "EasyTouch schedule payload is not yet fully decoded.",
+    last_checked: null,
+    schedules: [],
+    observed_payloads: []
+  });
+});
+
 test("app publishes a manual pump config write intent for Protocol Explorer", async () => {
   const app = new App({
     config: {
@@ -800,6 +824,73 @@ test("app projects controller software version decoded frames into dashboard equ
     bootloader_major: 3,
     bootloader_minor: 21,
     updated_at: "2026-03-30T00:00:00Z"
+  });
+});
+
+test("app records observed controller schedule payloads without inventing fields", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  }) as unknown as {
+    getControllerSchedules(): Record<string, unknown>;
+    runNatsSession(session: MessagingSession, signal: AbortSignal): Promise<void>;
+  };
+
+  const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
+  const session: MessagingSession & {
+    emit(subject: string, payload: Record<string, unknown>): Promise<void>;
+  } = {
+    async publish() {},
+    subscribe(subject, handler) {
+      const list = handlers.get(subject) ?? [];
+      list.push(handler);
+      handlers.set(subject, list);
+    },
+    async emit(subject, payload) {
+      for (const handler of handlers.get(subject) ?? []) {
+        await handler(payload);
+      }
+    }
+  };
+
+  const controller = new AbortController();
+  const running = app.runNatsSession(session, controller.signal);
+
+  await session.emit("protocol.frame.decoded", {
+    frame_id: "frame-schedule-1",
+    decoded_at: "2026-05-12T01:52:00Z",
+    message_type: "controller_schedule",
+    action_code: "0x11",
+    fields: {
+      payload_hex: "019b0000000000",
+      payload_length: 7
+    }
+  });
+
+  controller.abort();
+  await running;
+
+  assert.deepEqual(app.getControllerSchedules(), {
+    source: "controller_native",
+    controller_type: "easytouch",
+    status: "unavailable",
+    message: "Observed EasyTouch schedule payloads, but field mapping is not yet validated.",
+    last_checked: "2026-05-12T01:52:00Z",
+    schedules: [],
+    observed_payloads: [
+      {
+        payload_hex: "019b0000000000",
+        payload_length: 7,
+        updated_at: "2026-05-12T01:52:00Z"
+      }
+    ]
   });
 });
 

@@ -99,6 +99,10 @@ export class App {
     };
   }
 
+  getControllerSchedules(): Record<string, unknown> {
+    return this.projection.getControllerSchedulesView() as unknown as Record<string, unknown>;
+  }
+
   async getPlatformStatus(): Promise<Record<string, unknown>> {
     await this.platformHealthMonitor.refreshNow();
     const snapshot = this.platformHealthMonitor.getSnapshot();
@@ -555,6 +559,7 @@ export class App {
       new LocalHttpServer(this.config.httpBind, {
         getEquipment: () => this.getEquipment(),
         getHealth: () => this.getHealth(),
+        getControllerSchedules: () => this.getControllerSchedules(),
         getPlatformStatus: () => this.getPlatformStatus(),
         getMetrics: () => this.getMetrics(),
         getEventBroker: () => this.events,
@@ -733,6 +738,15 @@ export class App {
           });
           this.events.publish("equipment.state", {
             controller_software_version_reply: controllerSoftwareVersionReply
+          });
+        }
+      }
+      if (payload.message_type === "controller_schedule") {
+        const fields = payload.fields;
+        if (fields && typeof fields === "object" && !Array.isArray(fields)) {
+          this.projection.updateControllerScheduleObservation({
+            ...(fields as Record<string, unknown>),
+            occurred_at: typeof payload.decoded_at === "string" ? payload.decoded_at : null
           });
         }
       }

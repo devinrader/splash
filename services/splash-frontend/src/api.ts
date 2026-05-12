@@ -1,6 +1,7 @@
 import type {
   CommandAcceptedResponse,
   CircuitConfigRequestResponse,
+  ControllerSchedulesResponse,
   EquipmentResponse,
   PlatformStatusResponse,
   ProtocolAnnotationConfidence,
@@ -38,6 +39,14 @@ export async function fetchPlatformStatus(): Promise<PlatformStatusResponse> {
     throw new Error(`Platform status request failed with HTTP ${response.status}.`);
   }
   return (await response.json()) as PlatformStatusResponse;
+}
+
+export async function fetchControllerSchedules(): Promise<ControllerSchedulesResponse> {
+  const response = await fetch(buildApiUrl("/controller/schedules"));
+  if (!response.ok) {
+    throw new Error(`Controller schedules request failed with HTTP ${response.status}.`);
+  }
+  return (await response.json()) as ControllerSchedulesResponse;
 }
 
 export async function requestPumpSpeed(input: {

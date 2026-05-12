@@ -5,6 +5,7 @@ export interface ControllerLatestState {
   controllerMinute: number | null;
   controllerDateReply: ControllerDatetimeReply | null;
   controllerSoftwareVersionReply: ControllerSoftwareVersionReply | null;
+  controllerScheduleObservations: ControllerScheduleObservation[];
   controllerSubModelByte: number | null;
   controllerModelByte: number | null;
   controllerModelFamily: string | null;
@@ -89,6 +90,28 @@ export interface ControllerSoftwareVersionReplyView {
   updated_at: string | null;
 }
 
+export interface ControllerScheduleObservation {
+  payloadHex: string | null;
+  payloadLength: number | null;
+  updatedAt: string | null;
+}
+
+export interface ControllerScheduleObservationView {
+  payload_hex: string | null;
+  payload_length: number | null;
+  updated_at: string | null;
+}
+
+export interface ControllerSchedulesView {
+  source: "controller_native";
+  controller_type: "easytouch";
+  status: "available" | "unavailable" | "stale";
+  message: string;
+  last_checked: string | null;
+  schedules: Array<Record<string, unknown>>;
+  observed_payloads: ControllerScheduleObservationView[];
+}
+
 export interface ControllerCustomNameView {
   name_index: number;
   custom_name_bytes: number[];
@@ -120,6 +143,7 @@ export class LatestStateProjection {
     controllerMinute: null,
     controllerDateReply: null,
     controllerSoftwareVersionReply: null,
+    controllerScheduleObservations: [],
     controllerSubModelByte: null,
     controllerModelByte: null,
     controllerModelFamily: null,
@@ -157,6 +181,7 @@ export class LatestStateProjection {
       controllerDateReply: this.controller.controllerDateReply == null ? null : { ...this.controller.controllerDateReply },
       controllerSoftwareVersionReply:
         this.controller.controllerSoftwareVersionReply == null ? null : { ...this.controller.controllerSoftwareVersionReply },
+      controllerScheduleObservations: [...this.controller.controllerScheduleObservations],
       controllerSubModelByte: readNumber(payload, "controller_sub_model_byte"),
       controllerModelByte: readNumber(payload, "controller_model_byte"),
       controllerModelFamily: readString(payload, "controller_model_family"),
@@ -233,6 +258,21 @@ export class LatestStateProjection {
     };
 
     return this.getControllerSoftwareVersionReply();
+  }
+
+  updateControllerScheduleObservation(payload: Record<string, unknown>): ControllerSchedulesView {
+    const nextObservation: ControllerScheduleObservation = {
+      payloadHex: readString(payload, "payload_hex"),
+      payloadLength: readNumber(payload, "payload_length"),
+      updatedAt: readString(payload, "occurred_at")
+    };
+
+    this.controller = {
+      ...this.controller,
+      controllerScheduleObservations: [nextObservation, ...this.controller.controllerScheduleObservations].slice(0, 4)
+    };
+
+    return this.getControllerSchedulesView();
   }
 
   updateControllerCustomName(payload: Record<string, unknown>): Record<string, ControllerCustomNameView> {
@@ -355,6 +395,37 @@ export class LatestStateProjection {
           };
       }
     });
+  }
+
+  getControllerSchedulesView(): ControllerSchedulesView {
+    const observedPayloads = this.controller.controllerScheduleObservations.map((value) => ({
+      payload_hex: value.payloadHex,
+      payload_length: value.payloadLength,
+      updated_at: value.updatedAt
+    }));
+    const lastChecked = observedPayloads[0]?.updated_at ?? null;
+
+    if (observedPayloads.length > 0) {
+      return {
+        source: "controller_native",
+        controller_type: "easytouch",
+        status: "unavailable",
+        message: "Observed EasyTouch schedule payloads, but field mapping is not yet validated.",
+        last_checked: lastChecked,
+        schedules: [],
+        observed_payloads: observedPayloads
+      };
+    }
+
+    return {
+      source: "controller_native",
+      controller_type: "easytouch",
+      status: "unavailable",
+      message: "EasyTouch schedule payload is not yet fully decoded.",
+      last_checked: null,
+      schedules: [],
+      observed_payloads: []
+    };
   }
 
   private getControllerCircuitConfigurations(): Record<string, ControllerCircuitConfigurationView> {

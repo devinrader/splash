@@ -54,6 +54,36 @@ export interface PlatformStatusResponse {
   services: PlatformServiceHealthRecord[];
 }
 
+export interface ControllerScheduleRecord {
+  id?: string;
+  name?: string | null;
+  action?: string | null;
+  days?: string | null;
+  time?: string | null;
+  season?: string | null;
+  status?: string | null;
+  next_run?: string | null;
+}
+
+export interface ControllerSchedulesData {
+  source: "controller_native";
+  controller_type: "easytouch";
+  status: "available" | "unavailable" | "stale";
+  message: string;
+  last_checked: string | null;
+  schedules: ControllerScheduleRecord[];
+  observed_payloads?: Array<{
+    payload_hex: string | null;
+    payload_length: number | null;
+    updated_at: string | null;
+  }>;
+}
+
+export interface ControllerSchedulesResponse {
+  data: ControllerSchedulesData;
+  error: unknown;
+}
+
 export interface PlatformServiceHealthRecord {
   name: string;
   type: "splash" | "third-party";

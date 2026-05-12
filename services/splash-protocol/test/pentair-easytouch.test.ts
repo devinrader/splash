@@ -518,6 +518,19 @@ test("decodePentairFrame classifies intellichlor framed traffic generically", ()
   assert.deepEqual(decoded.normalizedEvents, []);
 });
 
+test("decodePentairFrame classifies EasyTouch schedule payloads without inventing fields", () => {
+  const payload = [0x01, 0x9b, 0x00, 0x00, 0x00, 0x00, 0x00];
+  const decoded = decodePentairFrame(buildPentairFrameWithAddresses(0x10, 0x21, 0x11, payload));
+
+  assert.equal(decoded.messageType, "controller_schedule");
+  assert.equal(decoded.actionCode, "0x11");
+  assert.deepEqual(decoded.fields, {
+    payload_hex: "019b0000000000",
+    payload_length: 7
+  });
+  assert.deepEqual(decoded.normalizedEvents, []);
+});
+
 test("pentairEasyTouchPlugin encodes the milestone-1 controller circuit baseline request for set_speed", () => {
   const encoded = pentairEasyTouchPlugin.encodeCommand(
     {

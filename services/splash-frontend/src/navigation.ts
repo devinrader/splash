@@ -16,6 +16,14 @@ export type DiagnosticsTabId =
   | "logs-history"
   | "network";
 
+export type AutomationTabId =
+  | "overview"
+  | "schedules"
+  | "rules"
+  | "scenes"
+  | "triggers"
+  | "logs";
+
 export type SystemTabId =
   | "overview"
   | "hardware"
@@ -49,12 +57,21 @@ export const PAGE_SUMMARIES: Record<NavItemId, string> = {
   system: "Live equipment status, controller circuits, system timing, and protocol-level diagnostics for day-to-day pool operations.",
   routines: "Scheduled maintenance, recurring checklists, and operator workflows will appear here as the broader platform surface expands.",
   history: "Historical operating context, logs, and timeline views will land here once the broader retention surfaces are implemented.",
-  automation: "Suggested and approved automation workflows will surface here as normalized command orchestration matures.",
+  automation: "Automation now provides a working tabbed surface for schedules, rules, scenes, triggers, and recent activity while live automation APIs mature.",
   alerts: "Warnings, reminders, and equipment-driven attention items will collect here when the notification workflows are delivered.",
   diagnostics: "Advanced tooling stays grouped under Diagnostics so protocol exploration and lower-level operational views remain separate from day-to-day control.",
   "water-test-log": "Manual chemistry logging and later chart context will live here as the chemistry slice is added to the frontend shell.",
   settings: "Configuration, operator preferences, and system-level controls will be introduced here as setup and management flows expand."
 };
+
+export const AUTOMATION_TABS: Array<{ id: AutomationTabId; label: string; path: string }> = [
+  { id: "overview", label: "Overview", path: "/automation/overview" },
+  { id: "schedules", label: "Schedules", path: "/automation/schedules" },
+  { id: "rules", label: "Rules", path: "/automation/rules" },
+  { id: "scenes", label: "Scenes", path: "/automation/scenes" },
+  { id: "triggers", label: "Triggers", path: "/automation/triggers" },
+  { id: "logs", label: "Logs", path: "/automation/logs" }
+];
 
 export const SYSTEM_TABS: Array<{ id: SystemTabId; label: string; path: string }> = [
   { id: "overview", label: "Overview", path: "/system/overview" },
@@ -77,10 +94,32 @@ export function getActiveNavItem(pathname: string) {
   if (pathname.startsWith("/system")) {
     return NAV_ITEMS.find((item) => item.id === "system") ?? NAV_ITEMS[0];
   }
+  if (pathname.startsWith("/automation")) {
+    return NAV_ITEMS.find((item) => item.id === "automation") ?? NAV_ITEMS[0];
+  }
   if (pathname.startsWith("/diagnostics")) {
     return NAV_ITEMS.find((item) => item.id === "diagnostics") ?? NAV_ITEMS[0];
   }
   return NAV_ITEMS.find((item) => item.path === pathname) ?? NAV_ITEMS[0];
+}
+
+export function getActiveAutomationTab(pathname: string): AutomationTabId {
+  if (pathname.startsWith("/automation/schedules")) {
+    return "schedules";
+  }
+  if (pathname.startsWith("/automation/rules")) {
+    return "rules";
+  }
+  if (pathname.startsWith("/automation/scenes")) {
+    return "scenes";
+  }
+  if (pathname.startsWith("/automation/triggers")) {
+    return "triggers";
+  }
+  if (pathname.startsWith("/automation/logs")) {
+    return "logs";
+  }
+  return "overview";
 }
 
 export function getActiveSystemTab(pathname: string): SystemTabId {

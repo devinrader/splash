@@ -424,6 +424,8 @@ function decodeMessageType(actionCode: number): string {
       return "controller_status";
     case 0x0b:
       return "circuit_configuration";
+    case 0x11:
+      return "controller_schedule";
     case 0x18:
       return "pump_info";
     case 0x07:
@@ -564,6 +566,11 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
           reserved_4: payload[4] ?? null
         };
       }
+    case 0x11:
+      return {
+        payload_hex: payloadHex,
+        payload_length: payload.length
+      };
     case 0x19:
       return {
         payload_hex: payloadHex,
