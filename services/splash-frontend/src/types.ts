@@ -92,6 +92,57 @@ export interface ControllerSchedulesResponse {
   error: unknown;
 }
 
+export interface TemperatureLatestReading {
+  timestamp: string;
+  original_value: number;
+  original_unit: "F" | "C";
+  normalized_f: number;
+  normalized_c: number;
+  raw_byte: number | null;
+  controller_timestamp: string | null;
+}
+
+export interface TemperatureTelemetryLatestData {
+  controller_id: string;
+  status: "available" | "empty";
+  message: string;
+  last_updated: string | null;
+  readings: Partial<Record<"air" | "pool_water" | "spa_water" | "solar", TemperatureLatestReading>>;
+}
+
+export interface TemperatureTelemetryLatestResponse {
+  data: TemperatureTelemetryLatestData;
+  error: unknown;
+}
+
+export interface TemperatureTelemetryHistoryPoint {
+  timestamp: string;
+  value: number;
+  normalizedF: number;
+  normalizedC: number;
+}
+
+export interface TemperatureTelemetryHistorySeries {
+  sensor_type: "air" | "pool_water" | "spa_water" | "solar";
+  unit: "F" | "C";
+  points: TemperatureTelemetryHistoryPoint[];
+}
+
+export interface TemperatureTelemetryHistoryData {
+  controller_id: string;
+  range: {
+    start: string;
+    end: string;
+  };
+  interval: string | null;
+  series: TemperatureTelemetryHistorySeries[];
+}
+
+export interface TemperatureTelemetryHistoryResponse {
+  data: TemperatureTelemetryHistoryData;
+  error: unknown;
+}
+
 export interface PlatformServiceHealthRecord {
   name: string;
   type: "splash" | "third-party";

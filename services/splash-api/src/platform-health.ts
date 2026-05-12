@@ -66,13 +66,19 @@ interface GrafanaDefinition extends BaseDefinition {
   url: string;
 }
 
+interface InfluxDefinition extends BaseDefinition {
+  kind: "influx";
+  url: string;
+}
+
 export type ServiceDefinition =
   | LocalDefinition
   | SplashDefinition
   | HttpDefinition
   | NatsDefinition
   | PrometheusDefinition
-  | GrafanaDefinition;
+  | GrafanaDefinition
+  | InfluxDefinition;
 
 export interface PlatformHealthMonitorOptions {
   registry: ServiceDefinition[];
@@ -187,6 +193,9 @@ export class PlatformHealthMonitor {
           break;
         case "grafana":
           record = await this.checkGrafana(definition.url);
+          break;
+        case "influx":
+          record = await this.checkInflux(definition.url);
           break;
       }
       return {
@@ -377,6 +386,25 @@ export class PlatformHealthMonitor {
         database: {
           status: healthy ? "healthy" : "unhealthy",
           message: `Database ${database}`
+        }
+      },
+      raw: payload
+    };
+  }
+
+  private async checkInflux(url: string): Promise<Omit<PlatformServiceRecord, "name" | "type" | "criticality">> {
+    const { payload, response } = await this.fetchJson(`${url.replace(/\/+$/, "")}/health`);
+    const status = readString(payload.status)?.toLowerCase();
+    const healthy = response.ok && status === "pass";
+    return {
+      status: healthy ? "healthy" : "down",
+      message: healthy ? "InfluxDB health endpoint responded" : `InfluxDB health is ${status ?? `HTTP ${response.status}`}`,
+      lastChecked: new Date().toISOString(),
+      responseTimeMs: null,
+      checks: {
+        process: {
+          status: healthy ? "healthy" : "down",
+          message: healthy ? "InfluxDB health endpoint responded" : `InfluxDB health is ${status ?? `HTTP ${response.status}`}`
         }
       },
       raw: payload

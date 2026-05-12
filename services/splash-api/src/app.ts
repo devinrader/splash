@@ -35,6 +35,10 @@ import {
   type ServiceCheckResult,
   type ServiceDefinition
 } from "./platform-health.js";
+import {
+  TemperatureTelemetryService,
+  type TemperatureHistoryQuery
+} from "./temperature-telemetry.js";
 
 export interface AppOptions {
   config?: ApiConfig;
@@ -42,6 +46,7 @@ export interface AppOptions {
   httpServer?: HttpServer;
   fetchImpl?: typeof fetch;
   tcpProbe?: (host: string, port: number, timeoutMs: number) => Promise<void>;
+  temperatureTelemetry?: TemperatureTelemetryService;
 }
 
 export class App {
@@ -58,6 +63,7 @@ export class App {
   private readonly serialTxRate = new RollingMessageRate();
   private readonly natsVarzMonitor: NatsVarzMonitor;
   private readonly platformHealthMonitor: PlatformHealthMonitor;
+  private readonly temperatureTelemetry: TemperatureTelemetryService;
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
 
@@ -69,6 +75,12 @@ export class App {
       monitoringUrl: this.config.natsMonitoringUrl,
       fetchImpl: options.fetchImpl
     });
+    this.temperatureTelemetry =
+      options.temperatureTelemetry ??
+      new TemperatureTelemetryService({
+        influx: this.config.influx,
+        fetchImpl: options.fetchImpl
+      });
     this.platformHealthMonitor = new PlatformHealthMonitor({
       registry: this.buildServiceRegistry(),
       fetchImpl: options.fetchImpl,
@@ -101,6 +113,27 @@ export class App {
 
   getControllerSchedules(): Record<string, unknown> {
     return this.projection.getControllerSchedulesView() as unknown as Record<string, unknown>;
+  }
+
+  async getTemperatureTelemetryLatest(): Promise<Record<string, unknown>> {
+    return this.temperatureTelemetry.getLatest() as unknown as Record<string, unknown>;
+  }
+
+  async getTemperatureTelemetryHistory(query: {
+    sensorType: string | null;
+    start: string | null;
+    end: string | null;
+    interval: string | null;
+  }): Promise<Record<string, unknown>> {
+    return this.temperatureTelemetry.getHistory({
+      sensorType:
+        query.sensorType === "air" || query.sensorType === "pool_water" || query.sensorType === "spa_water" || query.sensorType === "solar"
+          ? query.sensorType
+          : null,
+      start: query.start,
+      end: query.end,
+      interval: query.interval
+    } satisfies TemperatureHistoryQuery) as unknown as Record<string, unknown>;
   }
 
   async getPlatformStatus(): Promise<Record<string, unknown>> {
@@ -581,6 +614,8 @@ export class App {
         getEquipment: () => this.getEquipment(),
         getHealth: () => this.getHealth(),
         getControllerSchedules: () => this.getControllerSchedules(),
+        getTemperatureTelemetryLatest: async () => this.getTemperatureTelemetryLatest(),
+        getTemperatureTelemetryHistory: async (query) => this.getTemperatureTelemetryHistory(query),
         getPlatformStatus: () => this.getPlatformStatus(),
         getMetrics: () => this.getMetrics(),
         getEventBroker: () => this.events,
@@ -728,6 +763,9 @@ export class App {
         this.projection.updateCommandResult(commandId, payload);
       }
       this.events.publish("command.result", payload);
+    });
+    session.subscribe("telemetry.temperature.easytouch", async (payload) => {
+      await this.temperatureTelemetry.observe(payload);
     });
     session.subscribe("protocol.frame.raw", async (payload) => {
       this.protocolFrameBundles.recordFrame("protocol.frame.raw", payload);
@@ -917,6 +955,15 @@ export class App {
     } else {
       registry.push(this.buildUnconfiguredServiceDefinition("grafana", "optional", "Grafana URL is not configured"));
     }
+    if (this.config.influx) {
+      registry.push({
+        name: "influxdb",
+        kind: "influx",
+        type: "third-party",
+        criticality: "optional",
+        url: this.config.influx.url
+      });
+    }
 
     return registry;
   }
@@ -935,15 +982,28 @@ export class App {
       status: this.platformHealthMonitor.isStale() ? "unknown" : "healthy",
       message: this.platformHealthMonitor.isStale() ? "Platform health snapshot is stale or not yet collected" : "Platform health snapshot is current"
     };
+    const influxService = this.platformHealthMonitor.getSnapshot().services.find((service) => service.name === "influxdb");
     const checks: Record<string, ServiceCheckResult> = {
       process: processStatus,
       nats: natsCheck,
       aggregator: aggregatorCheck
     };
+    if (this.config.influx) {
+      checks.telemetry_storage = {
+        status: influxService?.status ?? "unknown",
+        message: influxService?.message ?? "InfluxDB telemetry status is not yet available"
+      };
+    }
 
     const status: CanonicalServiceStatus =
       natsState.status === "ok"
-        ? (aggregatorCheck.status === "unknown" ? "degraded" : "healthy")
+        ? (
+            aggregatorCheck.status === "unknown"
+              ? "degraded"
+              : this.config.influx && influxService && influxService.status !== "healthy"
+                ? "degraded"
+                : "healthy"
+          )
         : "unhealthy";
 
     return {
@@ -952,7 +1012,11 @@ export class App {
         status === "healthy"
           ? "Splash API is ready"
           : status === "degraded"
-            ? "Splash API is reachable but platform health data is still warming up"
+            ? (
+                this.config.influx && influxService && influxService.status !== "healthy"
+                  ? "Splash API is reachable but telemetry storage is impaired"
+                  : "Splash API is reachable but platform health data is still warming up"
+              )
             : "Splash API is reachable but cannot fully perform its primary role",
       lastChecked: new Date().toISOString(),
       responseTimeMs: 0,

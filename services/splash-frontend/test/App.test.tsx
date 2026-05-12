@@ -807,6 +807,78 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
         return response({ data: [], error: null });
       }
 
+      if (input.endsWith("/telemetry/temperatures/latest")) {
+        return response({
+          data: {
+            controller_id: "default",
+            status: "available",
+            message: "EasyTouch temperature history is available.",
+            last_updated: "2026-05-12T12:00:00.000Z",
+            readings: {
+              air: {
+                timestamp: "2026-05-12T12:00:00.000Z",
+                original_value: 78,
+                original_unit: "F",
+                normalized_f: 78,
+                normalized_c: 25.6,
+                raw_byte: 78,
+                controller_timestamp: "12:00"
+              },
+              pool_water: {
+                timestamp: "2026-05-12T12:00:00.000Z",
+                original_value: 82,
+                original_unit: "F",
+                normalized_f: 82,
+                normalized_c: 27.8,
+                raw_byte: 82,
+                controller_timestamp: "12:00"
+              }
+            }
+          },
+          error: null
+        });
+      }
+
+      if (input.includes("/telemetry/temperatures/history")) {
+        return response({
+          data: {
+            controller_id: "default",
+            range: {
+              start: "2026-05-11T12:00:00.000Z",
+              end: "2026-05-12T12:00:00.000Z"
+            },
+            interval: "1h",
+            series: [
+              {
+                sensor_type: "air",
+                unit: "F",
+                points: [
+                  {
+                    timestamp: "2026-05-11T12:00:00.000Z",
+                    value: 77,
+                    normalizedF: 77,
+                    normalizedC: 25
+                  }
+                ]
+              },
+              {
+                sensor_type: "pool_water",
+                unit: "F",
+                points: [
+                  {
+                    timestamp: "2026-05-11T12:00:00.000Z",
+                    value: 81,
+                    normalizedF: 81,
+                    normalizedC: 27.2
+                  }
+                ]
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
       return platformStatusResponse();
     })
   );
@@ -818,7 +890,10 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
 
   await waitFor(() => {
     assert.ok(screen.getByRole("heading", { name: "Home - Overview & actions" }));
-    assert.ok(screen.getByText("Operational Summary"));
+    assert.ok(screen.getByText("Home Telemetry"));
+    assert.ok(screen.getByText("82 °F"));
+    assert.ok(screen.getByText("78 °F"));
+    assert.ok(screen.getByRole("img", { name: "Temperature history chart" }));
   });
 
   fireEvent.click(screen.getByRole("link", { name: /Diagnostics/ }));
@@ -837,6 +912,57 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
     assert.ok(screen.getByRole("heading", { name: "Event Bus" }));
     assert.ok(screen.getByRole("heading", { name: "Network Interfaces" }));
     assert.ok(screen.getAllByText("RS485 Bus").length >= 2);
+  });
+});
+
+test("renders the Home temperature telemetry empty state when no history exists", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (input.endsWith("/protocol/bundles") && (!init || !init.method)) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/telemetry/temperatures/latest")) {
+        return response({
+          data: {
+            controller_id: "default",
+            status: "empty",
+            message: "No EasyTouch temperature history has been captured yet.",
+            last_updated: null,
+            readings: {}
+          },
+          error: null
+        });
+      }
+
+      if (input.includes("/telemetry/temperatures/history")) {
+        return response({
+          data: {
+            controller_id: "default",
+            range: {
+              start: "2026-05-11T12:00:00.000Z",
+              end: "2026-05-12T12:00:00.000Z"
+            },
+            interval: "1h",
+            series: []
+          },
+          error: null
+        });
+      }
+
+      return platformStatusResponse();
+    })
+  );
+
+  renderApp(["/"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("No EasyTouch temperature history has been captured yet."));
   });
 });
 

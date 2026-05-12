@@ -31,6 +31,39 @@ test("loadConfig parses expected settings", () => {
   assert.equal(config.protocolHealthUrl, null);
 });
 
+test("loadConfig parses optional Influx telemetry configuration", () => {
+  const config = loadConfig({
+    API_POOL_ID: "pool-1",
+    NATS_URL: "nats://127.0.0.1:4222",
+    API_HTTP_BIND: "127.0.0.1:8080",
+    INFLUX_URL: "http://127.0.0.1:8086",
+    INFLUX_TOKEN: "token-1",
+    INFLUX_ORG: "splash",
+    INFLUX_BUCKET: "pool-telemetry"
+  });
+
+  assert.deepEqual(config.influx, {
+    url: "http://127.0.0.1:8086",
+    token: "token-1",
+    org: "splash",
+    bucket: "pool-telemetry"
+  });
+});
+
+test("loadConfig rejects partial Influx telemetry configuration", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        API_POOL_ID: "pool-1",
+        NATS_URL: "nats://127.0.0.1:4222",
+        API_HTTP_BIND: "127.0.0.1:8080",
+        INFLUX_URL: "http://127.0.0.1:8086",
+        INFLUX_TOKEN: "token-1"
+      }),
+    /INFLUX_URL, INFLUX_TOKEN, INFLUX_ORG, and INFLUX_BUCKET must all be set together/
+  );
+});
+
 test("loadConfig parses optional upstream health URLs", () => {
   const config = loadConfig({
     API_POOL_ID: "pool-1",

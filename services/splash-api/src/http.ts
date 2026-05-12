@@ -21,6 +21,13 @@ export interface HttpHandlers {
   getEquipment(): Array<Record<string, unknown>>;
   getHealth(): Record<string, unknown>;
   getControllerSchedules(): Record<string, unknown>;
+  getTemperatureTelemetryLatest(): Promise<Record<string, unknown>>;
+  getTemperatureTelemetryHistory(input: {
+    sensorType: string | null;
+    start: string | null;
+    end: string | null;
+    interval: string | null;
+  }): Promise<Record<string, unknown>>;
   getPlatformStatus(): Promise<Record<string, unknown>>;
   getMetrics(): string;
   getEventBroker(): EventBroker;
@@ -113,6 +120,23 @@ export class LocalHttpServer implements HttpServer {
 
       if (req.method === "GET" && req.url === "/controller/schedules") {
         return json(req, res, 200, { data: this.handlers.getControllerSchedules(), error: null });
+      }
+
+      if (req.method === "GET" && req.url === "/telemetry/temperatures/latest") {
+        return json(req, res, 200, { data: await this.handlers.getTemperatureTelemetryLatest(), error: null });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/telemetry/temperatures/history")) {
+        const url = new URL(req.url, "http://localhost");
+        return json(req, res, 200, {
+          data: await this.handlers.getTemperatureTelemetryHistory({
+            sensorType: url.searchParams.get("sensorType"),
+            start: url.searchParams.get("start"),
+            end: url.searchParams.get("end"),
+            interval: url.searchParams.get("interval")
+          }),
+          error: null
+        });
       }
 
       if (req.method === "GET" && req.url === "/health") {

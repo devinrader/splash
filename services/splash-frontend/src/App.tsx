@@ -25,6 +25,7 @@ import { SplashIcon } from "./components/icons/SplashIcon";
 import { NAV_ITEMS, PAGE_SUMMARIES, getActiveNavItem } from "./navigation";
 import { AutomationPage } from "./pages/AutomationPage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
+import { HomePage } from "./pages/HomePage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { SystemPage } from "./pages/SystemPage";
 import { useFrontendStore } from "./store";
@@ -699,7 +700,7 @@ function AppLayout({
         {command.detail ? <section className="notice" aria-live="polite"><SplashIcon name={getStatusIconName(command.status ?? "idle")} size={18} /><div><strong>{formatCommandStatus(command.status)}</strong><span>{command.detail}</span></div></section> : null}
         {explorerError ? <section className="notice notice-error" role="alert"><SplashIcon name="warning" size={18} />{explorerError}</section> : null}
         <Routes>
-          <Route path="/" element={<PlaceholderPage kicker="Home" title="Operational Summary" description="This placeholder keeps the new navigation shell functional while the broader home dashboard composition is defined." />} />
+          <Route path="/" element={<HomePage />} />
           <Route path="/system/*" element={<SystemPage {...systemPageProps} />} />
           <Route path="/automation/*" element={<AutomationPage />} />
           <Route path="/diagnostics/*" element={<DiagnosticsPage {...diagnosticsPageProps} />} />

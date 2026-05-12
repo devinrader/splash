@@ -2,6 +2,8 @@ import type {
   CommandAcceptedResponse,
   CircuitConfigRequestResponse,
   ControllerSchedulesResponse,
+  TemperatureTelemetryHistoryResponse,
+  TemperatureTelemetryLatestResponse,
   EquipmentResponse,
   PlatformStatusResponse,
   ProtocolAnnotationConfidence,
@@ -47,6 +49,33 @@ export async function fetchControllerSchedules(): Promise<ControllerSchedulesRes
     throw new Error(`Controller schedules request failed with HTTP ${response.status}.`);
   }
   return (await response.json()) as ControllerSchedulesResponse;
+}
+
+export async function fetchTemperatureTelemetryLatest(): Promise<TemperatureTelemetryLatestResponse> {
+  const response = await fetch(buildApiUrl("/telemetry/temperatures/latest"));
+  if (!response.ok) {
+    throw new Error(`Temperature latest request failed with HTTP ${response.status}.`);
+  }
+  return (await response.json()) as TemperatureTelemetryLatestResponse;
+}
+
+export async function fetchTemperatureTelemetryHistory(input: {
+  start: string;
+  end: string;
+  interval?: string;
+}): Promise<TemperatureTelemetryHistoryResponse> {
+  const params = new URLSearchParams({
+    start: input.start,
+    end: input.end
+  });
+  if (input.interval) {
+    params.set("interval", input.interval);
+  }
+  const response = await fetch(buildApiUrl(`/telemetry/temperatures/history?${params.toString()}`));
+  if (!response.ok) {
+    throw new Error(`Temperature history request failed with HTTP ${response.status}.`);
+  }
+  return (await response.json()) as TemperatureTelemetryHistoryResponse;
 }
 
 export async function requestPumpSpeed(input: {
