@@ -98,7 +98,7 @@ export default function App() {
   const [messageTypeFilter, setMessageTypeFilter] = useState("all");
   const [messageLogLimit, setMessageLogLimit] = useState("100");
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
-  const [isStreamPaused, setIsStreamPaused] = useState(false);
+  const [isStreamPaused, setIsStreamPaused] = useState(true);
   const [bundles, setBundles] = useState<ProtocolBundleSummary[]>([]);
   const [baselineBundleId, setBaselineBundleId] = useState("");
   const [comparisonBundleId, setComparisonBundleId] = useState("");

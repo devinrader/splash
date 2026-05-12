@@ -1941,6 +1941,8 @@ test("captures explorer bundles and creates annotation and prompt records", asyn
   renderApp();
   await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
   await openDiagnostics();
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Resume" })));
+  fireEvent.click(screen.getByRole("button", { name: "Resume" }));
 
   FakeEventSource.instances[1].emit("protocol.command.encoded", {
     command_id: "command-remote-layout",
@@ -2075,6 +2077,13 @@ test("renders and filters the live message log component", async () => {
   renderApp();
   await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
   await openDiagnostics();
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Paused"));
+    assert.ok(screen.getByRole("button", { name: "Resume" }));
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Resume" }));
 
   FakeEventSource.instances[1].emit("protocol.frame.decoded", {
     action_code: "0x02",
