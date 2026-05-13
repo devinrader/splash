@@ -13,6 +13,8 @@ import type {
 const CHART_HEIGHT = 260;
 const DEFAULT_CHART_WIDTH = 960;
 const MIN_CHART_WIDTH = 320;
+const HISTORY_LOOKBACK_MS = 36 * 60 * 60 * 1000;
+const TEMPERATURE_HISTORY_INTERVAL = "10m";
 const WEATHER_METRICS: WeatherHistoryMetric[] = [
   "temperature_f",
   "cloud_cover",
@@ -31,10 +33,10 @@ export function HistoryPage() {
 
     void (async () => {
       const end = new Date().toISOString();
-      const start = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+      const start = new Date(Date.now() - HISTORY_LOOKBACK_MS).toISOString();
       const [temperatureResult, ...weatherResults] = await Promise.allSettled([
-        fetchTemperatureTelemetryHistory({ start, end, interval: "6h" }),
-        ...WEATHER_METRICS.map((metric) => fetchWeatherHistory({ metric, start, end, interval: "6h" }))
+        fetchTemperatureTelemetryHistory({ start, end, interval: TEMPERATURE_HISTORY_INTERVAL }),
+        ...WEATHER_METRICS.map((metric) => fetchWeatherHistory({ metric, start, end }))
       ]);
 
       if (cancelled) {
@@ -103,17 +105,11 @@ export function HistoryPage() {
           return (
             <Card key={metric} title={formatWeatherMetricTitle(metric)} className="automation-card-table">
               {data?.series?.length ? (
-                <>
-                  <div className="automation-record-row">
-                    <strong>{data.provider}</strong>
-                    <span>{data.stale ? "Stale forecast snapshot" : "Current cached snapshot"}</span>
-                  </div>
-                  <HistoryTrendChart
-                    ariaLabel={`${formatWeatherMetricTitle(metric)} history chart`}
-                    yLegend={formatWeatherMetricAxis(metric)}
-                    series={buildWeatherChartSeries(data.series)}
-                  />
-                </>
+                <HistoryTrendChart
+                  ariaLabel={`${formatWeatherMetricTitle(metric)} history chart`}
+                  yLegend={formatWeatherMetricAxis(metric)}
+                  series={buildWeatherChartSeries(data.series)}
+                />
               ) : (
                 <p className="chart-empty-state">{data?.message ?? "No weather history has been captured yet."}</p>
               )}

@@ -1120,12 +1120,15 @@ textarea:focus-visible {
 
 .metric-trend-chart-shell {
   width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .metric-trend-chart-frame {
   width: 100%;
   min-height: 280px;
-  overflow-x: auto;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: hidden;
 }
 

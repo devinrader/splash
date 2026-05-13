@@ -612,9 +612,11 @@ test("renders Platform service health rows from API health data", async () => {
 });
 
 test("renders persistence-backed history charts for temperature and weather data", async () => {
+  const requests: string[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string, init?: RequestInit) => {
+      requests.push(input);
       if (input.endsWith("/protocol/bundles") && (!init || !init.method)) {
         return response({ data: [], error: null });
       }
@@ -631,7 +633,7 @@ test("renders persistence-backed history charts for temperature and weather data
               start: "2026-05-01T00:00:00.000Z",
               end: "2026-05-12T00:00:00.000Z"
             },
-            interval: "6h",
+            interval: "30m",
             series: [
               {
                 sensor_type: "air",
@@ -703,6 +705,23 @@ test("renders persistence-backed history charts for temperature and weather data
     assert.ok(screen.getByText("Rain Amount"));
     assert.ok(screen.getAllByRole("img").length >= 1);
   });
+
+  const temperatureHistoryRequest = requests.find((entry) => entry.includes("/telemetry/temperatures/history"));
+  assert.ok(temperatureHistoryRequest);
+  const temperatureHistoryUrl = new URL(temperatureHistoryRequest as string, "http://127.0.0.1:8080");
+  assert.equal(temperatureHistoryUrl.searchParams.get("interval"), "10m");
+  const start = Date.parse(temperatureHistoryUrl.searchParams.get("start") as string);
+  const end = Date.parse(temperatureHistoryUrl.searchParams.get("end") as string);
+  assert.ok(Number.isFinite(start));
+  assert.ok(Number.isFinite(end));
+  assert.ok(end > start);
+  assert.equal(end - start, 36 * 60 * 60 * 1000);
+  const weatherHistoryRequests = requests.filter((entry) => entry.includes("/weather/history"));
+  assert.equal(weatherHistoryRequests.length, 5);
+  for (const request of weatherHistoryRequests) {
+    const url = new URL(request, "http://127.0.0.1:8080");
+    assert.equal(url.searchParams.get("interval"), null);
+  }
 });
 
 test("renders Pool on from the bitmask state even when mode disagrees", async () => {
