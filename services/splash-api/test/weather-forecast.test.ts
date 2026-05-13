@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  computeNextMinuteRefreshDelay,
   OpenMeteoWeatherProvider,
   WeatherForecastService,
   type WeatherForecastView
@@ -148,6 +149,7 @@ test("WeatherForecastService keeps the last valid forecast and marks it stale af
     },
     weather: {
       provider: "openmeteo",
+      refreshMinutes: null,
       refreshIntervalHours: 6,
       openMeteoBaseUrl: "https://api.open-meteo.com/v1",
       openMeteoGeocodingUrl: "https://geocoding-api.open-meteo.com/v1"
@@ -238,6 +240,7 @@ test("WeatherForecastService reads persisted weather history and reports healthy
     },
     weather: {
       provider: "openmeteo",
+      refreshMinutes: null,
       refreshIntervalHours: 6,
       openMeteoBaseUrl: "https://api.open-meteo.com/v1",
       openMeteoGeocodingUrl: "https://geocoding-api.open-meteo.com/v1"
@@ -328,6 +331,7 @@ test("WeatherForecastService falls back to the latest cached forecast when persi
     },
     weather: {
       provider: "openmeteo",
+      refreshMinutes: null,
       refreshIntervalHours: 6,
       openMeteoBaseUrl: "https://api.open-meteo.com/v1",
       openMeteoGeocodingUrl: "https://geocoding-api.open-meteo.com/v1"
@@ -353,4 +357,12 @@ test("WeatherForecastService falls back to the latest cached forecast when persi
   assert.match(history.message, /latest cached forecast snapshot/u);
   assert.equal(history.series[0]?.points.length, 2);
   assert.equal(history.series[0]?.points[0]?.value, 77);
+});
+
+test("computeNextMinuteRefreshDelay returns the next configured wall-clock slot", () => {
+  const first = computeNextMinuteRefreshDelay(Date.parse("2026-05-13T10:16:30.000Z"), [15, 45]);
+  assert.equal(first, (28 * 60 + 30) * 1000);
+
+  const second = computeNextMinuteRefreshDelay(Date.parse("2026-05-13T10:50:00.000Z"), [15, 45]);
+  assert.equal(second, 25 * 60 * 1000);
 });

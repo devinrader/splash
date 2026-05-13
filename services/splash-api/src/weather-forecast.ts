@@ -142,6 +142,7 @@ export interface WeatherHistoryQuery {
 export class WeatherForecastService {
   private readonly fetchImpl: typeof fetch;
   private readonly refreshIntervalMs: number;
+  private readonly refreshMinutes: number[] | null;
   private readonly provider: WeatherForecastProvider;
   private readonly influx: InfluxTelemetryConfig | null;
   private readonly onUpdate?: (view: WeatherForecastView) => void;
@@ -157,6 +158,7 @@ export class WeatherForecastService {
     this.poolId = options.poolId;
     this.poolSite = options.poolSite;
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.refreshMinutes = options.weather.refreshMinutes;
     this.refreshIntervalMs = options.weather.refreshIntervalHours * 60 * 60 * 1000;
     this.provider = new OpenMeteoWeatherProvider({
       baseUrl: options.weather.openMeteoBaseUrl,
@@ -173,6 +175,11 @@ export class WeatherForecastService {
 
   start(signal: AbortSignal): void {
     void this.refreshNow();
+    if (this.refreshMinutes && this.refreshMinutes.length > 0) {
+      this.scheduleNextMinuteRefresh(signal);
+      return;
+    }
+
     const interval = setInterval(() => {
       void this.refreshIfDue();
     }, this.refreshIntervalMs);
@@ -186,14 +193,14 @@ export class WeatherForecastService {
   async getHistory(query: WeatherHistoryQuery): Promise<WeatherHistoryView> {
     const start = query.start ?? new Date(Date.now() - DEFAULT_HISTORY_LOOKBACK_MS).toISOString();
     const end = query.end ?? new Date().toISOString();
-    const interval = query.interval ?? "6h";
+    const interval = query.interval ?? inferWeatherRefreshInterval(this.refreshMinutes, this.refreshIntervalMs);
 
     if (!this.influx) {
       return emptyWeatherHistoryView(this.poolId, query.metric, start, end, interval, "Weather history persistence is not configured.");
     }
 
     try {
-      const rows = await queryForecastHistoryRows(this.influx, this.fetchImpl, this.poolId, query.metric, start, end, interval);
+      const rows = await queryForecastHistoryRows(this.influx, this.fetchImpl, this.poolId, query.metric, start, end, query.interval ?? null);
       if (rows.length === 0) {
         const fallback = this.buildHistoryFromCachedForecast(query.metric, start, end, interval);
         if (fallback) {
@@ -361,6 +368,20 @@ export class WeatherForecastService {
       return;
     }
     await this.refreshNow();
+  }
+
+  private scheduleNextMinuteRefresh(signal: AbortSignal): void {
+    if (!this.refreshMinutes || this.refreshMinutes.length === 0 || signal.aborted) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      void this.refreshNow().finally(() => {
+        this.scheduleNextMinuteRefresh(signal);
+      });
+    }, computeNextMinuteRefreshDelay(Date.now(), this.refreshMinutes));
+
+    signal.addEventListener("abort", () => clearTimeout(timeout), { once: true });
   }
 
   private async performRefresh(): Promise<WeatherForecastView> {
@@ -684,18 +705,59 @@ async function queryForecastHistoryRows(
   end: string,
   interval: string | null
 ): Promise<Array<Record<string, string>>> {
-  const every = interval && interval.trim().length > 0 ? interval : "6h";
+  const aggregateWindow = interval && interval.trim().length > 0
+    ? `\n  |> aggregateWindow(every: ${interval}, fn: last, createEmpty: false)`
+    : "";
   const flux = `
 from(bucket: "${escapeFluxString(influx.bucket)}")
   |> range(start: time(v: "${escapeFluxString(start)}"), stop: time(v: "${escapeFluxString(end)}"))
   |> filter(fn: (r) => r._measurement == "${HOURLY_MEASUREMENT}")
   |> filter(fn: (r) => r.pool_id == "${escapeFluxString(poolId)}")
   |> filter(fn: (r) => r._field == "${escapeFluxString(metric)}")
-  |> aggregateWindow(every: ${every}, fn: last, createEmpty: false)
+${aggregateWindow}
   |> keep(columns: ["_time", "_value", "provider"])
   |> sort(columns: ["_time"])
 `.trim();
   return queryInfluxRows(influx, fetchImpl, flux);
+}
+
+export function computeNextMinuteRefreshDelay(nowMs: number, refreshMinutes: number[]): number {
+  const now = new Date(nowMs);
+  const baseline = new Date(nowMs);
+  baseline.setSeconds(0, 0);
+
+  for (const minute of refreshMinutes) {
+    const candidate = new Date(baseline.getTime());
+    candidate.setMinutes(minute, 0, 0);
+    if (candidate.getTime() > now.getTime()) {
+      return candidate.getTime() - now.getTime();
+    }
+  }
+
+  baseline.setHours(baseline.getHours() + 1, refreshMinutes[0] as number, 0, 0);
+  return baseline.getTime() - now.getTime();
+}
+
+function inferWeatherRefreshInterval(refreshMinutes: number[] | null, refreshIntervalMs: number): string {
+  if (refreshMinutes && refreshMinutes.length > 1) {
+    const gaps = refreshMinutes.map((minute, index) => {
+      const next = refreshMinutes[(index + 1) % refreshMinutes.length] as number;
+      const delta = next > minute ? next - minute : 60 - minute + next;
+      return delta;
+    });
+    const smallestGap = Math.min(...gaps);
+    return smallestGap % 60 === 0 ? `${smallestGap / 60}h` : `${smallestGap}m`;
+  }
+
+  if (refreshMinutes && refreshMinutes.length === 1) {
+    return "1h";
+  }
+
+  const minutes = Math.max(1, Math.round(refreshIntervalMs / 60000));
+  if (minutes % 60 === 0) {
+    return `${minutes / 60}h`;
+  }
+  return `${minutes}m`;
 }
 
 async function writeForecastSnapshots(

@@ -1532,6 +1532,7 @@ test("app exposes latest weather forecast through the weather service boundary",
       },
       weather: {
         provider: "openmeteo",
+        refreshMinutes: null,
         refreshIntervalHours: 6,
         openMeteoBaseUrl: "https://api.open-meteo.com/v1",
         openMeteoGeocodingUrl: "https://geocoding-api.open-meteo.com/v1"

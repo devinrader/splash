@@ -2,6 +2,7 @@ import type { InfluxTelemetryConfig } from "./temperature-telemetry.js";
 
 export interface WeatherProviderConfig {
   provider: "openmeteo";
+  refreshMinutes: number[] | null;
   refreshIntervalHours: number;
   openMeteoBaseUrl: string;
   openMeteoGeocodingUrl: string;
@@ -72,6 +73,7 @@ export function defaultPoolSite(timezone: string = "UTC"): PoolSiteConfig {
 export function defaultWeatherProviderConfig(): WeatherProviderConfig {
   return {
     provider: "openmeteo",
+    refreshMinutes: null,
     refreshIntervalHours: 6,
     openMeteoBaseUrl: "https://api.open-meteo.com/v1",
     openMeteoGeocodingUrl: "https://geocoding-api.open-meteo.com/v1"
@@ -132,6 +134,7 @@ function loadWeatherProvider(env: NodeJS.ProcessEnv): WeatherProviderConfig {
 
   return {
     provider: "openmeteo",
+    refreshMinutes: optionalMinuteList(env, "WEATHER_REFRESH_MINUTES"),
     refreshIntervalHours: optionalInteger(env, "WEATHER_REFRESH_INTERVAL_HOURS", 6),
     openMeteoBaseUrl: optionalString(env, "OPEN_METEO_BASE_URL") ?? "https://api.open-meteo.com/v1",
     openMeteoGeocodingUrl: optionalString(env, "OPEN_METEO_GEOCODING_URL") ?? "https://geocoding-api.open-meteo.com/v1"
@@ -159,4 +162,29 @@ function optionalInteger(env: NodeJS.ProcessEnv, key: string, fallback: number):
   }
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function optionalMinuteList(env: NodeJS.ProcessEnv, key: string): number[] | null {
+  const value = optionalString(env, key);
+  if (!value) {
+    return null;
+  }
+
+  const minutes = value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .map((entry) => {
+      const parsed = Number.parseInt(entry, 10);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 59) {
+        throw new Error(`${key} must contain comma-separated minute values between 0 and 59.`);
+      }
+      return parsed;
+    });
+
+  if (minutes.length === 0) {
+    return null;
+  }
+
+  return Array.from(new Set(minutes)).sort((left, right) => left - right);
 }

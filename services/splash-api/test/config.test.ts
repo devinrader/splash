@@ -33,6 +33,7 @@ test("loadConfig parses expected settings", () => {
   assert.ok(config.weather);
   assert.equal(config.poolSite.timezone, "America/New_York");
   assert.equal(config.weather.provider, "openmeteo");
+  assert.equal(config.weather.refreshMinutes, null);
   assert.equal(config.weather.refreshIntervalHours, 6);
 });
 
@@ -101,6 +102,7 @@ test("loadConfig parses pool site and weather provider configuration", () => {
     POOL_LONGITUDE: "-81.1873",
     POOL_TIMEZONE: "America/New_York",
     WEATHER_PROVIDER: "openmeteo",
+    WEATHER_REFRESH_MINUTES: "15,45",
     WEATHER_REFRESH_INTERVAL_HOURS: "12",
     OPEN_METEO_BASE_URL: "https://api.open-meteo.com/v1",
     OPEN_METEO_GEOCODING_URL: "https://geocoding-api.open-meteo.com/v1"
@@ -114,6 +116,20 @@ test("loadConfig parses pool site and weather provider configuration", () => {
   assert.equal(config.poolSite.postalCode, "28052");
   assert.equal(config.poolSite.latitude, 35.2621);
   assert.equal(config.poolSite.longitude, -81.1873);
+  assert.deepEqual(config.weather.refreshMinutes, [15, 45]);
   assert.equal(config.weather.refreshIntervalHours, 12);
   assert.equal(config.weather.openMeteoBaseUrl, "https://api.open-meteo.com/v1");
+});
+
+test("loadConfig rejects invalid weather refresh minute values", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        API_POOL_ID: "pool-1",
+        NATS_URL: "nats://127.0.0.1:4222",
+        API_HTTP_BIND: "127.0.0.1:8080",
+        WEATHER_REFRESH_MINUTES: "15,99"
+      }),
+    /WEATHER_REFRESH_MINUTES must contain comma-separated minute values between 0 and 59/
+  );
 });

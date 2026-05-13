@@ -67,6 +67,8 @@ Notes:
 - the script loads `deploy/local/splash-api.env.example` by default
 - the default API env example includes `API_PROMETHEUS_URL` and `API_GRAFANA_URL` so the Platform tab can report observability service health
 - the default API env example also includes `INFLUX_URL`, `INFLUX_TOKEN`, `INFLUX_ORG`, and `INFLUX_BUCKET` so EasyTouch temperature telemetry can be persisted when InfluxDB is available
+- weather refresh can be scheduled on fixed wall-clock minute marks with `WEATHER_REFRESH_MINUTES`, for example `15,45`
+- if `WEATHER_REFRESH_MINUTES` is unset, `WEATHER_REFRESH_INTERVAL_HOURS` remains the fallback refresh cadence
 - the default API env example also includes pool site location and Open-Meteo weather settings so the Home dashboard can cache site forecast data locally
 - the default API env example points `API_SERIAL_HEALTH_URL` and `API_PROTOCOL_HEALTH_URL` at `/health`, not `/healthz`, because the platform aggregator needs semantic health rather than liveness-only checks
 - the script loads `deploy/local/splash-protocol.env.example` by default
@@ -89,6 +91,20 @@ Notes:
   `NATS_URL` or no protocol frames will reach the local API
 - the script keeps `splash-frontend` and `splash-protocol` in the background and
   then runs `splash-api` in the foreground
+
+Recommended local-secret pattern:
+
+- keep committed defaults in `deploy/local/splash-api.env.example`
+- create an untracked file such as `deploy/local/splash-api.env.local` for real
+  tokens, hostnames, or addresses that should not be committed
+- start the local stack with:
+
+```bash
+SPLASH_API_ENV_FILE=deploy/local/splash-api.env.local deploy/local/start-splash-api-local.sh
+```
+
+- `deploy/local/*.env.local` is ignored by the repo so local secret-bearing env
+  files can stay outside commits
 
 ## Prometheus and Grafana
 
