@@ -800,6 +800,10 @@ function formatPlatformServiceName(value: string): string {
       return "Prometheus";
     case "grafana":
       return "Grafana";
+    case "influxdb":
+      return "InfluxDB";
+    case "weather-provider":
+      return "Weather Provider";
     default:
       return value;
   }

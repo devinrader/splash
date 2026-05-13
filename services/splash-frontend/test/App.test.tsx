@@ -570,6 +570,15 @@ test("renders Platform service health rows from API health data", async () => {
             message: "Datasource API unavailable",
             lastChecked: "2026-05-11T14:00:00.000Z",
             responseTimeMs: null
+          },
+          {
+            name: "weather-provider",
+            type: "third-party",
+            criticality: "optional",
+            status: "healthy",
+            message: "Weather forecast cache is current",
+            lastChecked: "2026-05-11T14:00:00.000Z",
+            responseTimeMs: 6
           }
         ]
       });
@@ -585,6 +594,7 @@ test("renders Platform service health rows from API health data", async () => {
     assert.ok(screen.getByText("Splash Frontend"));
     assert.ok(screen.getByText("Prometheus"));
     assert.ok(screen.getByText("Grafana"));
+    assert.ok(screen.getByText("Weather Provider"));
     assert.ok(screen.getAllByText("Splash service · Important").length >= 1);
     assert.ok(screen.getByText("Third-party service · Critical"));
     assert.ok(screen.getAllByText("Third-party service · Optional").length >= 1);
@@ -594,9 +604,104 @@ test("renders Platform service health rows from API health data", async () => {
     assert.ok(screen.getByText(/Browser session active/));
     assert.ok(screen.getByText(/Scrape targets partially impaired/));
     assert.ok(screen.getByText(/Datasource API unavailable/));
+    assert.ok(screen.getByText(/Weather forecast cache is current/));
     assert.ok(screen.getAllByText("Healthy").length > 0);
     assert.ok(screen.getAllByText("Degraded").length > 0);
     assert.ok(screen.getAllByText("Down").length > 0);
+  });
+});
+
+test("renders persistence-backed history charts for temperature and weather data", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (input.endsWith("/protocol/bundles") && (!init || !init.method)) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.includes("/telemetry/temperatures/history")) {
+        return response({
+          data: {
+            controller_id: "default",
+            range: {
+              start: "2026-05-01T00:00:00.000Z",
+              end: "2026-05-12T00:00:00.000Z"
+            },
+            interval: "6h",
+            series: [
+              {
+                sensor_type: "air",
+                unit: "F",
+                points: [{ timestamp: "2026-05-11T12:00:00.000Z", value: 77, normalizedF: 77, normalizedC: 25 }]
+              },
+              {
+                sensor_type: "pool_water",
+                unit: "F",
+                points: [{ timestamp: "2026-05-11T12:00:00.000Z", value: 81, normalizedF: 81, normalizedC: 27.2 }]
+              },
+              {
+                sensor_type: "spa_water",
+                unit: "F",
+                points: [{ timestamp: "2026-05-11T12:00:00.000Z", value: 84, normalizedF: 84, normalizedC: 28.9 }]
+              },
+              {
+                sensor_type: "solar",
+                unit: "F",
+                points: [{ timestamp: "2026-05-11T12:00:00.000Z", value: 90, normalizedF: 90, normalizedC: 32.2 }]
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
+      if (input.includes("/weather/history")) {
+        const url = new URL(input);
+        const metric = url.searchParams.get("metric");
+        return response({
+          data: {
+            pool_id: "pool-1",
+            provider: "openmeteo",
+            metric,
+            status: "available",
+            message: "Weather history is available.",
+            stale: false,
+            fetched_at: "2026-05-12T11:30:00.000Z",
+            range: {
+              start: "2026-05-01T00:00:00.000Z",
+              end: "2026-05-12T00:00:00.000Z"
+            },
+            interval: "6h",
+            series: [
+              {
+                metric,
+                points: [{ timestamp: "2026-05-11T12:00:00.000Z", value: metric === "uv_index" ? 7.1 : 42 }]
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
+      return platformStatusResponse();
+    })
+  );
+
+  renderApp(["/history"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("History Trends"));
+    assert.ok(screen.getByRole("img", { name: "Temperature history chart" }));
+    assert.ok(screen.getByText("Weather Temperature"));
+    assert.ok(screen.getByText("Cloud Cover"));
+    assert.ok(screen.getByText("UV Index"));
+    assert.ok(screen.getByText("Rain Chance"));
+    assert.ok(screen.getByText("Rain Amount"));
+    assert.ok(screen.getAllByRole("img").length >= 1);
   });
 });
 
@@ -879,6 +984,58 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
         });
       }
 
+      if (input.endsWith("/weather/forecast")) {
+        return response({
+          data: {
+            pool_id: "pool-1",
+            provider: "openmeteo",
+            status: "available",
+            message: "Weather forecast is available.",
+            stale: false,
+            fetched_at: "2026-05-12T11:30:00.000Z",
+            location: {
+              latitude: 35.2621,
+              longitude: -81.1873,
+              timezone: "America/New_York",
+              source: "manual",
+              name: "Gastonia"
+            },
+            daily: [
+              {
+                date: "2026-05-12",
+                weather_code: 3,
+                high_temp_f: 82,
+                high_temp_c: 27.8,
+                low_temp_f: 63,
+                low_temp_c: 17.2,
+                precipitation_probability_max: 25,
+                precipitation_amount: 0,
+                precipitation_unit: "mm",
+                uv_index_max: 8.6,
+                sunrise: "2026-05-12T06:19:00-04:00",
+                sunset: "2026-05-12T20:15:00-04:00"
+              },
+              {
+                date: "2026-05-13",
+                weather_code: 2,
+                high_temp_f: 84,
+                high_temp_c: 28.9,
+                low_temp_f: 65,
+                low_temp_c: 18.3,
+                precipitation_probability_max: 10,
+                precipitation_amount: 0,
+                precipitation_unit: "mm",
+                uv_index_max: 9.1,
+                sunrise: "2026-05-13T06:18:00-04:00",
+                sunset: "2026-05-13T20:16:00-04:00"
+              }
+            ],
+            hourly: []
+          },
+          error: null
+        });
+      }
+
       return platformStatusResponse();
     })
   );
@@ -894,6 +1051,8 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
     assert.ok(screen.getByText("82 °F"));
     assert.ok(screen.getByText("78 °F"));
     assert.ok(screen.getByRole("img", { name: "Temperature history chart" }));
+    assert.ok(screen.getByText("Weather Forecast"));
+    assert.ok(screen.getByText("Provider"));
   });
 
   fireEvent.click(screen.getByRole("link", { name: /Diagnostics/ }));
@@ -955,6 +1114,23 @@ test("renders the Home temperature telemetry empty state when no history exists"
         });
       }
 
+      if (input.endsWith("/weather/forecast")) {
+        return response({
+          data: {
+            pool_id: "pool-1",
+            provider: "openmeteo",
+            status: "empty",
+            message: "No weather forecast has been captured yet.",
+            stale: false,
+            fetched_at: null,
+            location: null,
+            daily: [],
+            hourly: []
+          },
+          error: null
+        });
+      }
+
       return platformStatusResponse();
     })
   );
@@ -963,6 +1139,7 @@ test("renders the Home temperature telemetry empty state when no history exists"
 
   await waitFor(() => {
     assert.ok(screen.getByText("No EasyTouch temperature history has been captured yet."));
+    assert.ok(screen.getByText("No weather forecast has been captured yet."));
   });
 });
 

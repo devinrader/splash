@@ -29,6 +29,11 @@ test("loadConfig parses expected settings", () => {
   assert.equal(config.timezone, "America/New_York");
   assert.equal(config.serialHealthUrl, null);
   assert.equal(config.protocolHealthUrl, null);
+  assert.ok(config.poolSite);
+  assert.ok(config.weather);
+  assert.equal(config.poolSite.timezone, "America/New_York");
+  assert.equal(config.weather.provider, "openmeteo");
+  assert.equal(config.weather.refreshIntervalHours, 6);
 });
 
 test("loadConfig parses optional Influx telemetry configuration", () => {
@@ -81,4 +86,34 @@ test("loadConfig parses optional upstream health URLs", () => {
   assert.equal(config.protocolHealthUrl, "http://127.0.0.1:9109/health");
   assert.equal(config.prometheusUrl, "http://prometheus.rader.haus");
   assert.equal(config.grafanaUrl, "http://grafana.rader.haus");
+});
+
+test("loadConfig parses pool site and weather provider configuration", () => {
+  const config = loadConfig({
+    API_POOL_ID: "pool-1",
+    NATS_URL: "nats://127.0.0.1:4222",
+    API_HTTP_BIND: "127.0.0.1:8080",
+    POOL_STREET_ADDRESS: "123 Splash Lane",
+    POOL_CITY: "Gastonia",
+    POOL_STATE: "NC",
+    POOL_POSTAL_CODE: "28052",
+    POOL_LATITUDE: "35.2621",
+    POOL_LONGITUDE: "-81.1873",
+    POOL_TIMEZONE: "America/New_York",
+    WEATHER_PROVIDER: "openmeteo",
+    WEATHER_REFRESH_INTERVAL_HOURS: "12",
+    OPEN_METEO_BASE_URL: "https://api.open-meteo.com/v1",
+    OPEN_METEO_GEOCODING_URL: "https://geocoding-api.open-meteo.com/v1"
+  });
+
+  assert.ok(config.poolSite);
+  assert.ok(config.weather);
+  assert.equal(config.poolSite.streetAddress, "123 Splash Lane");
+  assert.equal(config.poolSite.city, "Gastonia");
+  assert.equal(config.poolSite.state, "NC");
+  assert.equal(config.poolSite.postalCode, "28052");
+  assert.equal(config.poolSite.latitude, 35.2621);
+  assert.equal(config.poolSite.longitude, -81.1873);
+  assert.equal(config.weather.refreshIntervalHours, 12);
+  assert.equal(config.weather.openMeteoBaseUrl, "https://api.open-meteo.com/v1");
 });

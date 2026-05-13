@@ -143,6 +143,100 @@ export interface TemperatureTelemetryHistoryResponse {
   error: unknown;
 }
 
+export interface WeatherForecastDailyEntry {
+  date: string;
+  weather_code: number | null;
+  high_temp_f: number | null;
+  high_temp_c: number | null;
+  low_temp_f: number | null;
+  low_temp_c: number | null;
+  precipitation_probability_max: number | null;
+  precipitation_amount: number | null;
+  precipitation_unit: "mm";
+  uv_index_max: number | null;
+  sunrise: string | null;
+  sunset: string | null;
+}
+
+export interface WeatherForecastHourlyEntry {
+  timestamp: string;
+  temperature_f: number | null;
+  temperature_c: number | null;
+  relative_humidity: number | null;
+  dew_point_f: number | null;
+  dew_point_c: number | null;
+  precipitation_probability: number | null;
+  precipitation_amount: number | null;
+  precipitation_unit: "mm";
+  cloud_cover: number | null;
+  wind_speed_mph: number | null;
+  wind_speed_kph: number | null;
+  wind_gusts_mph: number | null;
+  wind_gusts_kph: number | null;
+  uv_index: number | null;
+}
+
+export interface WeatherForecastData {
+  pool_id: string;
+  provider: string;
+  status: "available" | "empty";
+  message: string;
+  stale: boolean;
+  fetched_at: string | null;
+  location: {
+    latitude: number;
+    longitude: number;
+    timezone: string | null;
+    source: "manual" | "geocoded";
+    name: string | null;
+  } | null;
+  daily: WeatherForecastDailyEntry[];
+  hourly: WeatherForecastHourlyEntry[];
+}
+
+export interface WeatherForecastResponse {
+  data: WeatherForecastData;
+  error: unknown;
+}
+
+export type WeatherHistoryMetric =
+  | "temperature_f"
+  | "cloud_cover"
+  | "uv_index"
+  | "precipitation_probability"
+  | "precipitation_amount";
+
+export interface WeatherHistoryPoint {
+  timestamp: string;
+  value: number;
+}
+
+export interface WeatherHistorySeries {
+  metric: WeatherHistoryMetric;
+  points: WeatherHistoryPoint[];
+}
+
+export interface WeatherHistoryData {
+  pool_id: string;
+  provider: string;
+  metric: WeatherHistoryMetric;
+  status: "available" | "empty";
+  message: string;
+  stale: boolean;
+  fetched_at: string | null;
+  range: {
+    start: string;
+    end: string;
+  };
+  interval: string | null;
+  series: WeatherHistorySeries[];
+}
+
+export interface WeatherHistoryResponse {
+  data: WeatherHistoryData;
+  error: unknown;
+}
+
 export interface PlatformServiceHealthRecord {
   name: string;
   type: "splash" | "third-party";

@@ -1448,3 +1448,113 @@ test("prompt store saves operator-needed protocol prompts", () => {
   assert.equal(store.list("bundle-1").length, 1);
   assert.equal(store.list("bundle-1")[0]?.input_type, "controller_menu_state");
 });
+
+test("app exposes latest weather forecast through the weather service boundary", async () => {
+  const latest = {
+    pool_id: "pool-1",
+    provider: "openmeteo",
+    status: "available",
+    message: "Weather forecast is available.",
+    stale: false,
+    fetched_at: "2026-05-12T12:00:00.000Z",
+    location: {
+      latitude: 35.2621,
+      longitude: -81.1873,
+      timezone: "America/New_York",
+      source: "manual",
+      name: "Gastonia"
+    },
+    daily: [],
+    hourly: []
+  };
+
+  const weatherForecast = {
+    start() {},
+    async getLatest() {
+      return latest;
+    },
+    async getHistory() {
+      return {
+        pool_id: "pool-1",
+        provider: "openmeteo",
+        metric: "temperature_f",
+        status: "available",
+        message: "Weather history is available.",
+        stale: false,
+        fetched_at: "2026-05-12T12:00:00.000Z",
+        range: {
+          start: "2026-05-01T00:00:00.000Z",
+          end: "2026-05-12T00:00:00.000Z"
+        },
+        interval: "6h",
+        series: [
+          {
+            metric: "temperature_f",
+            points: [
+              {
+                timestamp: "2026-05-12T12:00:00.000Z",
+                value: 77
+              }
+            ]
+          }
+        ]
+      };
+    },
+    async checkHealth() {
+      return {
+        status: "healthy",
+        message: "Weather forecast cache is current",
+        last_checked: "2026-05-12T12:00:00.000Z",
+        checks: {
+          provider: {
+            status: "healthy",
+            message: "Latest forecast refresh succeeded"
+          }
+        }
+      };
+    },
+    async refreshNow() {
+      return latest;
+    }
+  };
+
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      poolSite: {
+        streetAddress: null,
+        city: null,
+        state: null,
+        postalCode: null,
+        latitude: null,
+        longitude: null,
+        timezone: "UTC"
+      },
+      weather: {
+        provider: "openmeteo",
+        refreshIntervalHours: 6,
+        openMeteoBaseUrl: "https://api.open-meteo.com/v1",
+        openMeteoGeocodingUrl: "https://geocoding-api.open-meteo.com/v1"
+      },
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger,
+    weatherForecast: weatherForecast as never
+  });
+
+  assert.deepEqual(await app.getWeatherForecast(), latest);
+  assert.deepEqual(
+    await app.getWeatherHistory({
+      metric: "temperature_f",
+      start: "2026-05-01T00:00:00.000Z",
+      end: "2026-05-12T00:00:00.000Z",
+      interval: "6h"
+    }),
+    await weatherForecast.getHistory()
+  );
+  assert.deepEqual(await app.refreshWeatherForecast(), latest);
+});

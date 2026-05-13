@@ -28,6 +28,14 @@ export interface HttpHandlers {
     end: string | null;
     interval: string | null;
   }): Promise<Record<string, unknown>>;
+  getWeatherForecast(): Promise<Record<string, unknown>>;
+  getWeatherHistory(input: {
+    metric: string | null;
+    start: string | null;
+    end: string | null;
+    interval: string | null;
+  }): Promise<Record<string, unknown>>;
+  refreshWeatherForecast(): Promise<Record<string, unknown>>;
   getPlatformStatus(): Promise<Record<string, unknown>>;
   getMetrics(): string;
   getEventBroker(): EventBroker;
@@ -137,6 +145,27 @@ export class LocalHttpServer implements HttpServer {
           }),
           error: null
         });
+      }
+
+      if (req.method === "GET" && req.url === "/weather/forecast") {
+        return json(req, res, 200, { data: await this.handlers.getWeatherForecast(), error: null });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/weather/history")) {
+        const url = new URL(req.url, "http://localhost");
+        return json(req, res, 200, {
+          data: await this.handlers.getWeatherHistory({
+            metric: url.searchParams.get("metric"),
+            start: url.searchParams.get("start"),
+            end: url.searchParams.get("end"),
+            interval: url.searchParams.get("interval")
+          }),
+          error: null
+        });
+      }
+
+      if (req.method === "POST" && req.url === "/weather/forecast/refresh") {
+        return json(req, res, 200, { data: await this.handlers.refreshWeatherForecast(), error: null });
       }
 
       if (req.method === "GET" && req.url === "/health") {

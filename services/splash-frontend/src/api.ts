@@ -4,6 +4,9 @@ import type {
   ControllerSchedulesResponse,
   TemperatureTelemetryHistoryResponse,
   TemperatureTelemetryLatestResponse,
+  WeatherHistoryMetric,
+  WeatherHistoryResponse,
+  WeatherForecastResponse,
   EquipmentResponse,
   PlatformStatusResponse,
   ProtocolAnnotationConfidence,
@@ -76,6 +79,35 @@ export async function fetchTemperatureTelemetryHistory(input: {
     throw new Error(`Temperature history request failed with HTTP ${response.status}.`);
   }
   return (await response.json()) as TemperatureTelemetryHistoryResponse;
+}
+
+export async function fetchWeatherForecast(): Promise<WeatherForecastResponse> {
+  const response = await fetch(buildApiUrl("/weather/forecast"));
+  if (!response.ok) {
+    throw new Error(`Weather forecast request failed with HTTP ${response.status}.`);
+  }
+  return (await response.json()) as WeatherForecastResponse;
+}
+
+export async function fetchWeatherHistory(input: {
+  metric: WeatherHistoryMetric;
+  start: string;
+  end: string;
+  interval?: string;
+}): Promise<WeatherHistoryResponse> {
+  const params = new URLSearchParams({
+    metric: input.metric,
+    start: input.start,
+    end: input.end
+  });
+  if (input.interval) {
+    params.set("interval", input.interval);
+  }
+  const response = await fetch(buildApiUrl(`/weather/history?${params.toString()}`));
+  if (!response.ok) {
+    throw new Error(`Weather history request failed with HTTP ${response.status}.`);
+  }
+  return (await response.json()) as WeatherHistoryResponse;
 }
 
 export async function requestPumpSpeed(input: {

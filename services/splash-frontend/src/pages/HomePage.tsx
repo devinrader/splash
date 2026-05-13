@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Line } from "@nivo/line";
-import { fetchTemperatureTelemetryHistory, fetchTemperatureTelemetryLatest } from "../api";
+import { fetchTemperatureTelemetryHistory, fetchTemperatureTelemetryLatest, fetchWeatherForecast } from "../api";
 import { Card } from "../components/mockUi";
 import type {
   TemperatureTelemetryHistoryData,
   TemperatureTelemetryHistorySeries,
-  TemperatureTelemetryLatestData
+  TemperatureTelemetryLatestData,
+  WeatherForecastData
 } from "../types";
 
 const CHART_HEIGHT = 240;
@@ -15,6 +16,7 @@ const MIN_CHART_WIDTH = 320;
 export function HomePage() {
   const [latest, setLatest] = useState<TemperatureTelemetryLatestData | null>(null);
   const [history, setHistory] = useState<TemperatureTelemetryHistoryData | null>(null);
+  const [forecast, setForecast] = useState<WeatherForecastData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -24,13 +26,15 @@ export function HomePage() {
       try {
         const end = new Date().toISOString();
         const start = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const [latestResponse, historyResponse] = await Promise.all([
+        const [latestResponse, historyResponse, forecastResponse] = await Promise.all([
           fetchTemperatureTelemetryLatest(),
-          fetchTemperatureTelemetryHistory({ start, end, interval: "1h" })
+          fetchTemperatureTelemetryHistory({ start, end, interval: "1h" }),
+          fetchWeatherForecast()
         ]);
         if (!cancelled) {
           setLatest(latestResponse.data);
           setHistory(historyResponse.data);
+          setForecast(forecastResponse.data);
           setError(null);
         }
       } catch (nextError) {
@@ -47,13 +51,14 @@ export function HomePage() {
 
   const latestReadings = latest?.readings ?? {};
   const hasLatestReadings = Object.keys(latestReadings).length > 0;
+  const hasForecast = forecast?.status === "available" && (forecast.daily.length > 0 || forecast.hourly.length > 0);
 
   return (
     <section className="automation-shell">
       <div className="automation-grid automation-grid-overview">
-        <Card title="Home Telemetry" status="EasyTouch temperature history" className="automation-card-hero">
+        <Card title="Home Telemetry" status="EasyTouch temperature history and forecast" className="automation-card-hero">
           <p className="panel-copy">
-            The Home dashboard now shows persisted EasyTouch temperature telemetry captured from controller status broadcasts and stored for future maintenance and swimmability analysis.
+            The Home dashboard now shows persisted EasyTouch temperature telemetry captured from controller status broadcasts together with a cached site-level weather forecast for future maintenance and swimmability analysis.
           </p>
         </Card>
         <Card title="Last Updated">
@@ -63,10 +68,31 @@ export function HomePage() {
               <span>{formatTelemetryTimestamp(latest?.last_updated)}</span>
             </div>
             <div className="automation-record-row">
+              <strong>Forecast fetched</strong>
+              <span>{formatTelemetryTimestamp(forecast?.fetched_at)}</span>
+            </div>
+            <div className="automation-record-row">
               <strong>Source</strong>
-              <span>EasyTouch Action 2 controller-status broadcast</span>
+              <span>EasyTouch Action 2 controller-status broadcast · Open-Meteo forecast</span>
             </div>
           </div>
+        </Card>
+      </div>
+
+      <div className="automation-grid automation-grid-two-column">
+        <Card title="Weather Forecast" className="automation-card-table">
+          {hasForecast ? (
+            <WeatherForecastSummary forecast={forecast as WeatherForecastData} />
+          ) : (
+            <p className="chart-empty-state">{forecast?.message ?? "No weather forecast has been captured yet."}</p>
+          )}
+        </Card>
+        <Card title="Weather Detail">
+          {hasForecast ? (
+            <WeatherForecastDetail forecast={forecast as WeatherForecastData} />
+          ) : (
+            <p className="chart-empty-state">{forecast?.stale ? "Latest forecast is stale." : "Weather data unavailable."}</p>
+          )}
         </Card>
       </div>
 
@@ -104,6 +130,43 @@ export function HomePage() {
         </>
       )}
     </section>
+  );
+}
+
+function WeatherForecastSummary({ forecast }: { forecast: WeatherForecastData }) {
+  const today = forecast.daily[0];
+  const tomorrow = forecast.daily[1];
+
+  return (
+    <div className="automation-record-list">
+      <div className="automation-record-row">
+        <strong>{today?.date ?? "Today"}</strong>
+        <span>{formatRange(today?.high_temp_f, today?.low_temp_f)} · UV {formatNullableNumber(today?.uv_index_max)} · Rain {formatPercent(today?.precipitation_probability_max)}</span>
+      </div>
+      {tomorrow ? (
+        <div className="automation-record-row">
+          <strong>{tomorrow.date}</strong>
+          <span>{formatRange(tomorrow.high_temp_f, tomorrow.low_temp_f)} · UV {formatNullableNumber(tomorrow.uv_index_max)} · Rain {formatPercent(tomorrow.precipitation_probability_max)}</span>
+        </div>
+      ) : null}
+      <div className="automation-record-row">
+        <strong>Provider</strong>
+        <span>{forecast.provider}{forecast.stale ? " · stale" : ""}</span>
+      </div>
+    </div>
+  );
+}
+
+function WeatherForecastDetail({ forecast }: { forecast: WeatherForecastData }) {
+  return (
+    <div className="automation-record-list">
+      {forecast.daily.slice(0, 10).map((entry) => (
+        <div className="automation-record-row" key={entry.date}>
+          <strong>{entry.date}</strong>
+          <span>{formatRange(entry.high_temp_f, entry.low_temp_f)} · UV {formatNullableNumber(entry.uv_index_max)} · Rain {formatPercent(entry.precipitation_probability_max)}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -251,6 +314,21 @@ function buildChartData(series: TemperatureTelemetryHistorySeries[]) {
 
 function formatReading(value: number | undefined): string {
   return typeof value === "number" ? `${Math.round(value * 10) / 10} °F` : "Unavailable";
+}
+
+function formatRange(high: number | null | undefined, low: number | null | undefined): string {
+  if (typeof high !== "number" || typeof low !== "number") {
+    return "Unavailable";
+  }
+  return `${Math.round(high)} °F / ${Math.round(low)} °F`;
+}
+
+function formatPercent(value: number | null | undefined): string {
+  return typeof value === "number" ? `${Math.round(value)}%` : "n/a";
+}
+
+function formatNullableNumber(value: number | null | undefined): string {
+  return typeof value === "number" ? String(Math.round(value * 10) / 10) : "n/a";
 }
 
 function formatTelemetryTimestamp(value: string | null | undefined): string {

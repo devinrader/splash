@@ -1,7 +1,25 @@
 import type { InfluxTelemetryConfig } from "./temperature-telemetry.js";
 
+export interface WeatherProviderConfig {
+  provider: "openmeteo";
+  refreshIntervalHours: number;
+  openMeteoBaseUrl: string;
+  openMeteoGeocodingUrl: string;
+}
+
+export interface PoolSiteConfig {
+  streetAddress: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  timezone: string | null;
+}
+
 export interface ApiConfig {
   poolId: string;
+  poolSite?: PoolSiteConfig;
   natsUrl: string;
   natsMonitoringUrl: string | null;
   serialHealthUrl?: string | null;
@@ -10,6 +28,7 @@ export interface ApiConfig {
   prometheusUrl?: string | null;
   grafanaUrl?: string | null;
   influx?: InfluxTelemetryConfig | null;
+  weather?: WeatherProviderConfig;
   httpBind: string;
   healthPollIntervalMs?: number;
   healthTimeoutMs?: number;
@@ -20,6 +39,7 @@ export interface ApiConfig {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   return {
     poolId: required(env, "API_POOL_ID"),
+    poolSite: loadPoolSite(env),
     natsUrl: required(env, "NATS_URL"),
     natsMonitoringUrl: optionalUrl(env, "API_NATS_MONITORING_URL"),
     serialHealthUrl: optionalUrl(env, "API_SERIAL_HEALTH_URL"),
@@ -28,11 +48,33 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     prometheusUrl: optionalUrl(env, "API_PROMETHEUS_URL"),
     grafanaUrl: optionalUrl(env, "API_GRAFANA_URL"),
     influx: optionalInflux(env),
+    weather: loadWeatherProvider(env),
     httpBind: required(env, "API_HTTP_BIND"),
     healthPollIntervalMs: optionalInteger(env, "API_HEALTH_POLL_INTERVAL_MS", 5000),
     healthTimeoutMs: optionalInteger(env, "API_HEALTH_TIMEOUT_MS", 2000),
     logLevel: env.LOG_LEVEL ?? "info",
     timezone: env.TZ ?? "UTC"
+  };
+}
+
+export function defaultPoolSite(timezone: string = "UTC"): PoolSiteConfig {
+  return {
+    streetAddress: null,
+    city: null,
+    state: null,
+    postalCode: null,
+    latitude: null,
+    longitude: null,
+    timezone
+  };
+}
+
+export function defaultWeatherProviderConfig(): WeatherProviderConfig {
+  return {
+    provider: "openmeteo",
+    refreshIntervalHours: 6,
+    openMeteoBaseUrl: "https://api.open-meteo.com/v1",
+    openMeteoGeocodingUrl: "https://geocoding-api.open-meteo.com/v1"
   };
 }
 
@@ -68,6 +110,46 @@ function optionalInflux(env: NodeJS.ProcessEnv): InfluxTelemetryConfig | null {
     org: values[2] as string,
     bucket: values[3] as string
   };
+}
+
+function loadPoolSite(env: NodeJS.ProcessEnv): PoolSiteConfig {
+  return {
+    streetAddress: optionalString(env, "POOL_STREET_ADDRESS"),
+    city: optionalString(env, "POOL_CITY"),
+    state: optionalString(env, "POOL_STATE"),
+    postalCode: optionalString(env, "POOL_POSTAL_CODE") ?? optionalString(env, "POOL_ZIP_CODE"),
+    latitude: optionalNumber(env, "POOL_LATITUDE"),
+    longitude: optionalNumber(env, "POOL_LONGITUDE"),
+    timezone: optionalString(env, "POOL_TIMEZONE") ?? env.TZ ?? "UTC"
+  };
+}
+
+function loadWeatherProvider(env: NodeJS.ProcessEnv): WeatherProviderConfig {
+  const provider = (optionalString(env, "WEATHER_PROVIDER") ?? "openmeteo").toLowerCase();
+  if (provider !== "openmeteo") {
+    throw new Error(`Unsupported WEATHER_PROVIDER: ${provider}`);
+  }
+
+  return {
+    provider: "openmeteo",
+    refreshIntervalHours: optionalInteger(env, "WEATHER_REFRESH_INTERVAL_HOURS", 6),
+    openMeteoBaseUrl: optionalString(env, "OPEN_METEO_BASE_URL") ?? "https://api.open-meteo.com/v1",
+    openMeteoGeocodingUrl: optionalString(env, "OPEN_METEO_GEOCODING_URL") ?? "https://geocoding-api.open-meteo.com/v1"
+  };
+}
+
+function optionalString(env: NodeJS.ProcessEnv, key: string): string | null {
+  const value = env[key]?.trim();
+  return value ? value : null;
+}
+
+function optionalNumber(env: NodeJS.ProcessEnv, key: string): number | null {
+  const value = optionalString(env, key);
+  if (!value) {
+    return null;
+  }
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function optionalInteger(env: NodeJS.ProcessEnv, key: string, fallback: number): number {

@@ -56,7 +56,7 @@ export const PAGE_SUMMARIES: Record<NavItemId, string> = {
   home: "Operational overview and quick entry points for the current Splash milestone shell.",
   system: "Live equipment status, controller circuits, system timing, and protocol-level diagnostics for day-to-day pool operations.",
   routines: "Scheduled maintenance, recurring checklists, and operator workflows will appear here as the broader platform surface expands.",
-  history: "Historical operating context, logs, and timeline views will land here once the broader retention surfaces are implemented.",
+  history: "Persistence-backed temperature and weather trends now live here for operator review and future analytics surfaces.",
   automation: "Automation now provides a working tabbed surface for schedules, rules, scenes, triggers, and recent activity while live automation APIs mature.",
   alerts: "Warnings, reminders, and equipment-driven attention items will collect here when the notification workflows are delivered.",
   diagnostics: "Advanced tooling stays grouped under Diagnostics so protocol exploration and lower-level operational views remain separate from day-to-day control.",

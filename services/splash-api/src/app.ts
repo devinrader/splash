@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { EquipmentBridge } from "./bridge.js";
-import { loadConfig, type ApiConfig } from "./config.js";
+import { defaultPoolSite, defaultWeatherProviderConfig, loadConfig, type ApiConfig } from "./config.js";
 import { EventBroker } from "./events.js";
 import { LocalHttpServer, type HttpServer } from "./http.js";
 import { createLogger, type Logger } from "./logger.js";
@@ -39,6 +39,10 @@ import {
   TemperatureTelemetryService,
   type TemperatureHistoryQuery
 } from "./temperature-telemetry.js";
+import {
+  WeatherForecastService,
+  type WeatherHistoryMetric
+} from "./weather-forecast.js";
 
 export interface AppOptions {
   config?: ApiConfig;
@@ -47,6 +51,7 @@ export interface AppOptions {
   fetchImpl?: typeof fetch;
   tcpProbe?: (host: string, port: number, timeoutMs: number) => Promise<void>;
   temperatureTelemetry?: TemperatureTelemetryService;
+  weatherForecast?: WeatherForecastService;
 }
 
 export class App {
@@ -64,6 +69,7 @@ export class App {
   private readonly natsVarzMonitor: NatsVarzMonitor;
   private readonly platformHealthMonitor: PlatformHealthMonitor;
   private readonly temperatureTelemetry: TemperatureTelemetryService;
+  private readonly weatherForecast: WeatherForecastService;
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
 
@@ -80,6 +86,18 @@ export class App {
       new TemperatureTelemetryService({
         influx: this.config.influx,
         fetchImpl: options.fetchImpl
+      });
+    this.weatherForecast =
+      options.weatherForecast ??
+      new WeatherForecastService({
+        poolId: this.config.poolId,
+        poolSite: this.config.poolSite ?? defaultPoolSite(this.config.timezone),
+        weather: this.config.weather ?? defaultWeatherProviderConfig(),
+        influx: this.config.influx,
+        fetchImpl: options.fetchImpl,
+        onUpdate: (view) => {
+          this.events.publish("weather.updated", view as unknown as Record<string, unknown>);
+        }
       });
     this.platformHealthMonitor = new PlatformHealthMonitor({
       registry: this.buildServiceRegistry(),
@@ -134,6 +152,29 @@ export class App {
       end: query.end,
       interval: query.interval
     } satisfies TemperatureHistoryQuery) as unknown as Record<string, unknown>;
+  }
+
+  async getWeatherForecast(): Promise<Record<string, unknown>> {
+    return this.weatherForecast.getLatest() as unknown as Record<string, unknown>;
+  }
+
+  async getWeatherHistory(query: {
+    metric: string | null;
+    start: string | null;
+    end: string | null;
+    interval: string | null;
+  }): Promise<Record<string, unknown>> {
+    const metric = isWeatherHistoryMetric(query.metric) ? query.metric : "temperature_f";
+    return this.weatherForecast.getHistory({
+      metric,
+      start: query.start,
+      end: query.end,
+      interval: query.interval
+    }) as unknown as Record<string, unknown>;
+  }
+
+  async refreshWeatherForecast(): Promise<Record<string, unknown>> {
+    return this.weatherForecast.refreshNow() as unknown as Record<string, unknown>;
   }
 
   async getPlatformStatus(): Promise<Record<string, unknown>> {
@@ -616,6 +657,9 @@ export class App {
         getControllerSchedules: () => this.getControllerSchedules(),
         getTemperatureTelemetryLatest: async () => this.getTemperatureTelemetryLatest(),
         getTemperatureTelemetryHistory: async (query) => this.getTemperatureTelemetryHistory(query),
+        getWeatherForecast: async () => this.getWeatherForecast(),
+        getWeatherHistory: async (query) => this.getWeatherHistory(query),
+        refreshWeatherForecast: async () => this.refreshWeatherForecast(),
         getPlatformStatus: () => this.getPlatformStatus(),
         getMetrics: () => this.getMetrics(),
         getEventBroker: () => this.events,
@@ -721,6 +765,7 @@ export class App {
     await httpServer.start(signal);
     void this.natsVarzMonitor.start(signal);
     void this.platformHealthMonitor.start(signal);
+    this.weatherForecast.start(signal);
     void this.nats.run(signal);
     await waitForAbort(signal);
   }
@@ -964,8 +1009,27 @@ export class App {
         url: this.config.influx.url
       });
     }
+    registry.push({
+      name: "weather-provider",
+      kind: "local",
+      type: "third-party",
+      criticality: "optional",
+      check: async () => this.buildWeatherProviderServiceRecord()
+    });
 
     return registry;
+  }
+
+  private async buildWeatherProviderServiceRecord(): Promise<Omit<PlatformServiceRecord, "name" | "type" | "criticality">> {
+    const health = await this.weatherForecast.checkHealth();
+    return {
+      status: health.status,
+      message: health.message,
+      lastChecked: health.last_checked,
+      responseTimeMs: null,
+      checks: normalizeChecks(health.checks),
+      raw: null
+    };
   }
 
   private buildLocalApiServiceRecord(): Omit<PlatformServiceRecord, "name" | "type" | "criticality"> {
@@ -1103,6 +1167,14 @@ function mapBrokerStatus(status: "ok" | "unavailable" | "error"): CanonicalServi
     case "unavailable":
       return "unknown";
   }
+}
+
+function isWeatherHistoryMetric(value: string | null): value is WeatherHistoryMetric {
+  return value === "temperature_f"
+    || value === "cloud_cover"
+    || value === "uv_index"
+    || value === "precipitation_probability"
+    || value === "precipitation_amount";
 }
 
 async function waitForAbort(signal: AbortSignal): Promise<void> {
