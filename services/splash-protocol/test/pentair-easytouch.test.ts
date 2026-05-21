@@ -2,6 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ProtocolCommandError } from "../src/commands/types.js";
 import { ProtocolDecodeError } from "../src/protocol/types.js";
+import {
+  buildEasyTouchDayMask,
+  buildEasyTouchEggTimerPayload,
+  buildEasyTouchSchedulePayload,
+  buildEasyTouchScheduleSetCommandFrame,
+  parseEasyTouchDayMask,
+  EasyTouchSchedulePayloadValidationError
+} from "../src/plugins/pentair-easytouch-schedules.js";
 import { decodePentairFrame, pentairEasyTouchPlugin } from "../src/plugins/pentair-easytouch.js";
 
 function buildPentairFrame(actionCode: number, payload: number[]): Uint8Array {
@@ -761,6 +769,210 @@ test("decodePentairFrame decodes circuit id 0 as an inactive EasyTouch schedule"
     parse_confidence: "medium",
     warnings: ["Schedule inactive because circuitId is 0"]
   });
+});
+
+test("buildEasyTouchDayMask encodes sunday as bit 1", () => {
+  assert.equal(buildEasyTouchDayMask(["sunday"]), 1);
+});
+
+test("buildEasyTouchDayMask encodes monday through friday as 62", () => {
+  assert.equal(buildEasyTouchDayMask(["monday", "tuesday", "wednesday", "thursday", "friday"]), 62);
+});
+
+test("buildEasyTouchDayMask encodes every day as 127", () => {
+  assert.equal(buildEasyTouchDayMask(["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]), 127);
+});
+
+test("parseEasyTouchDayMask decodes monday through friday from 62", () => {
+  assert.deepEqual(parseEasyTouchDayMask(62), ["monday", "tuesday", "wednesday", "thursday", "friday"]);
+});
+
+test("parseEasyTouchDayMask decodes every day from 127", () => {
+  assert.deepEqual(parseEasyTouchDayMask(127), ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]);
+});
+
+test("buildEasyTouchSchedulePayload builds a normal repeating schedule payload", () => {
+  assert.deepEqual(
+    buildEasyTouchSchedulePayload({
+      scheduleId: 6,
+      circuitId: 12,
+      startHour: 8,
+      startMinute: 30,
+      endHour: 17,
+      endMinute: 0,
+      days: ["monday", "tuesday", "wednesday", "thursday", "friday"]
+    }),
+    [6, 12, 8, 30, 17, 0, 62]
+  );
+});
+
+test("buildEasyTouchSchedulePayload masks the circuit id with 0x7f", () => {
+  assert.deepEqual(
+    buildEasyTouchSchedulePayload({
+      scheduleId: 6,
+      circuitId: 0x8c,
+      startHour: 8,
+      startMinute: 30,
+      endHour: 17,
+      endMinute: 0,
+      days: 62
+    }),
+    [6, 12, 8, 30, 17, 0, 62]
+  );
+});
+
+test("buildEasyTouchSchedulePayload rejects empty days", () => {
+  assert.throws(
+    () =>
+      buildEasyTouchSchedulePayload({
+        scheduleId: 6,
+        circuitId: 12,
+        startHour: 8,
+        startMinute: 30,
+        endHour: 17,
+        endMinute: 0,
+        days: []
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof EasyTouchSchedulePayloadValidationError);
+      assert.match(error.message, /at least one day/i);
+      return true;
+    }
+  );
+});
+
+test("buildEasyTouchSchedulePayload rejects invalid hour and minute values", () => {
+  assert.throws(
+    () =>
+      buildEasyTouchSchedulePayload({
+        scheduleId: 6,
+        circuitId: 12,
+        startHour: 24,
+        startMinute: 30,
+        endHour: 17,
+        endMinute: 61,
+        days: 62
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof EasyTouchSchedulePayloadValidationError);
+      assert.match(error.message, /start hour/i);
+      return true;
+    }
+  );
+});
+
+test("buildEasyTouchSchedulePayload rejects invalid circuit id", () => {
+  assert.throws(
+    () =>
+      buildEasyTouchSchedulePayload({
+        scheduleId: 6,
+        circuitId: 0,
+        startHour: 8,
+        startMinute: 30,
+        endHour: 17,
+        endMinute: 0,
+        days: 62
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof EasyTouchSchedulePayloadValidationError);
+      assert.match(error.message, /circuit id/i);
+      return true;
+    }
+  );
+});
+
+test("buildEasyTouchSchedulePayload rejects invalid schedule id", () => {
+  assert.throws(
+    () =>
+      buildEasyTouchSchedulePayload({
+        scheduleId: 256,
+        circuitId: 12,
+        startHour: 8,
+        startMinute: 30,
+        endHour: 17,
+        endMinute: 0,
+        days: 62
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof EasyTouchSchedulePayloadValidationError);
+      assert.match(error.message, /schedule id/i);
+      return true;
+    }
+  );
+});
+
+test("buildEasyTouchEggTimerPayload builds a 6h30m egg timer payload", () => {
+  assert.deepEqual(
+    buildEasyTouchEggTimerPayload({
+      scheduleId: 6,
+      circuitId: 12,
+      runtimeHours: 6,
+      runtimeMinutes: 30
+    }),
+    [6, 12, 25, 0, 6, 30, 0]
+  );
+});
+
+test("buildEasyTouchEggTimerPayload rejects zero runtime", () => {
+  assert.throws(
+    () =>
+      buildEasyTouchEggTimerPayload({
+        scheduleId: 6,
+        circuitId: 12,
+        runtimeHours: 0,
+        runtimeMinutes: 0
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof EasyTouchSchedulePayloadValidationError);
+      assert.match(error.message, /greater than zero/i);
+      return true;
+    }
+  );
+});
+
+test("buildEasyTouchEggTimerPayload rejects invalid runtime minute", () => {
+  assert.throws(
+    () =>
+      buildEasyTouchEggTimerPayload({
+        scheduleId: 6,
+        circuitId: 12,
+        runtimeHours: 6,
+        runtimeMinutes: 60
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof EasyTouchSchedulePayloadValidationError);
+      assert.match(error.message, /runtime minutes/i);
+      return true;
+    }
+  );
+});
+
+test("buildEasyTouchEggTimerPayload rejects invalid circuit id", () => {
+  assert.throws(
+    () =>
+      buildEasyTouchEggTimerPayload({
+        scheduleId: 6,
+        circuitId: 0,
+        runtimeHours: 6,
+        runtimeMinutes: 30
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof EasyTouchSchedulePayloadValidationError);
+      assert.match(error.message, /circuit id/i);
+      return true;
+    }
+  );
+});
+
+test("buildEasyTouchScheduleSetCommandFrame wraps the payload with action 145", () => {
+  const frame = buildEasyTouchScheduleSetCommandFrame([6, 12, 8, 30, 17, 0, 62]);
+
+  assert.equal(frame[4], 0x34);
+  assert.equal(frame[5], 0x10);
+  assert.equal(frame[6], 0x21);
+  assert.equal(frame[7], 0x91);
+  assert.equal(frame[8], 7);
+  assert.deepEqual(Array.from(frame.slice(9, 16)), [6, 12, 8, 30, 17, 0, 62]);
 });
 
 test("pentairEasyTouchPlugin encodes the milestone-1 controller circuit baseline request for set_speed", () => {
