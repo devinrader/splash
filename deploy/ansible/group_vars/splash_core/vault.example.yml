@@ -1,0 +1,4 @@
+---
+# Encrypt this file with Ansible Vault in real use.
+
+splash_postgres_password: "replace-me"
