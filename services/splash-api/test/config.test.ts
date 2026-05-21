@@ -56,6 +56,40 @@ test("loadConfig parses optional Influx telemetry configuration", () => {
   });
 });
 
+test("loadConfig parses optional PostgreSQL connection string configuration", () => {
+  const config = loadConfig({
+    API_POOL_ID: "pool-1",
+    NATS_URL: "nats://127.0.0.1:4222",
+    API_HTTP_BIND: "127.0.0.1:8080",
+    DATABASE_URL: "postgres://splash:splash@127.0.0.1:5432/splash",
+    DATABASE_MIGRATIONS_DIR: "migrations"
+  });
+
+  assert.deepEqual(config.postgres, {
+    connectionString: "postgres://splash:splash@127.0.0.1:5432/splash",
+    host: null,
+    port: 5432,
+    database: null,
+    user: null,
+    password: null,
+    migrationsDir: "migrations"
+  });
+});
+
+test("loadConfig rejects partial PostgreSQL discrete configuration", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        API_POOL_ID: "pool-1",
+        NATS_URL: "nats://127.0.0.1:4222",
+        API_HTTP_BIND: "127.0.0.1:8080",
+        PGHOST: "127.0.0.1",
+        PGDATABASE: "splash"
+      }),
+    /PGHOST, PGDATABASE, and PGUSER must all be set together/
+  );
+});
+
 test("loadConfig rejects partial Influx telemetry configuration", () => {
   assert.throws(
     () =>

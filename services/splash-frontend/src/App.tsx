@@ -28,6 +28,7 @@ import { DiagnosticsPage } from "./pages/DiagnosticsPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { HomePage } from "./pages/HomePage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { SystemPage } from "./pages/SystemPage";
 import { useFrontendStore } from "./store";
 import type {
@@ -709,7 +710,7 @@ function AppLayout({
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/alerts" element={<PlaceholderPage kicker="Alerts" title="Messages & Warnings" description="Operator alerts, reminders, and equipment attention items will appear here once the notification model reaches the frontend shell." />} />
           <Route path="/water-test-log" element={<PlaceholderPage kicker="Water Test Log" title="Chemistry Entries" description="Manual chemistry readings and later chart context will be shown here as the water-testing workflows are implemented." />} />
-          <Route path="/settings" element={<PlaceholderPage kicker="Settings" title="Configuration" description="System configuration, preferences, and setup management will land here as the broader operator controls are implemented." />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/system/overview" replace />} />
         </Routes>
       </div>

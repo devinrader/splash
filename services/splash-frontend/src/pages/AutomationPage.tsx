@@ -48,6 +48,16 @@ const LOG_ROWS = [
   { when: "Yesterday 7:30 PM", source: "Schedule", result: "Evening Lights executed", detail: "Controller-managed lighting schedule completed successfully." }
 ];
 
+const DAY_OPTIONS = [
+  { label: "Sun", value: 0 },
+  { label: "Mon", value: 1 },
+  { label: "Tue", value: 2 },
+  { label: "Wed", value: 3 },
+  { label: "Thu", value: 4 },
+  { label: "Fri", value: 5 },
+  { label: "Sat", value: 6 }
+] as const;
+
 function formatMinutesAfterMidnight(value: number | null | undefined): string {
   if (typeof value !== "number") {
     return "Unknown";
@@ -74,45 +84,97 @@ function formatScheduleDays(bitmask: number | null | undefined): string {
 }
 
 function describeScheduleName(row: ControllerScheduleRecord): string {
-  return typeof row.schedule_id === "number" ? String(row.schedule_id) : "";
+  return typeof row.circuit_id === "number" ? `Circuit ${row.circuit_id}` : "Unknown circuit";
 }
 
 function describeScheduleAction(row: ControllerScheduleRecord): string {
   if (row.frame_type === "easytouch_egg_timer") {
-    return `Circuit ${row.circuit_id ?? "?"} egg timer`;
+    return "Egg Timer";
   }
 
-  const circuit = row.circuit_id ?? "?";
-  const kind = row.schedule_type_label === "run_once_or_egg_timer_controlled" ? "Run Once" : "Repeat";
-  return `Circuit ${circuit} · ${kind}`;
+  return row.schedule_type_label === "run_once_or_egg_timer_controlled" ? "Run Once" : "Repeat";
 }
 
-function describeScheduleTime(row: ControllerScheduleRecord): string {
+function isActiveSchedule(row: ControllerScheduleRecord): boolean {
+  return row.active === true;
+}
+
+function countProgramsByCircuit(rows: ControllerScheduleRecord[]): Array<{ circuitLabel: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    if (typeof row.circuit_id !== "number") {
+      continue;
+    }
+    const key = `Circuit ${row.circuit_id}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .map(([circuitLabel, count]) => ({ circuitLabel, count }))
+    .sort((left, right) => right.count - left.count || left.circuitLabel.localeCompare(right.circuitLabel));
+}
+
+function formatProgramUsage(used: number, max: number): string {
+  return `${used} / ${max}`;
+}
+
+function formatTimeInputValue(value: number | null | undefined): string {
+  if (typeof value !== "number") {
+    return "08:00";
+  }
+
+  const normalizedMinutes = ((value % 1440) + 1440) % 1440;
+  const hour24 = Math.floor(normalizedMinutes / 60);
+  const minute = normalizedMinutes % 60;
+  return `${String(hour24).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function formatDurationInputValue(value: number | null | undefined): string {
+  if (typeof value !== "number") {
+    return "00:30";
+  }
+
+  const normalizedMinutes = Math.max(0, value);
+  const hours = Math.floor(normalizedMinutes / 60);
+  const minutes = normalizedMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function getScheduleTypeValue(row: ControllerScheduleRecord | null): "repeat" | "run_once" | "egg_timer" {
+  if (!row) {
+    return "repeat";
+  }
+
   if (row.frame_type === "easytouch_egg_timer") {
-    return `${row.egg_timer_run_time_minutes ?? "Unknown"} min runtime`;
+    return "egg_timer";
   }
 
-  return `${formatMinutesAfterMidnight(row.start_time_minutes)} - ${formatMinutesAfterMidnight(row.end_time_minutes)}`;
+  return row.schedule_type_label === "run_once_or_egg_timer_controlled" ? "run_once" : "repeat";
 }
 
-function formatScheduleNextRun(value: string | null | undefined): string {
-  if (typeof value !== "string" || value.length === 0) {
-    return "Unknown";
+function getScheduleDayValues(row: ControllerScheduleRecord | null): number[] {
+  if (!row || typeof row.schedule_days !== "number") {
+    return [1, 3, 5];
   }
 
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) {
-    return value;
+  return DAY_OPTIONS.filter((option) => (row.schedule_days & (1 << option.value)) !== 0).map((option) => option.value);
+}
+
+function findDefaultEditorSchedule(rows: ControllerScheduleRecord[]): ControllerScheduleRecord | null {
+  if (rows.length === 0) {
+    return null;
   }
 
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "UTC"
-  }).format(new Date(timestamp));
+  const exactProgramOne = rows.find((row) => row.schedule_id === 1);
+  if (exactProgramOne) {
+    return exactProgramOne;
+  }
+
+  return [...rows].sort((left, right) => {
+    const leftId = typeof left.schedule_id === "number" ? left.schedule_id : Number.MAX_SAFE_INTEGER;
+    const rightId = typeof right.schedule_id === "number" ? right.schedule_id : Number.MAX_SAFE_INTEGER;
+    return leftId - rightId;
+  })[0] ?? null;
 }
 
 export function AutomationPage() {
@@ -166,7 +228,13 @@ export function AutomationPage() {
           <Route path="overview" element={<AutomationOverviewTab />} />
           <Route
             path="schedules"
-            element={<AutomationSchedulesTab controllerSchedules={controllerSchedules} controllerSchedulesError={controllerSchedulesError} />}
+            element={
+              <AutomationSchedulesTab
+                key={controllerSchedules?.last_checked ?? "controller-schedules-empty"}
+                controllerSchedules={controllerSchedules}
+                controllerSchedulesError={controllerSchedulesError}
+              />
+            }
           />
           <Route path="rules" element={<AutomationRulesTab />} />
           <Route path="scenes" element={<AutomationScenesTab />} />
@@ -236,54 +304,217 @@ function AutomationSchedulesTab({
   controllerSchedulesError: string | null;
 }) {
   const liveSchedules = controllerSchedules?.schedules ?? [];
+  const activeSchedules = liveSchedules.filter(isActiveSchedule);
   const showLiveTable = controllerSchedules?.status === "available" && liveSchedules.length > 0;
   const observedPayloadCount = controllerSchedules?.observed_payloads?.length ?? 0;
+  const totalProgramsUsed = activeSchedules.length;
+  const totalProgramsRemaining = Math.max(12 - totalProgramsUsed, 0);
+  const circuitUsage = countProgramsByCircuit(activeSchedules);
+  const emphasizedCircuit = circuitUsage[0] ?? null;
+  const circuitOptions = [...new Set(liveSchedules.map((row) => row.circuit_id).filter((value): value is number => typeof value === "number"))]
+    .sort((left, right) => left - right);
+  const defaultEditorSchedule = findDefaultEditorSchedule(liveSchedules);
+  const fallbackCircuitId = defaultEditorSchedule?.circuit_id ?? circuitOptions[0] ?? 1;
+  const [draftCircuitId, setDraftCircuitId] = useState<number>(defaultEditorSchedule?.circuit_id ?? fallbackCircuitId);
+  const [draftScheduleType, setDraftScheduleType] = useState<"repeat" | "run_once" | "egg_timer">(getScheduleTypeValue(defaultEditorSchedule));
+  const [draftSelectedDays, setDraftSelectedDays] = useState<number[]>(getScheduleDayValues(defaultEditorSchedule));
+  const [draftStartTime, setDraftStartTime] = useState(
+    defaultEditorSchedule?.frame_type === "easytouch_egg_timer"
+      ? "00:00"
+      : formatTimeInputValue(defaultEditorSchedule?.start_time_minutes)
+  );
+  const [draftStopTime, setDraftStopTime] = useState(
+    defaultEditorSchedule?.frame_type === "easytouch_egg_timer"
+      ? formatDurationInputValue(defaultEditorSchedule?.egg_timer_run_time_minutes)
+      : formatTimeInputValue(defaultEditorSchedule?.end_time_minutes)
+  );
+  const [draftMarkedActive, setDraftMarkedActive] = useState(defaultEditorSchedule?.active === true);
+  const [useDefaultEditorSeed, setUseDefaultEditorSeed] = useState(true);
+  const [selectedScheduleLabel, setSelectedScheduleLabel] = useState(
+    defaultEditorSchedule?.schedule_id ? `Program ${defaultEditorSchedule.schedule_id}` : "Program 1"
+  );
+
+  useEffect(() => {
+    const nextDefault = findDefaultEditorSchedule(liveSchedules);
+    if (!nextDefault) {
+      return;
+    }
+
+    setUseDefaultEditorSeed(true);
+    setSelectedScheduleLabel(nextDefault.schedule_id ? `Program ${nextDefault.schedule_id}` : "Program 1");
+    setDraftCircuitId(nextDefault.circuit_id ?? fallbackCircuitId);
+    setDraftScheduleType(getScheduleTypeValue(nextDefault));
+    setDraftSelectedDays(getScheduleDayValues(nextDefault));
+    setDraftStartTime(
+      nextDefault.frame_type === "easytouch_egg_timer"
+        ? "00:00"
+        : formatTimeInputValue(nextDefault.start_time_minutes)
+    );
+    setDraftStopTime(
+      nextDefault.frame_type === "easytouch_egg_timer"
+        ? formatDurationInputValue(nextDefault.egg_timer_run_time_minutes)
+        : formatTimeInputValue(nextDefault.end_time_minutes)
+    );
+    setDraftMarkedActive(nextDefault.active === true);
+  }, [controllerSchedules?.last_checked]);
+
+  const seededSchedule = useDefaultEditorSeed ? defaultEditorSchedule : null;
+  const editorCircuitId = seededSchedule?.circuit_id ?? draftCircuitId;
+  const editorScheduleType = seededSchedule ? getScheduleTypeValue(seededSchedule) : draftScheduleType;
+  const editorSelectedDays = seededSchedule ? getScheduleDayValues(seededSchedule) : draftSelectedDays;
+  const editorStartTime = seededSchedule
+    ? seededSchedule.frame_type === "easytouch_egg_timer"
+      ? "00:00"
+      : formatTimeInputValue(seededSchedule.start_time_minutes)
+    : draftStartTime;
+  const editorStopTime = seededSchedule
+    ? seededSchedule.frame_type === "easytouch_egg_timer"
+      ? formatDurationInputValue(seededSchedule.egg_timer_run_time_minutes)
+      : formatTimeInputValue(seededSchedule.end_time_minutes)
+    : draftStopTime;
+  const editorMarkedActive = seededSchedule ? seededSchedule.active === true : draftMarkedActive;
+
+  const draftDaySummary = editorScheduleType === "egg_timer"
+    ? "Egg Timer"
+    : editorSelectedDays.length === 7
+      ? "Sun-Sat"
+      : [...editorSelectedDays]
+        .sort((left, right) => left - right)
+        .map((value) => DAY_OPTIONS.find((option) => option.value === value)?.label ?? "")
+        .filter(Boolean)
+        .join(", ");
+
+  function toggleDraftDay(day: number) {
+    setUseDefaultEditorSeed(false);
+    setDraftSelectedDays((current) => (
+      current.includes(day)
+        ? current.filter((value) => value !== day)
+        : [...current, day].sort((left, right) => left - right)
+    ));
+  }
+
+  function resetDraftEditor() {
+    const baseline = defaultEditorSchedule;
+    setUseDefaultEditorSeed(true);
+    setDraftCircuitId(baseline?.circuit_id ?? fallbackCircuitId);
+    setDraftScheduleType(getScheduleTypeValue(baseline));
+    setDraftSelectedDays(getScheduleDayValues(baseline));
+    setDraftStartTime(
+      baseline?.frame_type === "easytouch_egg_timer"
+        ? "00:00"
+        : formatTimeInputValue(baseline?.start_time_minutes)
+    );
+    setDraftStopTime(
+      baseline?.frame_type === "easytouch_egg_timer"
+        ? formatDurationInputValue(baseline?.egg_timer_run_time_minutes)
+        : formatTimeInputValue(baseline?.end_time_minutes)
+    );
+    setDraftMarkedActive(baseline?.active === true);
+    setSelectedScheduleLabel(baseline?.schedule_id ? `Program ${baseline.schedule_id}` : "Program 1");
+  }
+
+  function handleReviewSchedule(row: ControllerScheduleRecord) {
+    setUseDefaultEditorSeed(false);
+    setSelectedScheduleLabel(typeof row.schedule_id === "number" ? `Program ${row.schedule_id}` : describeScheduleName(row));
+    setDraftCircuitId(row.circuit_id ?? fallbackCircuitId);
+    setDraftScheduleType(getScheduleTypeValue(row));
+    setDraftSelectedDays(getScheduleDayValues(row));
+    setDraftStartTime(
+      row.frame_type === "easytouch_egg_timer"
+        ? "00:00"
+        : formatTimeInputValue(row.start_time_minutes)
+    );
+    setDraftStopTime(
+      row.frame_type === "easytouch_egg_timer"
+        ? formatDurationInputValue(row.egg_timer_run_time_minutes)
+        : formatTimeInputValue(row.end_time_minutes)
+    );
+    setDraftMarkedActive(row.active === true);
+  }
 
   return (
     <section className="automation-shell">
       <div className="automation-grid automation-grid-schedules">
         <Card title="Schedules" status="Controller-managed today" className="automation-card-table">
+          <div className="automation-schedule-summary-strip" aria-label="controller schedule capacity">
+            <div className="automation-schedule-summary-card">
+              <span className="automation-schedule-summary-label">12 total programs max</span>
+              <strong>{formatProgramUsage(totalProgramsUsed, 12)}</strong>
+              <small>{totalProgramsRemaining} active slots remaining</small>
+            </div>
+            <div className="automation-schedule-summary-card">
+              <span className="automation-schedule-summary-label">Per circuit max: 9</span>
+              <strong>{emphasizedCircuit ? formatProgramUsage(emphasizedCircuit.count, 9) : "0 / 9"}</strong>
+              <small>{emphasizedCircuit ? emphasizedCircuit.circuitLabel : "No active circuit schedules observed"}</small>
+            </div>
+            <div className="automation-schedule-summary-card automation-schedule-summary-card-progress">
+              <span className="automation-schedule-summary-label">Active programs used</span>
+              <div className="automation-program-slots" aria-hidden="true">
+                {Array.from({ length: 12 }, (_, index) => (
+                  <span
+                    key={index}
+                    className={`automation-program-slot ${index < totalProgramsUsed ? "automation-program-slot-filled" : ""}`}
+                  />
+                ))}
+              </div>
+              <small>Only active schedules consume the shared EasyTouch slot pool.</small>
+            </div>
+          </div>
           <div className="mock-card-toolbar">
             <p className="panel-copy">
               {showLiveTable
                 ? "The table below is using controller-backed schedule data returned by Splash API."
                 : "Controller-backed schedule visibility is wired through Splash API, but EasyTouch schedule semantics are still unavailable until the payload mapping is validated."}
             </p>
-            <button type="button" className="automation-primary-button">Create Schedule</button>
           </div>
           <div className="mock-table-shell">
             <table className="system-data-table" aria-label="automation schedules">
               <thead>
                 <tr>
-                  <th>Name</th>
+                  <th>Circuit</th>
+                  <th>Program #</th>
                   <th>Action</th>
                   <th>Days</th>
-                  <th>Time</th>
-                  <th>Season</th>
+                  <th>Start</th>
+                  <th>Stop</th>
+                  <th>Heat</th>
                   <th>Status</th>
-                  <th>Next Run</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {showLiveTable ? (
                   liveSchedules.map((row, index) => (
-                    <tr key={row.schedule_id ?? `${row.frame_type}-${index}`}>
+                    <tr
+                      key={row.schedule_id ?? `${row.frame_type}-${index}`}
+                      className={row.active ? undefined : "automation-table-row-muted"}
+                    >
                       <td>{describeScheduleName(row)}</td>
+                      <td>{typeof row.schedule_id === "number" ? row.schedule_id : "—"}</td>
                       <td>{describeScheduleAction(row)}</td>
                       <td>{row.frame_type === "easytouch_egg_timer" ? "Egg Timer" : formatScheduleDays(row.schedule_days)}</td>
-                      <td>{describeScheduleTime(row)}</td>
-                      <td></td>
+                      <td>{row.frame_type === "easytouch_egg_timer" ? "—" : formatMinutesAfterMidnight(row.start_time_minutes)}</td>
+                      <td>{row.frame_type === "easytouch_egg_timer" ? `${row.egg_timer_run_time_minutes ?? "Unknown"} min` : formatMinutesAfterMidnight(row.end_time_minutes)}</td>
+                      <td>—</td>
                       <td>
                         <span className={`system-status-chip ${row.active ? "system-status-chip-good" : "system-status-chip-watch"}`}>
                           {row.active ? "Active" : "Inactive"}
                         </span>
                       </td>
-                      <td>{formatScheduleNextRun(row.updated_at)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="automation-table-link-button"
+                          onClick={() => handleReviewSchedule(row)}
+                        >
+                          Review
+                        </button>
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={9}>
                       {controllerSchedulesError
                         ?? controllerSchedules?.message
                         ?? "Controller schedule visibility has not been initialized yet."}
@@ -318,34 +549,157 @@ function AutomationSchedulesTab({
         </Card>
 
         <div className="automation-side-stack">
-          <Card title="Scheduling Mode">
-            <div className="automation-mode-summary">
-              <strong>Current Mode</strong>
-              <span>Controller Managed</span>
-            </div>
-            <div className="automation-mode-toggle" role="group" aria-label="schedule mode toggle">
-              <button type="button" className="automation-mode-button automation-mode-button-active" aria-pressed="true">
-                Controller Managed
-              </button>
-              <button type="button" className="automation-mode-button" aria-pressed="false">
-                Platform Managed
-              </button>
-            </div>
-            <p className="panel-copy">
-              Schedules are currently stored directly on the EasyTouch controller, so they continue to run even if Splash is offline.
-            </p>
-            <button type="button" className="automation-secondary-button">Migrate to Platform Scheduling</button>
+          <Card title="Schedule Editor" status={selectedScheduleLabel}>
+              <div className="automation-schedule-editor" aria-label="new schedule draft editor">
+                <div className="automation-schedule-editor-header">
+                  <div>
+                    <strong>{selectedScheduleLabel}</strong>
+                    <p className="panel-copy">
+                      This editor is local to the browser for now. It mirrors the controller-managed layout without claiming controller write support yet.
+                    </p>
+                  </div>
+                  <span className="system-status-chip system-status-chip-watch">Local edit preview</span>
+                </div>
+                <div className="automation-schedule-editor-grid">
+                  <label className="automation-field">
+                    <span>Circuit</span>
+                    <select value={String(editorCircuitId)} onChange={(event) => {
+                      setUseDefaultEditorSeed(false);
+                      setDraftCircuitId(Number(event.target.value));
+                    }}>
+                      {(circuitOptions.length > 0 ? circuitOptions : [fallbackCircuitId]).map((value) => (
+                        <option key={value} value={String(value)}>
+                          Circuit {value}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="automation-field">
+                    <span>Schedule Type</span>
+                    <select
+                      value={editorScheduleType}
+                      onChange={(event) => {
+                        setUseDefaultEditorSeed(false);
+                        setDraftScheduleType(event.target.value as "repeat" | "run_once" | "egg_timer");
+                      }}
+                    >
+                      <option value="repeat">Repeat</option>
+                      <option value="run_once">Run Once</option>
+                      <option value="egg_timer">Egg Timer</option>
+                    </select>
+                  </label>
+                  <label className="automation-field">
+                    <span>Start Time</span>
+                    <input
+                      type="time"
+                      value={editorStartTime}
+                      onChange={(event) => {
+                        setUseDefaultEditorSeed(false);
+                        setDraftStartTime(event.target.value);
+                      }}
+                      disabled={editorScheduleType === "egg_timer"}
+                    />
+                  </label>
+                  <label className="automation-field">
+                    <span>{editorScheduleType === "egg_timer" ? "Run Time" : "Stop Time"}</span>
+                    <input
+                      type="time"
+                      value={editorStopTime}
+                      onChange={(event) => {
+                        setUseDefaultEditorSeed(false);
+                        setDraftStopTime(event.target.value);
+                      }}
+                    />
+                  </label>
+                  <label className="automation-field">
+                    <span>Heat</span>
+                    <select disabled defaultValue="unavailable">
+                      <option value="unavailable">Not available in controller draft yet</option>
+                    </select>
+                  </label>
+                  <label className="automation-field automation-field-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={editorMarkedActive}
+                      onChange={(event) => {
+                        setUseDefaultEditorSeed(false);
+                        setDraftMarkedActive(event.target.checked);
+                      }}
+                    />
+                    <span>Count this draft as an active schedule</span>
+                  </label>
+                </div>
+                <div className="automation-field automation-field-days">
+                  <span>Days</span>
+                  <div className="automation-day-grid" role="group" aria-label="schedule draft days">
+                    {DAY_OPTIONS.map((option) => (
+                      <label key={option.value} className="automation-day-pill">
+                        <input
+                          type="checkbox"
+                          checked={editorSelectedDays.includes(option.value)}
+                          onChange={() => toggleDraftDay(option.value)}
+                          disabled={editorScheduleType === "egg_timer"}
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="automation-schedule-editor-footer">
+                  <div className="automation-record-list">
+                    <div className="automation-record-row">
+                      <strong>Selected program posture</strong>
+                      <span>{editorMarkedActive ? `${formatProgramUsage(totalProgramsUsed, 12)} active slots in use, including this program` : `${formatProgramUsage(totalProgramsUsed, 12)} active slots in use, this program marked inactive`}</span>
+                    </div>
+                    <div className="automation-record-row">
+                      <strong>Editor summary</strong>
+                      <span>{`Circuit ${editorCircuitId} · ${editorScheduleType === "egg_timer" ? "Egg Timer" : editorScheduleType === "run_once" ? "Run Once" : "Repeat"} · ${draftDaySummary || "No days selected"} · ${editorScheduleType === "egg_timer" ? `${editorStopTime} runtime` : `${editorStartTime} to ${editorStopTime}`}`}</span>
+                    </div>
+                  </div>
+                  <div className="automation-inline-actions">
+                    <button type="button" className="automation-secondary-button" onClick={resetDraftEditor}>Back to Program 1</button>
+                  </div>
+                </div>
+              </div>
           </Card>
-
-          <Card title="Mode Guidance">
+          <Card title="EasyTouch Limits">
             <div className="automation-record-list">
               <div className="automation-record-row">
-                <strong>Controller Managed</strong>
-                <span>Best for today’s live deployment because controller schedules remain authoritative.</span>
+                <strong>12 total programs</strong>
+                <span>The EasyTouch controller shares one pool of twelve schedule slots across every circuit.</span>
               </div>
               <div className="automation-record-row">
-                <strong>Platform Managed</strong>
-                <span>Future mode where Splash becomes the scheduling authority after the backend scheduling contracts exist.</span>
+                <strong>9 max per circuit</strong>
+                <span>One circuit can consume at most nine programs, leaving at least three slots for the rest of the controller.</span>
+              </div>
+              <div className="automation-record-row">
+                <strong>Controller Managed</strong>
+                <span>Schedules remain stored on the EasyTouch controller so they continue running even when Splash is offline.</span>
+              </div>
+              <div className="automation-record-row">
+                <strong>Last controller refresh</strong>
+                <span>{controllerSchedules?.last_checked ?? "Not yet observed"}</span>
+              </div>
+            </div>
+          </Card>
+
+          <Card title="Program Capacity">
+            <div className="automation-record-list">
+              <div className="automation-record-row">
+                <strong>Programs used</strong>
+                <span>{`${formatProgramUsage(totalProgramsUsed, 12)} active`}</span>
+              </div>
+              <div className="automation-record-row">
+                <strong>Programs remaining</strong>
+                <span>{`${totalProgramsRemaining} active slots available`}</span>
+              </div>
+              <div className="automation-record-row">
+                <strong>Highest-use circuit</strong>
+                <span>{emphasizedCircuit ? `${emphasizedCircuit.circuitLabel} · ${formatProgramUsage(emphasizedCircuit.count, 9)}` : "No active circuit schedules observed"}</span>
+              </div>
+              <div className="automation-record-row">
+                <strong>Next step</strong>
+                <span>Use the always-visible editor to review controller programs inline without leaving the table view.</span>
               </div>
             </div>
           </Card>

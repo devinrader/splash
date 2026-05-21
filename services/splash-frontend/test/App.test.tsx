@@ -331,6 +331,23 @@ test("renders working Automation tabs from the approved mockup slice", async () 
                 warnings: [],
                 raw_payload: [1, 6, 8, 0, 17, 0, 127],
                 updated_at: "2026-05-12T01:55:00Z"
+              },
+              {
+                controller_family: "EasyTouch",
+                frame_type: "easytouch_schedule",
+                action: 17,
+                schedule_id: 2,
+                circuit_id: 4,
+                active: false,
+                schedule_type: 0,
+                schedule_type_label: "repeat",
+                start_time_minutes: 600,
+                end_time_minutes: 660,
+                schedule_days: 62,
+                parse_confidence: "high",
+                warnings: [],
+                raw_payload: [2, 4, 10, 0, 17, 0, 62],
+                updated_at: "2026-05-12T01:55:00Z"
               }
             ]
           },
@@ -401,19 +418,43 @@ test("renders working Automation tabs from the approved mockup slice", async () 
 
   await waitFor(() => {
     assert.ok(screen.getByRole("tab", { name: "Schedules", selected: true }));
-    const table = screen.getByRole("table", { name: "automation schedules" });
-    assert.ok(table);
-    assert.ok(screen.getByText("Circuit 6 · Repeat"));
-    assert.ok(screen.getByText("8:00 AM - 5:00 PM"));
+    assert.ok(screen.getByRole("table", { name: "automation schedules" }));
+    assert.ok(screen.getByText("12 total programs max"));
+    assert.ok(screen.getAllByText("1 / 12").length >= 1);
+    assert.ok(screen.getByText("11 active slots remaining"));
+    assert.ok(screen.getByText("Per circuit max: 9"));
     assert.ok(screen.getByText("The table below is using controller-backed schedule data returned by Splash API."));
-    assert.ok(screen.getByRole("button", { name: "Controller Managed" }));
-    assert.ok(screen.getByRole("button", { name: "Migrate to Platform Scheduling" }));
-    const scheduleRow = within(table).getByText("Circuit 6 · Repeat").closest("tr");
-    assert.ok(scheduleRow);
-    const cells = within(scheduleRow).getAllByRole("cell");
-    assert.equal(cells[0]?.textContent, "1");
-    assert.equal(cells[4]?.textContent, "");
-    assert.equal(cells[6]?.textContent, "05/12/2026, 1:55 AM");
+    assert.ok(screen.getByText("9 max per circuit"));
+    assert.ok(screen.getByText("Programs remaining"));
+    assert.ok(screen.getByText("11 active slots available"));
+    assert.ok(screen.getByText("Local edit preview"));
+    assert.ok(screen.getByText("Selected program posture"));
+    assert.ok(screen.getByRole("button", { name: "Back to Program 1" }));
+    assert.equal((screen.getByLabelText("Circuit") as HTMLSelectElement).value, "6");
+  });
+
+  const table = screen.getByRole("table", { name: "automation schedules" });
+  const scheduleRow = within(table).getByText("Circuit 6").closest("tr");
+  assert.ok(scheduleRow);
+  const cells = within(scheduleRow).getAllByRole("cell");
+  assert.equal(cells[0]?.textContent, "Circuit 6");
+  assert.equal(cells[1]?.textContent, "1");
+  assert.equal(cells[2]?.textContent, "Repeat");
+  assert.equal(cells[4]?.textContent, "8:00 AM");
+  assert.equal(cells[5]?.textContent, "5:00 PM");
+  assert.equal(cells[6]?.textContent, "—");
+  assert.equal(cells[7]?.textContent, "Active");
+  assert.ok(within(scheduleRow).getByRole("button", { name: "Review" }));
+
+  const inactiveRow = within(table).getByText("Circuit 4").closest("tr");
+  assert.ok(inactiveRow);
+  assert.equal(within(inactiveRow).getAllByRole("cell")[7]?.textContent, "Inactive");
+  fireEvent.click(within(inactiveRow).getByRole("button", { name: "Review" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getAllByText("Program 2").length >= 1);
+    assert.equal((screen.getByLabelText("Circuit") as HTMLSelectElement).value, "4");
+    assert.ok(screen.getByText(/this program marked inactive/i));
   });
 
   fireEvent.click(screen.getByRole("tab", { name: "Logs" }));
@@ -611,7 +652,7 @@ test("renders Platform service health rows from API health data", async () => {
   });
 });
 
-test("renders persistence-backed history charts for temperature and weather data", async () => {
+test("lazy-loads tabbed persistence-backed history charts", async () => {
   const requests: string[] = [];
   vi.stubGlobal(
     "fetch",
@@ -661,6 +702,35 @@ test("renders persistence-backed history charts for temperature and weather data
         });
       }
 
+      if (input.includes("/telemetry/pumps/history")) {
+        return response({
+          data: {
+            range: {
+              start: "2026-05-01T00:00:00.000Z",
+              end: "2026-05-12T00:00:00.000Z"
+            },
+            interval: "10m",
+            series: [
+              {
+                pump_id: "pump-main",
+                controller_id: "default",
+                controller_type: "easytouch",
+                bus_address: "0x60",
+                points: [
+                  {
+                    timestamp: "2026-05-11T12:00:00.000Z",
+                    running: true,
+                    rpm: 1156,
+                    watts: 352
+                  }
+                ]
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
       if (input.includes("/weather/history")) {
         const url = new URL(input);
         const metric = url.searchParams.get("metric");
@@ -697,14 +767,16 @@ test("renders persistence-backed history charts for temperature and weather data
 
   await waitFor(() => {
     assert.ok(screen.getByText("History Trends"));
-    assert.ok(screen.getByRole("img", { name: "Temperature history chart" }));
-    assert.ok(screen.getByText("Weather Temperature"));
-    assert.ok(screen.getByText("Cloud Cover"));
-    assert.ok(screen.getByText("UV Index"));
-    assert.ok(screen.getByText("Rain Chance"));
-    assert.ok(screen.getByText("Rain Amount"));
+    assert.ok(screen.getByRole("tab", { name: "Temperature", selected: true }));
+    assert.ok(screen.getByRole("img", { name: "Air history chart" }));
+    assert.ok(screen.getByRole("img", { name: "Pool Water history chart" }));
+    assert.ok(screen.getByRole("img", { name: "Spa Water history chart" }));
+    assert.ok(screen.getByRole("img", { name: "Solar history chart" }));
     assert.ok(screen.getAllByRole("img").length >= 1);
   });
+
+  assert.equal(screen.queryByRole("img", { name: "Pump RPM history chart" }), null);
+  assert.equal(screen.queryByText("Weather Temperature"), null);
 
   const temperatureHistoryRequest = requests.find((entry) => entry.includes("/telemetry/temperatures/history"));
   assert.ok(temperatureHistoryRequest);
@@ -716,6 +788,34 @@ test("renders persistence-backed history charts for temperature and weather data
   assert.ok(Number.isFinite(end));
   assert.ok(end > start);
   assert.equal(end - start, 36 * 60 * 60 * 1000);
+  assert.equal(requests.some((entry) => entry.includes("/telemetry/pumps/history")), false);
+  assert.equal(requests.some((entry) => entry.includes("/weather/history")), false);
+
+  fireEvent.click(screen.getByRole("tab", { name: "Pump" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByRole("tab", { name: "Pump", selected: true }));
+    assert.ok(screen.getByRole("img", { name: "Pump RPM history chart" }));
+    assert.ok(screen.getByRole("img", { name: "Pump watt history chart" }));
+  });
+
+  const pumpHistoryRequest = requests.find((entry) => entry.includes("/telemetry/pumps/history"));
+  assert.ok(pumpHistoryRequest);
+  const pumpHistoryUrl = new URL(pumpHistoryRequest as string, "http://127.0.0.1:8080");
+  assert.equal(pumpHistoryUrl.searchParams.get("pumpId"), "pump-main");
+  assert.equal(pumpHistoryUrl.searchParams.get("interval"), "10m");
+
+  fireEvent.click(screen.getByRole("tab", { name: "Weather" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByRole("tab", { name: "Weather", selected: true }));
+    assert.ok(screen.getByText("Weather Temperature"));
+    assert.ok(screen.getByText("Cloud Cover"));
+    assert.ok(screen.getByText("UV Index"));
+    assert.ok(screen.getByText("Rain Chance"));
+    assert.ok(screen.getByText("Rain Amount"));
+  });
+
   const weatherHistoryRequests = requests.filter((entry) => entry.includes("/weather/history"));
   assert.equal(weatherHistoryRequests.length, 5);
   for (const request of weatherHistoryRequests) {

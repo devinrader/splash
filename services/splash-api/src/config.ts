@@ -8,6 +8,16 @@ export interface WeatherProviderConfig {
   openMeteoGeocodingUrl: string;
 }
 
+export interface PostgresConfig {
+  connectionString: string | null;
+  host: string | null;
+  port: number;
+  database: string | null;
+  user: string | null;
+  password: string | null;
+  migrationsDir: string;
+}
+
 export interface PoolSiteConfig {
   streetAddress: string | null;
   city: string | null;
@@ -29,6 +39,7 @@ export interface ApiConfig {
   prometheusUrl?: string | null;
   grafanaUrl?: string | null;
   influx?: InfluxTelemetryConfig | null;
+  postgres?: PostgresConfig | null;
   weather?: WeatherProviderConfig;
   httpBind: string;
   healthPollIntervalMs?: number;
@@ -49,12 +60,53 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     prometheusUrl: optionalUrl(env, "API_PROMETHEUS_URL"),
     grafanaUrl: optionalUrl(env, "API_GRAFANA_URL"),
     influx: optionalInflux(env),
+    postgres: loadPostgresConfig(env),
     weather: loadWeatherProvider(env),
     httpBind: required(env, "API_HTTP_BIND"),
     healthPollIntervalMs: optionalInteger(env, "API_HEALTH_POLL_INTERVAL_MS", 5000),
     healthTimeoutMs: optionalInteger(env, "API_HEALTH_TIMEOUT_MS", 2000),
     logLevel: env.LOG_LEVEL ?? "info",
     timezone: env.TZ ?? "UTC"
+  };
+}
+
+export function loadPostgresConfig(env: NodeJS.ProcessEnv = process.env): PostgresConfig | null {
+  const connectionString = optionalString(env, "DATABASE_URL");
+  const host = optionalString(env, "PGHOST");
+  const database = optionalString(env, "PGDATABASE");
+  const user = optionalString(env, "PGUSER");
+  const password = optionalString(env, "PGPASSWORD");
+  const port = optionalInteger(env, "PGPORT", 5432);
+  const migrationsDir = optionalString(env, "DATABASE_MIGRATIONS_DIR") ?? "migrations";
+
+  if (connectionString) {
+    return {
+      connectionString,
+      host: null,
+      port,
+      database: null,
+      user: null,
+      password,
+      migrationsDir
+    };
+  }
+
+  const populated = [host, database, user].filter((value) => value && value.length > 0).length;
+  if (populated === 0) {
+    return null;
+  }
+  if (populated !== 3) {
+    throw new Error("PGHOST, PGDATABASE, and PGUSER must all be set together when DATABASE_URL is not provided");
+  }
+
+  return {
+    connectionString: null,
+    host: host as string,
+    port,
+    database: database as string,
+    user: user as string,
+    password,
+    migrationsDir
   };
 }
 

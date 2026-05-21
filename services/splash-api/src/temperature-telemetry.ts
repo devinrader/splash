@@ -636,7 +636,7 @@ function escapeFluxString(value: string): string {
 function parseCsv(input: string): Array<Record<string, string>> {
   const lines = input
     .split(/\r?\n/u)
-    .filter((line) => line.length > 0);
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
   if (lines.length === 0) {
     return [];
   }

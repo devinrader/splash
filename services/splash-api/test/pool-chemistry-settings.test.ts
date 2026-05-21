@@ -1,0 +1,385 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { EventBroker } from "../src/events.js";
+import { LocalHttpServer, type HttpHandlers } from "../src/http.js";
+import {
+  PoolChemistrySettingsService,
+  PoolChemistrySettingsUnavailableError,
+  PoolChemistrySettingsValidationError,
+  PostgresPoolChemistrySettingsRepository,
+  validatePoolChemistrySettingsUpdateInput
+} from "../src/pool-chemistry-settings.js";
+
+test("validatePoolChemistrySettingsUpdateInput accepts supported chemistry updates", () => {
+  const result = validatePoolChemistrySettingsUpdateInput({
+    settings: [
+      {
+        chemicalKey: "free_chlorine",
+        minimum: 3,
+        target: 5,
+        maximum: 10,
+        enabled: true
+      }
+    ]
+  });
+
+  assert.equal(result.settings.length, 1);
+  assert.equal(result.settings[0]?.chemicalKey, "free_chlorine");
+  assert.equal(result.settings[0]?.target, 5);
+});
+
+test("validatePoolChemistrySettingsUpdateInput rejects unknown keys and invalid ordering", () => {
+  assert.throws(
+    () =>
+      validatePoolChemistrySettingsUpdateInput({
+        settings: [
+          {
+            chemicalKey: "unknown_key",
+            minimum: 10,
+            target: 5,
+            maximum: 3
+          }
+        ]
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof PoolChemistrySettingsValidationError);
+      assert.deepEqual(error.details, {
+        unknown_key: {
+          chemicalKey: "chemicalKey must be one of the supported built-in chemistry keys."
+        }
+      });
+      return true;
+    }
+  );
+});
+
+test("repository maps saved chemistry settings rows", async () => {
+  const repository = new PostgresPoolChemistrySettingsRepository({
+    async query() {
+      return {
+        command: "SELECT",
+        rowCount: 1,
+        oid: 0,
+        fields: [],
+        rows: [
+          {
+            pool_id: "pool-1",
+            chemistry_bounds: {
+              free_chlorine: {
+                chemicalKey: "free_chlorine",
+                displayName: "Free Chlorine",
+                unit: "ppm",
+                minimum: 3,
+                target: 5,
+                maximum: 10,
+                enabled: true,
+                sortOrder: 10
+              }
+            }
+          }
+        ]
+      };
+    }
+  } as never);
+
+  const result = await repository.get("pool-1");
+
+  assert.ok(result);
+  assert.equal(result?.settings.free_chlorine.target, 5);
+  assert.equal(result?.settings.ph.target, 7.6);
+});
+
+test("service returns seeded defaults when PostgreSQL rows are missing", async () => {
+  const service = new PoolChemistrySettingsService("pool-1", {
+    async get() {
+      return null;
+    },
+    async upsert(settings) {
+      return settings;
+    }
+  });
+
+  const result = await service.getPoolChemistrySettings();
+
+  assert.equal(result.source, "defaults");
+  assert.equal(result.settings[0]?.chemicalKey, "free_chlorine");
+  assert.equal(result.settings.find((setting) => setting.chemicalKey === "salt")?.target, 3400);
+});
+
+test("service merges partial updates onto current chemistry settings", async () => {
+  const service = new PoolChemistrySettingsService("pool-1", {
+    async get() {
+      return null;
+    },
+    async upsert(settings) {
+      return settings;
+    }
+  });
+
+  const result = await service.updatePoolChemistrySettings({
+    settings: [
+      {
+        chemicalKey: "ph",
+        minimum: 7.3,
+        target: 7.5,
+        maximum: 7.7,
+        enabled: true
+      }
+    ]
+  });
+
+  const ph = result.settings.find((setting) => setting.chemicalKey === "ph");
+  const salt = result.settings.find((setting) => setting.chemicalKey === "salt");
+
+  assert.equal(result.source, "postgres");
+  assert.equal(ph?.target, 7.5);
+  assert.equal(salt?.target, 3400);
+});
+
+test("service returns fallback recommendation bounds when repository is unavailable", async () => {
+  const service = new PoolChemistrySettingsService("pool-1", null);
+
+  const result = await service.getChemistryBoundsForRecommendations();
+
+  assert.equal(result.freeChlorine?.target, 5);
+  assert.equal(result.ph?.min, 7.2);
+});
+
+test("service throws unavailable when updating without PostgreSQL", async () => {
+  const service = new PoolChemistrySettingsService("pool-1", null);
+
+  await assert.rejects(
+    () =>
+      service.updatePoolChemistrySettings({
+        settings: [
+          {
+            chemicalKey: "ph",
+            minimum: 7.2,
+            target: 7.6,
+            maximum: 7.8,
+            enabled: true
+          }
+        ]
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof PoolChemistrySettingsUnavailableError);
+      return true;
+    }
+  );
+});
+
+test("pool chemistry API GET and PUT routes work", async () => {
+  const server = new LocalHttpServer("127.0.0.1:8080", createHttpHandlers({
+    async getPoolChemistrySettings() {
+      return {
+        settings: [
+          {
+            chemicalKey: "free_chlorine",
+            displayName: "Free Chlorine",
+            unit: "ppm",
+            minimum: 3,
+            target: 5,
+            maximum: 10,
+            enabled: true,
+            sortOrder: 10
+          }
+        ],
+        source: "postgres"
+      };
+    },
+    async updatePoolChemistrySettings(input) {
+      assert.ok(Array.isArray(input.settings));
+      return {
+        settings: [
+          {
+            chemicalKey: "ph",
+            displayName: "pH",
+            unit: null,
+            minimum: 7.2,
+            target: 7.6,
+            maximum: 7.8,
+            enabled: true,
+            sortOrder: 30
+          }
+        ],
+        source: "postgres"
+      };
+    }
+  }));
+
+  const getResponse = await invokeRoute(server, "GET", "/api/settings/pool-chemistry");
+  assert.equal(getResponse.statusCode, 200);
+  assert.equal(getResponse.body.data.settings[0].chemicalKey, "free_chlorine");
+
+  const putResponse = await invokeRoute(server, "PUT", "/api/settings/pool-chemistry", {
+    settings: [
+      {
+        chemicalKey: "ph",
+        minimum: 7.2,
+        target: 7.6,
+        maximum: 7.8,
+        enabled: true
+      }
+    ]
+  });
+  assert.equal(putResponse.statusCode, 200);
+  assert.equal(putResponse.body.data.settings[0].chemicalKey, "ph");
+});
+
+function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
+  const eventBroker = new EventBroker();
+  const protocolFrameBroker = new EventBroker();
+
+  return {
+    getEquipment: () => [],
+    getHealth: () => ({ status: "healthy", ready: true }),
+    getControllerSchedules: () => ({}),
+    getTemperatureTelemetryLatest: async () => ({}),
+    getTemperatureTelemetryHistory: async () => ({}),
+    getPumpTelemetryLatest: async () => ({}),
+    getPumpTelemetryHistory: async () => ({}),
+    getWeatherForecast: async () => ({}),
+    getWeatherHistory: async () => ({}),
+    refreshWeatherForecast: async () => ({}),
+    getWeatherLocationSettings: async () => ({
+      poolId: "pool-1",
+      locationMode: "address",
+      addressLine1: null,
+      addressLine2: null,
+      city: null,
+      stateRegion: null,
+      postalCode: null,
+      country: null,
+      latitude: null,
+      longitude: null,
+      timezone: null,
+      geocodedLatitude: null,
+      geocodedLongitude: null,
+      geocodeProvider: null,
+      geocodedAt: null,
+      locationStatus: "requires_geocoding"
+    }),
+    upsertWeatherLocationSettings: async () => ({
+      poolId: "pool-1",
+      locationMode: "address",
+      addressLine1: null,
+      addressLine2: null,
+      city: null,
+      stateRegion: null,
+      postalCode: null,
+      country: null,
+      latitude: null,
+      longitude: null,
+      timezone: null,
+      geocodedLatitude: null,
+      geocodedLongitude: null,
+      geocodeProvider: null,
+      geocodedAt: null,
+      locationStatus: "requires_geocoding"
+    }),
+    getPoolChemistrySettings: async () => ({
+      settings: [],
+      source: "defaults"
+    }),
+    updatePoolChemistrySettings: async () => ({
+      settings: [],
+      source: "defaults"
+    }),
+    getPlatformStatus: async () => ({}),
+    getMetrics: () => "",
+    getEventBroker: () => eventBroker,
+    getProtocolFrameBroker: () => protocolFrameBroker,
+    listProtocolFrameBundles: () => [],
+    createProtocolFrameBundle: () => ({ id: "bundle-1", label: "label", frame_count: 0, created_at: new Date().toISOString() }),
+    getProtocolFrameBundle: () => null,
+    startProtocolWatchSession: () => ({ id: "watch-1", label: "watch", status: "active", events: null, frame_count: 0, created_at: new Date().toISOString(), stopped_at: null }),
+    getProtocolWatchSession: () => null,
+    stopProtocolWatchSession: () => null,
+    compareProtocolFrameBundles: () => null,
+    listProtocolAnnotations: () => [],
+    createProtocolAnnotation: () => ({
+      id: "annotation-1",
+      bundle_id: "bundle-1",
+      frame_index: 0,
+      field_name: "field",
+      byte_start: 0,
+      byte_end: 1,
+      confidence: "known",
+      label: "label",
+      notes: "note",
+      created_at: new Date().toISOString()
+    }),
+    listProtocolPrompts: () => [],
+    createProtocolPrompt: () => ({
+      id: "prompt-1",
+      bundle_id: "bundle-1",
+      frame_index: 0,
+      field_name: "field",
+      prompt: "question",
+      why: "why",
+      input_type: "equipment_behavior",
+      operator_response: null,
+      status: "open",
+      created_at: new Date().toISOString(),
+      resolved_at: null
+    }),
+    publishRemoteLayoutRequest: async () => ({ commandId: "command-1" }),
+    publishPumpInfoRequest: async () => ({ commandId: "command-2" }),
+    publishControllerScheduleRequest: async () => ({ commandId: "command-3" }),
+    publishCircuitConfigRequest: async () => ({ commandId: "command-4" }),
+    publishCustomNameRequest: async () => ({ commandId: "command-5" }),
+    publishControllerSoftwareVersionRequest: async () => ({ commandId: "command-6" }),
+    publishControllerDatetimeRequest: async () => ({ commandId: "command-7" }),
+    publishControllerDatetimeSync: async () => ({ commandId: "command-8" }),
+    publishPumpConfigWrite: async () => ({ commandId: "command-9" }),
+    publishRawFrameCommand: async () => ({ commandId: "command-10" }),
+    publishPumpSpeedCommand: async () => ({ commandId: "command-11" }),
+    publishCircuitStateCommand: async () => ({ commandId: "command-12" }),
+    ...overrides
+  };
+}
+
+async function invokeRoute(
+  server: LocalHttpServer,
+  method: string,
+  url: string,
+  body?: unknown
+): Promise<{ statusCode: number; body: Record<string, any> }> {
+  const chunks: Buffer[] = [];
+  const request = {
+    method,
+    url,
+    headers: body ? { "content-type": "application/json" } : {},
+    [Symbol.asyncIterator]: async function* () {
+      if (body !== undefined) {
+        yield Buffer.from(JSON.stringify(body));
+      }
+    }
+  };
+
+  const response = {
+    statusCode: 200,
+    headers: {} as Record<string, string>,
+    setHeader(name: string, value: string) {
+      this.headers[name] = value;
+    },
+    writeHead(statusCode: number, headers: Record<string, string>) {
+      this.statusCode = statusCode;
+      Object.assign(this.headers, headers);
+      return this;
+    },
+    end(chunk?: string | Buffer) {
+      if (chunk) {
+        chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+      }
+      return this;
+    }
+  };
+
+  await (server as any).route(request, response);
+
+  return {
+    statusCode: response.statusCode,
+    body: JSON.parse(Buffer.concat(chunks).toString("utf8"))
+  };
+}

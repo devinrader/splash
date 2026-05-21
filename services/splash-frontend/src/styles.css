@@ -619,6 +619,139 @@ textarea:focus-visible {
   gap: var(--space-4);
 }
 
+.automation-schedule-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.automation-schedule-summary-card {
+  display: grid;
+  gap: 6px;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.02), rgba(37, 99, 235, 0.06));
+}
+
+.automation-schedule-summary-card strong {
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.automation-schedule-summary-card small,
+.automation-schedule-summary-label {
+  color: var(--color-text-muted);
+}
+
+.automation-schedule-summary-card-progress {
+  min-width: 0;
+}
+
+.automation-schedule-editor {
+  display: grid;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.05), rgba(15, 23, 42, 0.02));
+}
+
+.automation-schedule-editor-header,
+.automation-schedule-editor-footer,
+.automation-inline-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.automation-schedule-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.automation-field {
+  display: grid;
+  gap: 8px;
+}
+
+.automation-field span {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.automation-field input,
+.automation-field select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--color-text);
+  padding: 0.8rem 0.9rem;
+  font: inherit;
+}
+
+.automation-field input:disabled,
+.automation-field select:disabled {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+}
+
+.automation-field-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 1.9rem;
+}
+
+.automation-field-checkbox input,
+.automation-day-pill input {
+  width: auto;
+  margin: 0;
+}
+
+.automation-field-days {
+  gap: 10px;
+}
+
+.automation-day-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.automation-day-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.55rem 0.85rem;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.automation-program-slots {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.automation-program-slot {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.24);
+}
+
+.automation-program-slot-filled {
+  background: linear-gradient(90deg, var(--color-brand-500), var(--color-water-500, #1f9fb2));
+}
+
 .automation-record-row {
   display: grid;
   gap: var(--space-2);
@@ -689,6 +822,26 @@ textarea:focus-visible {
 .automation-mode-button-active {
   background: var(--color-brand-500);
   color: white;
+}
+
+.automation-table-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--color-brand-600);
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+
+.automation-table-link-button:hover {
+  color: var(--color-brand-700);
+}
+
+.automation-table-row-muted {
+  opacity: 0.68;
 }
 
 .system-filter {
@@ -2027,6 +2180,186 @@ textarea:focus-visible {
   grid-row: 2;
 }
 
+.settings-shell {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: var(--space-4);
+}
+
+.settings-form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.settings-mode-group {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.settings-mode-group legend {
+  padding: 0 var(--space-2);
+  font-weight: 700;
+}
+
+.settings-mode-option {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.settings-mode-option input {
+  margin-top: 0.2rem;
+}
+
+.settings-mode-option span {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.settings-mode-option small,
+.settings-status-list span {
+  color: var(--color-text-subtle);
+}
+
+.settings-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.settings-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.settings-field-span-2 {
+  grid-column: 1 / -1;
+}
+
+.settings-field input {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.8rem 0.9rem;
+  background: white;
+  color: var(--color-text);
+}
+
+.settings-field-error {
+  color: var(--color-danger-700, #912018);
+  font-size: 0.85rem;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-actions button {
+  min-width: 180px;
+  border: none;
+  border-radius: 999px;
+  padding: 0.85rem 1.2rem;
+  background: var(--color-brand-600);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.settings-actions button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.settings-status-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.settings-status-list div {
+  display: grid;
+  gap: 0.2rem;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.settings-status-list div:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.settings-message {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-md);
+}
+
+.settings-message-error {
+  background: rgba(180, 35, 24, 0.12);
+  color: var(--color-danger-700, #912018);
+}
+
+.settings-message-success {
+  background: rgba(14, 116, 73, 0.12);
+  color: #166534;
+}
+
+.settings-card-chemistry {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.settings-chemistry-source {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.04);
+  color: var(--color-text-subtle);
+}
+
+.settings-chemistry-source strong {
+  color: var(--color-text);
+}
+
+.settings-chemistry-table-shell {
+  overflow-x: auto;
+}
+
+.settings-chemistry-table-shell table {
+  min-width: 780px;
+}
+
+.settings-chemistry-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.settings-chemistry-field input {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.75rem;
+  background: white;
+  color: var(--color-text);
+}
+
+.settings-chemistry-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 600;
+}
+
 .network-topology {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2128,8 +2461,14 @@ textarea:focus-visible {
   .automation-grid-overview,
   .automation-grid-two-column,
   .automation-grid-schedules,
-  .automation-mode-toggle {
+  .automation-mode-toggle,
+  .automation-schedule-summary-strip,
+  .automation-schedule-editor-grid {
     grid-template-columns: 1fr;
+  }
+
+  .automation-field-checkbox {
+    padding-top: 0;
   }
 
   .network-grid > .app-card,

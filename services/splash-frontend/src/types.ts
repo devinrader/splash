@@ -143,6 +143,35 @@ export interface TemperatureTelemetryHistoryResponse {
   error: unknown;
 }
 
+export interface PumpTelemetryHistoryPoint {
+  timestamp: string;
+  running: boolean;
+  rpm: number;
+  watts: number;
+}
+
+export interface PumpTelemetryHistorySeries {
+  pump_id: string;
+  controller_id: string;
+  controller_type: string;
+  bus_address: string;
+  points: PumpTelemetryHistoryPoint[];
+}
+
+export interface PumpTelemetryHistoryData {
+  range: {
+    start: string;
+    end: string;
+  };
+  interval: string | null;
+  series: PumpTelemetryHistorySeries[];
+}
+
+export interface PumpTelemetryHistoryResponse {
+  data: PumpTelemetryHistoryData;
+  error: unknown;
+}
+
 export interface WeatherForecastDailyEntry {
   date: string;
   weather_code: number | null;
@@ -197,6 +226,95 @@ export interface WeatherForecastData {
 export interface WeatherForecastResponse {
   data: WeatherForecastData;
   error: unknown;
+}
+
+export type WeatherLocationMode = "address" | "coordinates";
+export type WeatherLocationStatus = "resolved" | "requires_geocoding";
+
+export interface WeatherLocationSettingsData {
+  poolId: string;
+  locationMode: WeatherLocationMode;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  stateRegion: string | null;
+  postalCode: string | null;
+  country: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  timezone: string | null;
+  geocodedLatitude: number | null;
+  geocodedLongitude: number | null;
+  geocodeProvider: string | null;
+  geocodedAt: string | null;
+  locationStatus: WeatherLocationStatus;
+}
+
+export interface WeatherLocationSettingsResponse {
+  data: WeatherLocationSettingsData;
+  error: unknown;
+}
+
+export interface WeatherLocationSettingsValidationError {
+  code: "validation_error";
+  message: string;
+  details?: Record<string, string>;
+}
+
+export interface WeatherLocationSettingsSaveInput {
+  locationMode: WeatherLocationMode;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  stateRegion?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  timezone?: string | null;
+}
+
+export type PoolChemistryKey =
+  | "free_chlorine"
+  | "combined_chlorine"
+  | "ph"
+  | "total_alkalinity"
+  | "cyanuric_acid"
+  | "calcium_hardness"
+  | "salt"
+  | "water_temperature"
+  | "phosphates"
+  | "borates";
+
+export interface PoolChemistrySetting {
+  chemicalKey: PoolChemistryKey;
+  displayName: string;
+  unit: string | null;
+  minimum: number | null;
+  target: number | null;
+  maximum: number | null;
+  enabled: boolean;
+  sortOrder: number;
+}
+
+export interface PoolChemistrySettingsData {
+  settings: PoolChemistrySetting[];
+  source: "postgres" | "defaults";
+}
+
+export interface PoolChemistrySettingsResponse {
+  data: PoolChemistrySettingsData;
+  error: unknown;
+}
+
+export interface PoolChemistrySettingsSaveInput {
+  settings: Array<{
+    chemicalKey: PoolChemistryKey;
+    minimum?: number | null;
+    target?: number | null;
+    maximum?: number | null;
+    enabled?: boolean;
+  }>;
 }
 
 export type WeatherHistoryMetric =

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { EquipmentBridge } from "./bridge.js";
 import { defaultPoolSite, defaultWeatherProviderConfig, loadConfig, type ApiConfig } from "./config.js";
+import { createPostgresPool, DatabaseMigrator } from "./database.js";
 import { EventBroker } from "./events.js";
 import { LocalHttpServer, type HttpServer } from "./http.js";
 import { createLogger, type Logger } from "./logger.js";
@@ -40,9 +41,25 @@ import {
   type TemperatureHistoryQuery
 } from "./temperature-telemetry.js";
 import {
+  PumpTelemetryService,
+  type PumpHistoryQuery
+} from "./pump-telemetry.js";
+import {
   WeatherForecastService,
   type WeatherHistoryMetric
 } from "./weather-forecast.js";
+import {
+  PostgresWeatherLocationSettingsRepository,
+  WeatherLocationSettingsService,
+  type WeatherLocationSettings
+} from "./weather-location-settings.js";
+import {
+  PoolChemistrySettingsService,
+  PostgresPoolChemistrySettingsRepository,
+  type PoolChemistryRecommendationBounds,
+  type PoolChemistrySettingsView
+} from "./pool-chemistry-settings.js";
+import type { Pool } from "pg";
 
 export interface AppOptions {
   config?: ApiConfig;
@@ -51,7 +68,10 @@ export interface AppOptions {
   fetchImpl?: typeof fetch;
   tcpProbe?: (host: string, port: number, timeoutMs: number) => Promise<void>;
   temperatureTelemetry?: TemperatureTelemetryService;
+  pumpTelemetry?: PumpTelemetryService;
   weatherForecast?: WeatherForecastService;
+  weatherLocationSettings?: WeatherLocationSettingsService;
+  poolChemistrySettings?: PoolChemistrySettingsService;
 }
 
 export class App {
@@ -69,7 +89,11 @@ export class App {
   private readonly natsVarzMonitor: NatsVarzMonitor;
   private readonly platformHealthMonitor: PlatformHealthMonitor;
   private readonly temperatureTelemetry: TemperatureTelemetryService;
+  private readonly pumpTelemetry: PumpTelemetryService;
   private readonly weatherForecast: WeatherForecastService;
+  private readonly weatherLocationSettings: WeatherLocationSettingsService;
+  private readonly poolChemistrySettings: PoolChemistrySettingsService;
+  private readonly postgresPool: Pool | null;
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
 
@@ -87,6 +111,12 @@ export class App {
         influx: this.config.influx,
         fetchImpl: options.fetchImpl
       });
+    this.pumpTelemetry =
+      options.pumpTelemetry ??
+      new PumpTelemetryService({
+        influx: this.config.influx,
+        fetchImpl: options.fetchImpl
+      });
     this.weatherForecast =
       options.weatherForecast ??
       new WeatherForecastService({
@@ -99,6 +129,19 @@ export class App {
           this.events.publish("weather.updated", view as unknown as Record<string, unknown>);
         }
       });
+    this.postgresPool = this.config.postgres ? createPostgresPool(this.config.postgres) : null;
+    this.weatherLocationSettings =
+      options.weatherLocationSettings ??
+      new WeatherLocationSettingsService(
+        this.config.poolId,
+        this.postgresPool ? new PostgresWeatherLocationSettingsRepository(this.postgresPool) : null
+      );
+    this.poolChemistrySettings =
+      options.poolChemistrySettings ??
+      new PoolChemistrySettingsService(
+        this.config.poolId,
+        this.postgresPool ? new PostgresPoolChemistrySettingsRepository(this.postgresPool) : null
+      );
     this.platformHealthMonitor = new PlatformHealthMonitor({
       registry: this.buildServiceRegistry(),
       fetchImpl: options.fetchImpl,
@@ -154,6 +197,26 @@ export class App {
     } satisfies TemperatureHistoryQuery) as unknown as Record<string, unknown>;
   }
 
+  async getPumpTelemetryLatest(query: {
+    pumpId: string | null;
+  }): Promise<Record<string, unknown>> {
+    return this.pumpTelemetry.getLatest(query.pumpId) as unknown as Record<string, unknown>;
+  }
+
+  async getPumpTelemetryHistory(query: {
+    pumpId: string | null;
+    start: string | null;
+    end: string | null;
+    interval: string | null;
+  }): Promise<Record<string, unknown>> {
+    return this.pumpTelemetry.getHistory({
+      pumpId: query.pumpId,
+      start: query.start,
+      end: query.end,
+      interval: query.interval
+    } satisfies PumpHistoryQuery) as unknown as Record<string, unknown>;
+  }
+
   async getWeatherForecast(): Promise<Record<string, unknown>> {
     return this.weatherForecast.getLatest() as unknown as Record<string, unknown>;
   }
@@ -175,6 +238,26 @@ export class App {
 
   async refreshWeatherForecast(): Promise<Record<string, unknown>> {
     return this.weatherForecast.refreshNow() as unknown as Record<string, unknown>;
+  }
+
+  async getWeatherLocationSettings(): Promise<WeatherLocationSettings> {
+    return this.weatherLocationSettings.getWeatherLocationSettings();
+  }
+
+  async upsertWeatherLocationSettings(input: unknown): Promise<WeatherLocationSettings> {
+    return this.weatherLocationSettings.upsertWeatherLocationSettings(input);
+  }
+
+  async getPoolChemistrySettings(): Promise<PoolChemistrySettingsView> {
+    return this.poolChemistrySettings.getPoolChemistrySettings();
+  }
+
+  async updatePoolChemistrySettings(input: unknown): Promise<PoolChemistrySettingsView> {
+    return this.poolChemistrySettings.updatePoolChemistrySettings(input);
+  }
+
+  async getChemistryBoundsForRecommendations(): Promise<PoolChemistryRecommendationBounds> {
+    return this.poolChemistrySettings.getChemistryBoundsForRecommendations();
   }
 
   async getPlatformStatus(): Promise<Record<string, unknown>> {
@@ -649,6 +732,8 @@ export class App {
   }
 
   async run(signal: AbortSignal): Promise<void> {
+    await this.runDatabaseMigrationsIfConfigured();
+
     const httpServer =
       this.httpServer ??
       new LocalHttpServer(this.config.httpBind, {
@@ -657,9 +742,15 @@ export class App {
         getControllerSchedules: () => this.getControllerSchedules(),
         getTemperatureTelemetryLatest: async () => this.getTemperatureTelemetryLatest(),
         getTemperatureTelemetryHistory: async (query) => this.getTemperatureTelemetryHistory(query),
+        getPumpTelemetryLatest: async (query) => this.getPumpTelemetryLatest(query),
+        getPumpTelemetryHistory: async (query) => this.getPumpTelemetryHistory(query),
         getWeatherForecast: async () => this.getWeatherForecast(),
         getWeatherHistory: async (query) => this.getWeatherHistory(query),
         refreshWeatherForecast: async () => this.refreshWeatherForecast(),
+        getWeatherLocationSettings: async () => this.getWeatherLocationSettings() as unknown as Record<string, unknown>,
+        upsertWeatherLocationSettings: async (input) => this.upsertWeatherLocationSettings(input) as unknown as Record<string, unknown>,
+        getPoolChemistrySettings: async () => this.getPoolChemistrySettings() as unknown as Record<string, unknown>,
+        updatePoolChemistrySettings: async (input) => this.updatePoolChemistrySettings(input) as unknown as Record<string, unknown>,
         getPlatformStatus: () => this.getPlatformStatus(),
         getMetrics: () => this.getMetrics(),
         getEventBroker: () => this.events,
@@ -763,11 +854,28 @@ export class App {
       });
 
     await httpServer.start(signal);
+    signal.addEventListener("abort", () => {
+      void this.postgresPool?.end();
+    });
     void this.natsVarzMonitor.start(signal);
     void this.platformHealthMonitor.start(signal);
     this.weatherForecast.start(signal);
     void this.nats.run(signal);
     await waitForAbort(signal);
+  }
+
+  private async runDatabaseMigrationsIfConfigured(): Promise<void> {
+    if (!this.postgresPool || !this.config.postgres) {
+      return;
+    }
+
+    const client = await this.postgresPool.connect();
+    try {
+      const migrator = new DatabaseMigrator(client, this.config.postgres.migrationsDir);
+      await migrator.migrate();
+    } finally {
+      client.release();
+    }
   }
 
   private currentSession: MessagingSession | null = null;
@@ -797,6 +905,7 @@ export class App {
     session.subscribe("equipment.state.pump", async (payload) => {
       this.projection.updatePump(payload);
       this.events.publish("pump.state", payload);
+      await this.pumpTelemetry.observe(this.toPumpTelemetryEvent(payload));
     });
     session.subscribe("equipment.state.chlorinator", async (payload) => {
       this.projection.updateChlorinator(payload);
@@ -1112,6 +1221,54 @@ export class App {
         },
         raw: null
       })
+    };
+  }
+
+  private toPumpTelemetryEvent(payload: Record<string, unknown>): {
+    occurred_at: string;
+    source: {
+      service: string;
+      label: string;
+    };
+    pump: {
+      pump_id: string;
+      controller_id: string;
+      controller_type: string;
+      bus_address: string;
+    };
+    metrics: {
+      running: boolean | null;
+      rpm: number | null;
+      watts: number | null;
+    };
+  } {
+    const busAddress = typeof payload.bus_address === "string" ? payload.bus_address.toLowerCase() : null;
+    const pumpEntry =
+      this.bridge.all().find((entry) => entry.equipmentType === "pump" && entry.busAddress?.toLowerCase() === busAddress) ??
+      null;
+    const sourcePayload = payload.source;
+    const source =
+      sourcePayload && typeof sourcePayload === "object" && !Array.isArray(sourcePayload)
+        ? (sourcePayload as Record<string, unknown>)
+        : null;
+
+    return {
+      occurred_at: typeof payload.occurred_at === "string" ? payload.occurred_at : new Date().toISOString(),
+      source: {
+        service: typeof source?.service === "string" ? source.service : "splash-protocol",
+        label: "easytouch.action7"
+      },
+      pump: {
+        pump_id: pumpEntry?.id ?? (busAddress ? `pump-${busAddress.slice(2)}` : "pump-unknown"),
+        controller_id: "default",
+        controller_type: "easytouch",
+        bus_address: busAddress ?? "unknown"
+      },
+      metrics: {
+        running: typeof payload.running === "boolean" ? payload.running : null,
+        rpm: typeof payload.rpm === "number" ? payload.rpm : null,
+        watts: typeof payload.watts === "number" ? payload.watts : null
+      }
     };
   }
 }

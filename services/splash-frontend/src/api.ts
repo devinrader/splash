@@ -2,6 +2,7 @@ import type {
   CommandAcceptedResponse,
   CircuitConfigRequestResponse,
   ControllerSchedulesResponse,
+  PumpTelemetryHistoryResponse,
   TemperatureTelemetryHistoryResponse,
   TemperatureTelemetryLatestResponse,
   WeatherHistoryMetric,
@@ -9,6 +10,8 @@ import type {
   WeatherForecastResponse,
   EquipmentResponse,
   PlatformStatusResponse,
+  PoolChemistrySettingsResponse,
+  PoolChemistrySettingsSaveInput,
   ProtocolAnnotationConfidence,
   ProtocolAnnotationResponse,
   ProtocolBundleComparisonResponse,
@@ -17,7 +20,9 @@ import type {
   ProtocolPromptInputType,
   ProtocolPromptResponse,
   RawFrameSendResponse,
-  RemoteLayoutRequestResponse
+  RemoteLayoutRequestResponse,
+  WeatherLocationSettingsResponse,
+  WeatherLocationSettingsSaveInput
 } from "./types";
 
 const apiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
@@ -81,12 +86,79 @@ export async function fetchTemperatureTelemetryHistory(input: {
   return (await response.json()) as TemperatureTelemetryHistoryResponse;
 }
 
+export async function fetchPumpTelemetryHistory(input: {
+  pumpId?: string;
+  start: string;
+  end: string;
+  interval?: string;
+}): Promise<PumpTelemetryHistoryResponse> {
+  const params = new URLSearchParams({
+    start: input.start,
+    end: input.end
+  });
+  if (input.pumpId) {
+    params.set("pumpId", input.pumpId);
+  }
+  if (input.interval) {
+    params.set("interval", input.interval);
+  }
+  const response = await fetch(buildApiUrl(`/telemetry/pumps/history?${params.toString()}`));
+  if (!response.ok) {
+    throw new Error(`Pump history request failed with HTTP ${response.status}.`);
+  }
+  return (await response.json()) as PumpTelemetryHistoryResponse;
+}
+
 export async function fetchWeatherForecast(): Promise<WeatherForecastResponse> {
   const response = await fetch(buildApiUrl("/weather/forecast"));
   if (!response.ok) {
     throw new Error(`Weather forecast request failed with HTTP ${response.status}.`);
   }
   return (await response.json()) as WeatherForecastResponse;
+}
+
+export async function fetchWeatherLocationSettings(): Promise<WeatherLocationSettingsResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/weather-location"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Weather location settings request failed.");
+  }
+  return (await response.json()) as WeatherLocationSettingsResponse;
+}
+
+export async function saveWeatherLocationSettings(input: WeatherLocationSettingsSaveInput): Promise<WeatherLocationSettingsResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/weather-location"), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Weather location settings save failed.");
+  }
+  return (await response.json()) as WeatherLocationSettingsResponse;
+}
+
+export async function fetchPoolChemistrySettings(): Promise<PoolChemistrySettingsResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/pool-chemistry"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Pool chemistry settings request failed.");
+  }
+  return (await response.json()) as PoolChemistrySettingsResponse;
+}
+
+export async function savePoolChemistrySettings(input: PoolChemistrySettingsSaveInput): Promise<PoolChemistrySettingsResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/pool-chemistry"), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Pool chemistry settings save failed.");
+  }
+  return (await response.json()) as PoolChemistrySettingsResponse;
 }
 
 export async function fetchWeatherHistory(input: {
@@ -396,4 +468,23 @@ function normalizeBaseUrl(value: string | undefined): string {
   }
 
   return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+async function buildApiError(response: Response, fallbackMessage: string): Promise<Error> {
+  try {
+    const parsed = (await response.json()) as { error?: unknown };
+    if (parsed && typeof parsed.error === "object" && parsed.error !== null) {
+      const record = parsed.error as { message?: unknown };
+      if (typeof record.message === "string") {
+        const error = new Error(record.message);
+        (error as Error & { details?: unknown }).details = parsed.error;
+        return error;
+      }
+    }
+    if (typeof parsed?.error === "string") {
+      return new Error(parsed.error);
+    }
+  } catch {}
+
+  return new Error(`${fallbackMessage} HTTP ${response.status}.`);
 }

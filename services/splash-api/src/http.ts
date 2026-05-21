@@ -10,12 +10,30 @@ import type {
   ProtocolWatchSession,
   ProtocolWatchSessionSummary
 } from "./protocol-bundles.js";
+import {
+  WeatherLocationSettingsUnavailableError,
+  WeatherLocationSettingsValidationError
+} from "./weather-location-settings.js";
+import {
+  PoolChemistrySettingsUnavailableError,
+  PoolChemistrySettingsValidationError
+} from "./pool-chemistry-settings.js";
 
 export interface HttpServer {
   start(signal: AbortSignal): Promise<void>;
 }
 
 export class HttpRequestError extends Error {}
+
+export class HttpResponseError extends Error {
+  constructor(
+    readonly statusCode: number,
+    readonly payload: { data: null; error: unknown }
+  ) {
+    super(typeof payload.error === "string" ? payload.error : "HTTP response error");
+    this.name = "HttpResponseError";
+  }
+}
 
 export interface HttpHandlers {
   getEquipment(): Array<Record<string, unknown>>;
@@ -28,6 +46,13 @@ export interface HttpHandlers {
     end: string | null;
     interval: string | null;
   }): Promise<Record<string, unknown>>;
+  getPumpTelemetryLatest(input: { pumpId: string | null }): Promise<Record<string, unknown>>;
+  getPumpTelemetryHistory(input: {
+    pumpId: string | null;
+    start: string | null;
+    end: string | null;
+    interval: string | null;
+  }): Promise<Record<string, unknown>>;
   getWeatherForecast(): Promise<Record<string, unknown>>;
   getWeatherHistory(input: {
     metric: string | null;
@@ -36,6 +61,10 @@ export interface HttpHandlers {
     interval: string | null;
   }): Promise<Record<string, unknown>>;
   refreshWeatherForecast(): Promise<Record<string, unknown>>;
+  getWeatherLocationSettings(): Promise<Record<string, unknown>>;
+  upsertWeatherLocationSettings(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  getPoolChemistrySettings(): Promise<Record<string, unknown>>;
+  updatePoolChemistrySettings(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   getPlatformStatus(): Promise<Record<string, unknown>>;
   getMetrics(): string;
   getEventBroker(): EventBroker;
@@ -147,8 +176,35 @@ export class LocalHttpServer implements HttpServer {
         });
       }
 
+      if (req.method === "GET" && req.url?.startsWith("/telemetry/pumps/latest")) {
+        const url = new URL(req.url, "http://localhost");
+        return json(req, res, 200, {
+          data: await this.handlers.getPumpTelemetryLatest({
+            pumpId: url.searchParams.get("pumpId")
+          }),
+          error: null
+        });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/telemetry/pumps/history")) {
+        const url = new URL(req.url, "http://localhost");
+        return json(req, res, 200, {
+          data: await this.handlers.getPumpTelemetryHistory({
+            pumpId: url.searchParams.get("pumpId"),
+            start: url.searchParams.get("start"),
+            end: url.searchParams.get("end"),
+            interval: url.searchParams.get("interval")
+          }),
+          error: null
+        });
+      }
+
       if (req.method === "GET" && req.url === "/weather/forecast") {
         return json(req, res, 200, { data: await this.handlers.getWeatherForecast(), error: null });
+      }
+
+      if (req.method === "GET" && req.url === "/api/settings/weather-location") {
+        return json(req, res, 200, { data: await this.handlers.getWeatherLocationSettings(), error: null });
       }
 
       if (req.method === "GET" && req.url?.startsWith("/weather/history")) {
@@ -166,6 +222,20 @@ export class LocalHttpServer implements HttpServer {
 
       if (req.method === "POST" && req.url === "/weather/forecast/refresh") {
         return json(req, res, 200, { data: await this.handlers.refreshWeatherForecast(), error: null });
+      }
+
+      if (req.method === "PUT" && req.url === "/api/settings/weather-location") {
+        const body = await readJsonBody(req);
+        return json(req, res, 200, { data: await this.handlers.upsertWeatherLocationSettings(body), error: null });
+      }
+
+      if (req.method === "GET" && req.url === "/api/settings/pool-chemistry") {
+        return json(req, res, 200, { data: await this.handlers.getPoolChemistrySettings(), error: null });
+      }
+
+      if (req.method === "PUT" && req.url === "/api/settings/pool-chemistry") {
+        const body = await readJsonBody(req);
+        return json(req, res, 200, { data: await this.handlers.updatePoolChemistrySettings(body), error: null });
       }
 
       if (req.method === "GET" && req.url === "/health") {
@@ -437,8 +507,51 @@ export class LocalHttpServer implements HttpServer {
       res.writeHead(404, corsHeaders(req));
       res.end();
     } catch (error) {
+      if (error instanceof HttpResponseError) {
+        return json(req, res, error.statusCode, error.payload);
+      }
       if (error instanceof HttpRequestError) {
         return json(req, res, 400, { data: null, error: error.message });
+      }
+      if (error instanceof WeatherLocationSettingsValidationError) {
+        return json(req, res, 400, {
+          data: null,
+          error: {
+            code: "validation_error",
+            message: error.message,
+            details: error.details
+          }
+        });
+      }
+      if (error instanceof WeatherLocationSettingsUnavailableError) {
+        return json(req, res, 503, {
+          data: null,
+          error: {
+            code: "service_unavailable",
+            message: error.message
+          }
+        });
+      }
+
+      if (error instanceof PoolChemistrySettingsValidationError) {
+        return json(req, res, 400, {
+          data: null,
+          error: {
+            code: "validation_error",
+            message: error.message,
+            details: error.details
+          }
+        });
+      }
+
+      if (error instanceof PoolChemistrySettingsUnavailableError) {
+        return json(req, res, 503, {
+          data: null,
+          error: {
+            code: "service_unavailable",
+            message: error.message
+          }
+        });
       }
 
       return json(req, res, 500, { data: null, error: "Internal server error." });

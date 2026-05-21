@@ -1,7 +1,20 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: splash
+      POSTGRES_USER: splash
+      POSTGRES_PASSWORD: splash
+    ports:
+      - "5432:5432"
+    volumes:
+      - splash-postgres:/var/lib/postgresql/data
   nats:
     image: nats:2.11-alpine
     command: ["-js", "-m", "8222"]
     ports:
       - "4222:4222"
       - "8222:8222"
+
+volumes:
+  splash-postgres:

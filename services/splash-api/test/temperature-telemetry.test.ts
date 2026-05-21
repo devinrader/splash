@@ -170,6 +170,37 @@ test("queryInfluxRows uses raw Flux transport and parses CSV rows", async () => 
   assert.equal(rows[0]?.original_value, "77");
 });
 
+test("queryInfluxRows ignores Influx annotation rows and still parses data rows", async () => {
+  const rows = await queryInfluxRows({
+    influx: {
+      url: "http://10.0.40.52:8086",
+      token: "secret",
+      org: "splash",
+      bucket: "system-telemetry"
+    },
+    fetchImpl: async () =>
+      new Response(
+        "#group,false,false,true,true,true,true,true,true,true,true,true\n"
+          + "#datatype,string,long,dateTime:RFC3339,string,string,double,string,double,double,long,string\n"
+          + "#default,_result,,,,,,,,,,\n"
+          + ",result,table,_time,sensor_type,controller_id,original_value,original_unit,normalized_f,normalized_c,raw_byte,controller_timestamp\n"
+          + ",_result,0,2026-05-12T15:12:10.365Z,pool_water,default,77,F,77,25,77,11:11\n",
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/csv"
+          }
+        }
+      ),
+    flux: 'from(bucket: "system-telemetry") |> range(start: -24h)'
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?._time, "2026-05-12T15:12:10.365Z");
+  assert.equal(rows[0]?.sensor_type, "pool_water");
+  assert.equal(rows[0]?.original_value, "77");
+});
+
 test("temperature telemetry service writes first sample immediately and deduplicates within the sample window", async () => {
   const repository = new FakeTelemetryRepository();
   const service = new TemperatureTelemetryService({
