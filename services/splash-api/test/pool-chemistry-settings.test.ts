@@ -6,7 +6,7 @@ import {
   PoolChemistrySettingsService,
   PoolChemistrySettingsUnavailableError,
   PoolChemistrySettingsValidationError,
-  PostgresPoolChemistrySettingsRepository,
+  SqlitePoolChemistrySettingsRepository,
   validatePoolChemistrySettingsUpdateInput
 } from "../src/pool-chemistry-settings.js";
 
@@ -54,32 +54,33 @@ test("validatePoolChemistrySettingsUpdateInput rejects unknown keys and invalid 
 });
 
 test("repository maps saved chemistry settings rows", async () => {
-  const repository = new PostgresPoolChemistrySettingsRepository({
-    async query() {
+  const repository = new SqlitePoolChemistrySettingsRepository({
+    get() {
       return {
-        command: "SELECT",
-        rowCount: 1,
-        oid: 0,
-        fields: [],
-        rows: [
-          {
-            pool_id: "pool-1",
-            chemistry_bounds: {
-              free_chlorine: {
-                chemicalKey: "free_chlorine",
-                displayName: "Free Chlorine",
-                unit: "ppm",
-                minimum: 3,
-                target: 5,
-                maximum: 10,
-                enabled: true,
-                sortOrder: 10
-              }
-            }
+        pool_id: "pool-1",
+        chemistry_bounds: {
+          free_chlorine: {
+            chemicalKey: "free_chlorine",
+            displayName: "Free Chlorine",
+            unit: "ppm",
+            minimum: 3,
+            target: 5,
+            maximum: 10,
+            enabled: true,
+            sortOrder: 10
           }
-        ]
+        }
       };
-    }
+    },
+    all() {
+      return [];
+    },
+    run() {},
+    exec() {},
+    transaction<T>(callback: () => T) {
+      return callback();
+    },
+    close() {}
   } as never);
 
   const result = await repository.get("pool-1");
@@ -89,7 +90,7 @@ test("repository maps saved chemistry settings rows", async () => {
   assert.equal(result?.settings.ph.target, 7.6);
 });
 
-test("service returns seeded defaults when PostgreSQL rows are missing", async () => {
+test("service returns seeded defaults when SQLite rows are missing", async () => {
   const service = new PoolChemistrySettingsService("pool-1", {
     async get() {
       return null;
@@ -131,7 +132,7 @@ test("service merges partial updates onto current chemistry settings", async () 
   const ph = result.settings.find((setting) => setting.chemicalKey === "ph");
   const salt = result.settings.find((setting) => setting.chemicalKey === "salt");
 
-  assert.equal(result.source, "postgres");
+  assert.equal(result.source, "sqlite");
   assert.equal(ph?.target, 7.5);
   assert.equal(salt?.target, 3400);
 });
@@ -145,7 +146,7 @@ test("service returns fallback recommendation bounds when repository is unavaila
   assert.equal(result.ph?.min, 7.2);
 });
 
-test("service throws unavailable when updating without PostgreSQL", async () => {
+test("service throws unavailable when updating without SQLite", async () => {
   const service = new PoolChemistrySettingsService("pool-1", null);
 
   await assert.rejects(
@@ -184,7 +185,7 @@ test("pool chemistry API GET and PUT routes work", async () => {
             sortOrder: 10
           }
         ],
-        source: "postgres"
+        source: "sqlite"
       };
     },
     async updatePoolChemistrySettings(input) {
@@ -202,7 +203,7 @@ test("pool chemistry API GET and PUT routes work", async () => {
             sortOrder: 30
           }
         ],
-        source: "postgres"
+        source: "sqlite"
       };
     }
   }));
@@ -234,6 +235,14 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
     getEquipment: () => [],
     getHealth: () => ({ status: "healthy", ready: true }),
     getControllerSchedules: () => ({}),
+    getControllerClock: () => ({}),
+    updateControllerClock: async () => ({ commandId: "command-0", clock: {} }),
+    getControllerPumpConfigurations: () => ({ source: "controller_native", controller_type: "easytouch", status: "unavailable", message: "", last_checked: null, pumps: [] }),
+    updateControllerPumpConfiguration: async () => ({ commandId: "command-0", pumpConfiguration: {} }),
+    getControllerHeater: () => ({}),
+    updateControllerSchedule: async () => ({ commandId: "command-0", schedule: {} }),
+    updateControllerHeaterConfiguration: async () => ({ commandId: "command-0", heater: {} }),
+    updateControllerHeaterSettings: async () => ({ commandId: "command-0", heater: {} }),
     getTemperatureTelemetryLatest: async () => ({}),
     getTemperatureTelemetryHistory: async () => ({}),
     getPumpTelemetryLatest: async () => ({}),

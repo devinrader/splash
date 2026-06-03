@@ -1,6 +1,0 @@
----
-- name: Configure splash-core PostgreSQL
-  hosts: splash_core
-  become: true
-  roles:
-    - role: splash_core_postgres

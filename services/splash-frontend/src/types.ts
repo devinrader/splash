@@ -92,6 +92,181 @@ export interface ControllerSchedulesResponse {
   error: unknown;
 }
 
+export interface ControllerScheduleUpdateInput {
+  scheduleId: number;
+  mode: "repeat" | "egg_timer";
+  circuitId: number;
+  startTimeMinutes?: number;
+  endTimeMinutes?: number;
+  daysMask?: number;
+  runtimeMinutes?: number;
+}
+
+export interface ControllerScheduleUpdateResponse {
+  data: {
+    command_id: string;
+    status: "completed";
+    schedule: ControllerScheduleRecord;
+  };
+  error: unknown;
+}
+
+export interface ControllerHeaterData {
+  source: "controller_native";
+  controller_type: "easytouch";
+  status: "available" | "unavailable";
+  message: string;
+  last_checked: string | null;
+  configuration: {
+    detected_heater_type: string | null;
+    solar_or_heat_pump_enabled: boolean | null;
+    heating_enabled: boolean | null;
+    cooling_enabled: boolean | null;
+    freeze_protection_enabled: boolean | null;
+    raw_payload: number[];
+    updated_at: string | null;
+  };
+  settings: {
+    pool_setpoint: number | null;
+    spa_setpoint: number | null;
+    cool_setpoint: number | null;
+    pool_heat_mode: string | null;
+    spa_heat_mode: string | null;
+    heat_setting_byte: number | null;
+    source: "controller_status" | "command_cache" | null;
+    updated_at: string | null;
+  };
+  capabilities: {
+    editable_configuration_fields: string[];
+    editable_setting_fields: string[];
+  };
+}
+
+export interface ControllerHeaterResponse {
+  data: ControllerHeaterData;
+  error: unknown;
+}
+
+export interface ControllerHeaterConfigurationUpdateInput {
+  heaterType: "ultratempHeatPumpCom" | "ultratempEtiHybrid";
+  coolingEnabled: boolean;
+  freezeProtectionEnabled: boolean;
+}
+
+export interface ControllerHeaterSettingsUpdateInput {
+  poolSetpoint: number;
+  spaSetpoint: number;
+  poolHeatMode: 0 | 1 | 2 | 3;
+  spaHeatMode: 0 | 1 | 2 | 3;
+  coolSetpoint: number;
+}
+
+export interface ControllerHeaterUpdateResponse {
+  data: {
+    command_id: string;
+    status: "completed";
+    heater: ControllerHeaterData;
+  };
+  error: unknown;
+}
+
+export interface ControllerClockData {
+  source: "controller_native";
+  controller_type: "easytouch";
+  status: "available" | "unavailable";
+  message: string;
+  last_checked: string | null;
+  summary: {
+    month: number | null;
+    day: number | null;
+    year: number | null;
+    day_of_week: number | null;
+    hour_24: number | null;
+    minute: number | null;
+    daylight_savings_auto: boolean | null;
+    clock_advance: number | null;
+    source: "controller_status" | "controller_datetime_reply" | "combined" | null;
+    updated_at: string | null;
+  };
+  capabilities: {
+    editable_fields: string[];
+    provisional_fields: string[];
+  };
+}
+
+export interface ControllerClockUpdateInput {
+  month: number;
+  day: number;
+  year: number;
+  dayOfWeek: number;
+  hour24: number;
+  minute: number;
+  daylightSavingsAuto: boolean | null;
+  clockAdvance: number | null;
+}
+
+export interface ControllerClockUpdateResponse {
+  data: {
+    command_id: string;
+    status: "completed";
+    clock: ControllerClockData;
+  };
+  error: unknown;
+}
+
+export interface ControllerPumpConfigurationSlot {
+  slot: number;
+  circuit_assignment: number | null;
+  rpm: number | null;
+}
+
+export interface ControllerPumpConfigurationData {
+  pump_id: number;
+  installed: boolean;
+  pump_type: number | null;
+  pump_type_label: string | null;
+  supported_branch: "vf" | "vs" | "unknown" | null;
+  priming_time: number | null;
+  unknown_3: number | null;
+  unknown_4: number | null;
+  priming_speed: number | null;
+  slots: ControllerPumpConfigurationSlot[];
+  trailing_bytes: number[];
+  updated_at: string | null;
+}
+
+export interface ControllerPumpConfigurationsResponse {
+  data: {
+    source: "controller_native";
+    controller_type: "easytouch";
+    status: "available" | "unavailable";
+    message: string;
+    last_checked: string | null;
+    pumps: ControllerPumpConfigurationData[];
+  };
+  error: unknown;
+}
+
+export interface ControllerPumpConfigurationUpdateInput {
+  pumpId: number;
+  pumpType: number;
+  primingTime: number;
+  unknown3: number;
+  unknown4: number;
+  slots: Array<{ circuit_assignment: number; rpm: number }>;
+  primingSpeed: number;
+  trailingBytes: number[];
+}
+
+export interface ControllerPumpConfigurationUpdateResponse {
+  data: {
+    command_id: string;
+    status: "completed";
+    pump_configuration: ControllerPumpConfigurationData;
+  };
+  error: unknown;
+}
+
 export interface TemperatureLatestReading {
   timestamp: string;
   original_value: number;
@@ -299,7 +474,7 @@ export interface PoolChemistrySetting {
 
 export interface PoolChemistrySettingsData {
   settings: PoolChemistrySetting[];
-  source: "postgres" | "defaults";
+  source: "sqlite" | "defaults";
 }
 
 export interface PoolChemistrySettingsResponse {

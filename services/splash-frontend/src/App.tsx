@@ -65,6 +65,23 @@ const CONNECTIVITY_SAMPLE_WINDOW_MS = 9_000;
 const CONNECTIVITY_SAMPLE_MAX_POINTS = 18;
 const HEALTH_POLL_INTERVAL_MS = 10_000;
 
+interface PendingCircuitConfigLookup {
+  circuitIndex: number;
+  commandId: string;
+  requestedAt: string;
+}
+
+interface CircuitConfigLookupResult {
+  circuitId: number | null;
+  functionId: number | null;
+  baseFunctionId: number | null;
+  baseFunctionLabel: string | null;
+  nameId: number | null;
+  nameLabel: string | null;
+  freezeFlag: boolean | null;
+  highFlag: boolean | null;
+}
+
 export default function App() {
   const equipment = useFrontendStore((state) => state.equipment);
   const healthStatus = useFrontendStore((state) => state.healthStatus);
@@ -93,6 +110,10 @@ export default function App() {
   const [pendingCircuitToggle, setPendingCircuitToggle] = useState<PendingCircuitToggle | null>(null);
   const [activeRequests, setActiveRequests] = useState<ActivePlatformRequest[]>([]);
   const [bundleLabel, setBundleLabel] = useState("");
+  const [circuitConfigRequestIndex, setCircuitConfigRequestIndex] = useState("4");
+  const [pendingCircuitConfigLookup, setPendingCircuitConfigLookup] = useState<PendingCircuitConfigLookup | null>(null);
+  const [circuitConfigLookupMessage, setCircuitConfigLookupMessage] = useState<string | null>(null);
+  const [circuitConfigLookupResult, setCircuitConfigLookupResult] = useState<CircuitConfigLookupResult | null>(null);
   const [remoteLayoutPageIndex, setRemoteLayoutPageIndex] = useState("0");
   const [rawFrameHex, setRawFrameHex] = useState("ff00ffa5011022e1010001ba");
   const [recentFrames, setRecentFrames] = useState<ProtocolFrameEvent[]>([]);
@@ -125,6 +146,7 @@ export default function App() {
   const hasRequestedControllerDatetimeRef = useRef(false);
   const hasRequestedControllerCircuitConfigRef = useRef(false);
   const isStreamPausedRef = useRef(false);
+  const pendingCircuitConfigLookupRef = useRef<PendingCircuitConfigLookup | null>(null);
   const messageLogTableRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -160,6 +182,11 @@ export default function App() {
         if (pendingCircuitToggle && commandId === pendingCircuitToggle.commandId && (status === "failed" || status === "timed_out")) {
           setPendingCircuitToggle(null);
         }
+        const pendingLookup = pendingCircuitConfigLookupRef.current;
+        if (pendingLookup && commandId === pendingLookup.commandId && (status === "failed" || status === "timed_out")) {
+          setPendingCircuitConfigLookup(null);
+          setCircuitConfigLookupMessage(`Circuit config request for index ${pendingLookup.circuitIndex} ${status}.`);
+        }
       });
     });
     source.onerror = () => {
@@ -182,6 +209,15 @@ export default function App() {
         appendFrame(setRecentFrames, "protocol.frame.decoded", payload);
       }
       clearActiveRequestByReply(setActiveRequests, payload);
+      const pendingLookup = pendingCircuitConfigLookupRef.current;
+      if (pendingLookup) {
+        const matchedLookup = tryMatchCircuitConfigLookup(payload, pendingLookup);
+        if (matchedLookup) {
+          setPendingCircuitConfigLookup(null);
+          setCircuitConfigLookupResult(matchedLookup);
+          setCircuitConfigLookupMessage(`Matched circuit_configuration reply for index ${pendingLookup.circuitIndex}.`);
+        }
+      }
     });
     source.addEventListener("protocol.command.encoded", (event) => {
       if (!isStreamPausedRef.current) {
@@ -248,6 +284,10 @@ export default function App() {
   useEffect(() => {
     isStreamPausedRef.current = isStreamPaused;
   }, [isStreamPaused]);
+
+  useEffect(() => {
+    pendingCircuitConfigLookupRef.current = pendingCircuitConfigLookup;
+  }, [pendingCircuitConfigLookup]);
 
   useEffect(() => {
     if (!autoScrollEnabled || !messageLogTableRef.current) {
@@ -345,6 +385,35 @@ export default function App() {
         replyType: null
       });
       applyCommandResult({ command_id: response.data.command_id, status: response.data.status, detail: `Manual Remote Layout request for page ${pageIndex} accepted.` });
+    } catch (error) {
+      setExplorerError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleCircuitConfigLookupRequest(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const circuitIndex = Number.parseInt(circuitConfigRequestIndex, 10);
+    if (Number.isNaN(circuitIndex) || circuitIndex < 1 || circuitIndex > 255) {
+      setExplorerError("Enter a valid circuit config index between 1 and 255.");
+      return;
+    }
+    try {
+      setExplorerError(null);
+      setCircuitConfigLookupResult(null);
+      const requestedAt = new Date().toISOString();
+      const response = await requestCircuitConfig({ startIndex: circuitIndex, endIndex: circuitIndex });
+      setPendingCircuitConfigLookup({
+        circuitIndex,
+        commandId: response.data.command_id,
+        requestedAt
+      });
+      setCircuitConfigLookupMessage(`Requested circuit config for index ${circuitIndex}. Command ${response.data.command_id}. Waiting for matching reply...`);
+      addActiveRequest(setActiveRequests, {
+        commandId: response.data.command_id,
+        label: `Circuit config index ${circuitIndex}`,
+        waitingFor: "matching circuit_configuration reply",
+        replyType: "circuit_configuration"
+      });
     } catch (error) {
       setExplorerError(error instanceof Error ? error.message : String(error));
     }
@@ -548,6 +617,11 @@ export default function App() {
     diagnosticsPageProps={{
       bundleLabel,
       setBundleLabel,
+      circuitConfigRequestIndex,
+      setCircuitConfigRequestIndex,
+      isCircuitConfigLookupPending: pendingCircuitConfigLookup !== null,
+      circuitConfigLookupMessage,
+      circuitConfigLookupResult,
       remoteLayoutPageIndex,
       setRemoteLayoutPageIndex,
       rawFrameHex,
@@ -605,6 +679,7 @@ export default function App() {
       setPromptInputType,
       messageLogTableRef,
       handleBundleSave,
+      handleCircuitConfigLookupRequest,
       handleRemoteLayoutRequest,
       handleRawFrameSend,
       handleBundleCompare,
@@ -894,6 +969,42 @@ function clearActiveRequestByReply(
   setActiveRequests((current) => removeFirstMatchingRequest(current, (request) => request.replyType === messageType));
 }
 
+function tryMatchCircuitConfigLookup(
+  payload: Record<string, unknown>,
+  pendingLookup: PendingCircuitConfigLookup
+): CircuitConfigLookupResult | null {
+  const messageType = readNullableString(payload.message_type);
+  if (messageType !== "circuit_configuration") {
+    return null;
+  }
+
+  const decodedAt = readNullableString(payload.decoded_at);
+  if (decodedAt) {
+    const decodedTime = Date.parse(decodedAt);
+    const requestedTime = Date.parse(pendingLookup.requestedAt);
+    if (!Number.isNaN(decodedTime) && !Number.isNaN(requestedTime) && decodedTime < requestedTime) {
+      return null;
+    }
+  }
+
+  const fields = normalizeProtocolFields(payload.fields);
+  const circuitId = readNullableNumber(fields.circuit_id);
+  if (circuitId !== pendingLookup.circuitIndex) {
+    return null;
+  }
+
+  return {
+    circuitId,
+    functionId: readNullableNumber(fields.function_id),
+    baseFunctionId: readNullableNumber(fields.base_function_id),
+    baseFunctionLabel: readNullableString(fields.base_function_label),
+    nameId: readNullableNumber(fields.name_id),
+    nameLabel: readNullableString(fields.name_label),
+    freezeFlag: readNullableBoolean(fields.freeze_flag),
+    highFlag: readNullableBoolean(fields.high_flag)
+  };
+}
+
 function clearActiveRequestByCommandResult(
   setActiveRequests: Dispatch<SetStateAction<ActivePlatformRequest[]>>,
   payload: Record<string, unknown>
@@ -923,4 +1034,16 @@ function isTerminalCommandStatus(value: string): boolean {
 
 function parseEventPayload(event: MessageEvent<string>): Record<string, unknown> {
   return JSON.parse(event.data) as Record<string, unknown>;
+}
+
+function normalizeProtocolFields(value: unknown): Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function readNullableNumber(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+function readNullableBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }

@@ -56,37 +56,36 @@ test("loadConfig parses optional Influx telemetry configuration", () => {
   });
 });
 
-test("loadConfig parses optional PostgreSQL connection string configuration", () => {
+test("loadConfig parses optional SQLite configuration", () => {
   const config = loadConfig({
     API_POOL_ID: "pool-1",
     NATS_URL: "nats://127.0.0.1:4222",
     API_HTTP_BIND: "127.0.0.1:8080",
-    DATABASE_URL: "postgres://splash:splash@127.0.0.1:5432/splash",
-    DATABASE_MIGRATIONS_DIR: "migrations"
+    SQLITE_PATH: "/tmp/splash.sqlite",
+    DATABASE_MIGRATIONS_DIR: "migrations",
+    SQLITE_BUSY_TIMEOUT_MS: "2500",
+    SQLITE_JOURNAL_MODE: "wal"
   });
 
-  assert.deepEqual(config.postgres, {
-    connectionString: "postgres://splash:splash@127.0.0.1:5432/splash",
-    host: null,
-    port: 5432,
-    database: null,
-    user: null,
-    password: null,
-    migrationsDir: "migrations"
+  assert.deepEqual(config.sqlite, {
+    path: "/tmp/splash.sqlite",
+    migrationsDir: "migrations",
+    busyTimeoutMs: 2500,
+    journalMode: "WAL"
   });
 });
 
-test("loadConfig rejects partial PostgreSQL discrete configuration", () => {
+test("loadConfig rejects unsupported SQLite journal mode", () => {
   assert.throws(
     () =>
       loadConfig({
         API_POOL_ID: "pool-1",
         NATS_URL: "nats://127.0.0.1:4222",
         API_HTTP_BIND: "127.0.0.1:8080",
-        PGHOST: "127.0.0.1",
-        PGDATABASE: "splash"
+        SQLITE_PATH: "/tmp/splash.sqlite",
+        SQLITE_JOURNAL_MODE: "invalid"
       }),
-    /PGHOST, PGDATABASE, and PGUSER must all be set together/
+    /Unsupported SQLITE_JOURNAL_MODE: INVALID/
   );
 });
 

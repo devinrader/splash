@@ -15,9 +15,6 @@ import type {
 const CHART_HEIGHT = 260;
 const DEFAULT_CHART_WIDTH = 960;
 const MIN_CHART_WIDTH = 320;
-const HISTORY_LOOKBACK_MS = 36 * 60 * 60 * 1000;
-const TEMPERATURE_HISTORY_INTERVAL = "10m";
-const PUMP_HISTORY_INTERVAL = "10m";
 const DEFAULT_PUMP_ID = "pump-main";
 const HISTORY_X_AXIS_LABEL_STEP = 10;
 const HISTORY_MAX_X_AXIS_LABELS = 8;
@@ -39,34 +36,56 @@ const HISTORY_TABS = [
   { id: "pump", label: "Pump" },
   { id: "weather", label: "Weather" }
 ] as const;
+const HISTORY_RANGE_OPTIONS = [
+  { id: "1h", label: "Last hour", lookbackMs: 1 * 60 * 60 * 1000, interval: "5m" },
+  { id: "6h", label: "Last 6 hours", lookbackMs: 6 * 60 * 60 * 1000, interval: "15m" },
+  { id: "12h", label: "Last 12 hours", lookbackMs: 12 * 60 * 60 * 1000, interval: "15m" },
+  { id: "24h", label: "Last 24 hours", lookbackMs: 24 * 60 * 60 * 1000, interval: "15m" },
+  { id: "36h", label: "Last 36 hours", lookbackMs: 36 * 60 * 60 * 1000, interval: "15m" },
+  { id: "3d", label: "Last 3 days", lookbackMs: 3 * 24 * 60 * 60 * 1000, interval: "1h" },
+  { id: "7d", label: "Last 7 days", lookbackMs: 7 * 24 * 60 * 60 * 1000, interval: "4h" }
+] as const;
 
 type HistoryTabId = (typeof HISTORY_TABS)[number]["id"];
+type HistoryRangeId = (typeof HISTORY_RANGE_OPTIONS)[number]["id"];
+const DEFAULT_HISTORY_RANGE_ID: HistoryRangeId = "36h";
+
+function resolveHistoryRange(rangeId: HistoryRangeId) {
+  return (
+    HISTORY_RANGE_OPTIONS.find((option) => option.id === rangeId) ??
+    HISTORY_RANGE_OPTIONS.find((option) => option.id === DEFAULT_HISTORY_RANGE_ID) ??
+    HISTORY_RANGE_OPTIONS[0]
+  );
+}
 
 export function HistoryPage() {
   const [activeTab, setActiveTab] = useState<HistoryTabId>("temperature");
-  const [loadedTabs, setLoadedTabs] = useState<HistoryTabId[]>([]);
+  const [selectedRangeId, setSelectedRangeId] = useState<HistoryRangeId>(DEFAULT_HISTORY_RANGE_ID);
+  const [loadedKeys, setLoadedKeys] = useState<string[]>([]);
   const [loadingTab, setLoadingTab] = useState<HistoryTabId | null>(null);
-  const [temperatureHistory, setTemperatureHistory] = useState<TemperatureTelemetryHistoryData | null>(null);
-  const [temperatureError, setTemperatureError] = useState<string | null>(null);
-  const [pumpHistory, setPumpHistory] = useState<PumpTelemetryHistoryData | null>(null);
-  const [pumpError, setPumpError] = useState<string | null>(null);
-  const [weatherHistory, setWeatherHistory] = useState<Record<WeatherHistoryMetric, WeatherHistoryData>>({} as Record<WeatherHistoryMetric, WeatherHistoryData>);
-  const [weatherError, setWeatherError] = useState<string | null>(null);
+  const [temperatureHistoryByRange, setTemperatureHistoryByRange] = useState<Partial<Record<HistoryRangeId, TemperatureTelemetryHistoryData>>>({});
+  const [temperatureErrorByRange, setTemperatureErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
+  const [pumpHistoryByRange, setPumpHistoryByRange] = useState<Partial<Record<HistoryRangeId, PumpTelemetryHistoryData>>>({});
+  const [pumpErrorByRange, setPumpErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
+  const [weatherHistoryByRange, setWeatherHistoryByRange] = useState<Partial<Record<HistoryRangeId, Record<WeatherHistoryMetric, WeatherHistoryData>>>>({});
+  const [weatherErrorByRange, setWeatherErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
 
   useEffect(() => {
     let cancelled = false;
+    const selectedRange = resolveHistoryRange(selectedRangeId);
+    const loadKey = `${activeTab}:${selectedRangeId}`;
 
     void (async () => {
-      if (loadedTabs.includes(activeTab)) {
+      if (loadedKeys.includes(loadKey)) {
         return;
       }
 
       const end = new Date().toISOString();
-      const start = new Date(Date.now() - HISTORY_LOOKBACK_MS).toISOString();
+      const start = new Date(Date.now() - selectedRange.lookbackMs).toISOString();
       setLoadingTab(activeTab);
 
       if (activeTab === "temperature") {
-        const result = await fetchTemperatureTelemetryHistory({ start, end, interval: TEMPERATURE_HISTORY_INTERVAL })
+        const result = await fetchTemperatureTelemetryHistory({ start, end, interval: selectedRange.interval })
           .then((value) => ({ status: "fulfilled" as const, value }))
           .catch((reason) => ({ status: "rejected" as const, reason }));
 
@@ -75,15 +94,18 @@ export function HistoryPage() {
         }
 
         if (result.status === "fulfilled") {
-          setTemperatureHistory(result.value.data);
-          setTemperatureError(null);
+          setTemperatureHistoryByRange((current) => ({ ...current, [selectedRangeId]: result.value.data }));
+          setTemperatureErrorByRange((current) => ({ ...current, [selectedRangeId]: null }));
         } else {
-          setTemperatureError(result.reason instanceof Error ? result.reason.message : String(result.reason));
+          setTemperatureErrorByRange((current) => ({
+            ...current,
+            [selectedRangeId]: result.reason instanceof Error ? result.reason.message : String(result.reason)
+          }));
         }
       }
 
       if (activeTab === "pump") {
-        const result = await fetchPumpTelemetryHistory({ pumpId: DEFAULT_PUMP_ID, start, end, interval: PUMP_HISTORY_INTERVAL })
+        const result = await fetchPumpTelemetryHistory({ pumpId: DEFAULT_PUMP_ID, start, end, interval: selectedRange.interval })
           .then((value) => ({ status: "fulfilled" as const, value }))
           .catch((reason) => ({ status: "rejected" as const, reason }));
 
@@ -92,15 +114,20 @@ export function HistoryPage() {
         }
 
         if (result.status === "fulfilled") {
-          setPumpHistory(result.value.data);
-          setPumpError(null);
+          setPumpHistoryByRange((current) => ({ ...current, [selectedRangeId]: result.value.data }));
+          setPumpErrorByRange((current) => ({ ...current, [selectedRangeId]: null }));
         } else {
-          setPumpError(result.reason instanceof Error ? result.reason.message : String(result.reason));
+          setPumpErrorByRange((current) => ({
+            ...current,
+            [selectedRangeId]: result.reason instanceof Error ? result.reason.message : String(result.reason)
+          }));
         }
       }
 
       if (activeTab === "weather") {
-        const weatherResults = await Promise.allSettled(WEATHER_METRICS.map((metric) => fetchWeatherHistory({ metric, start, end })));
+        const weatherResults = await Promise.allSettled(
+          WEATHER_METRICS.map((metric) => fetchWeatherHistory({ metric, start, end, interval: selectedRange.interval }))
+        );
 
         if (cancelled) {
           return;
@@ -116,24 +143,32 @@ export function HistoryPage() {
             nextWeatherError = result.reason instanceof Error ? result.reason.message : String(result.reason);
           }
         });
-        setWeatherHistory(nextWeatherHistory);
-        setWeatherError(nextWeatherError);
+        setWeatherHistoryByRange((current) => ({ ...current, [selectedRangeId]: nextWeatherHistory }));
+        setWeatherErrorByRange((current) => ({ ...current, [selectedRangeId]: nextWeatherError }));
       }
 
       if (cancelled) {
         return;
       }
 
-      setLoadedTabs((current) => (current.includes(activeTab) ? current : [...current, activeTab]));
+      setLoadedKeys((current) => (current.includes(loadKey) ? current : [...current, loadKey]));
       setLoadingTab((current) => (current === activeTab ? null : current));
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [activeTab]);
+  }, [activeTab, loadedKeys, selectedRangeId]);
 
+  const temperatureHistory = temperatureHistoryByRange[selectedRangeId] ?? null;
+  const pumpHistory = pumpHistoryByRange[selectedRangeId] ?? null;
+  const weatherHistory = weatherHistoryByRange[selectedRangeId] ?? ({} as Record<WeatherHistoryMetric, WeatherHistoryData>);
+  const temperatureError = temperatureErrorByRange[selectedRangeId] ?? null;
+  const pumpError = pumpErrorByRange[selectedRangeId] ?? null;
+  const weatherError = weatherErrorByRange[selectedRangeId] ?? null;
   const currentError = activeTab === "temperature" ? temperatureError : activeTab === "pump" ? pumpError : weatherError;
+  const selectedRange = resolveHistoryRange(selectedRangeId);
+  const currentLoadKey = `${activeTab}:${selectedRangeId}`;
 
   return (
     <section className="automation-shell">
@@ -142,13 +177,26 @@ export function HistoryPage() {
           <p className="panel-copy">
             The History dashboard shows persistence-backed EasyTouch temperature trends and normalized weather history sourced from Splash API.
           </p>
+          <div className="control-form">
+            <label htmlFor="history-range">Time range</label>
+            <select
+              id="history-range"
+              value={selectedRangeId}
+              onChange={(event) => setSelectedRangeId(event.target.value as HistoryRangeId)}
+            >
+              {HISTORY_RANGE_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </select>
+            <p className="form-caption">Selected range: {selectedRange.label} · {selectedRange.interval} aggregation</p>
+          </div>
         </Card>
         <Card title="Coverage">
           <div className="automation-record-list">
-            <div className="automation-record-row"><strong>Temperature series</strong><span>{loadedTabs.includes("temperature") ? countAvailableTemperatureSeries(temperatureHistory?.series ?? []) : "On demand"}</span></div>
-            <div className="automation-record-row"><strong>Pump charts</strong><span>{loadedTabs.includes("pump") ? countAvailablePumpCharts(pumpHistory) : "On demand"}</span></div>
-            <div className="automation-record-row"><strong>Weather charts</strong><span>{loadedTabs.includes("weather") ? countAvailableWeatherCharts(weatherHistory) : "On demand"}</span></div>
-            <div className="automation-record-row"><strong>Weather freshness</strong><span>{loadedTabs.includes("weather") ? summarizeWeatherFreshness(weatherHistory) : "On demand"}</span></div>
+            <div className="automation-record-row"><strong>Temperature series</strong><span>{loadedKeys.includes(`temperature:${selectedRangeId}`) ? countAvailableTemperatureSeries(temperatureHistory?.series ?? []) : "On demand"}</span></div>
+            <div className="automation-record-row"><strong>Pump charts</strong><span>{loadedKeys.includes(`pump:${selectedRangeId}`) ? countAvailablePumpCharts(pumpHistory) : "On demand"}</span></div>
+            <div className="automation-record-row"><strong>Weather charts</strong><span>{loadedKeys.includes(`weather:${selectedRangeId}`) ? countAvailableWeatherCharts(weatherHistory) : "On demand"}</span></div>
+            <div className="automation-record-row"><strong>Weather freshness</strong><span>{loadedKeys.includes(`weather:${selectedRangeId}`) ? summarizeWeatherFreshness(weatherHistory) : "On demand"}</span></div>
           </div>
         </Card>
       </div>
@@ -177,7 +225,7 @@ export function HistoryPage() {
       ) : null}
 
       <div id={`history-panel-${activeTab}`} className="automation-tab-panel" role="tabpanel" aria-labelledby={`history-tab-${activeTab}`}>
-        {loadingTab === activeTab && !loadedTabs.includes(activeTab) ? (
+        {loadingTab === activeTab && !loadedKeys.includes(currentLoadKey) ? (
           <Card title="Loading History">
             <p className="chart-empty-state">Loading {formatHistoryTabLabel(activeTab)} history…</p>
           </Card>

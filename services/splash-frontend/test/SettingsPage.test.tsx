@@ -84,7 +84,7 @@ test("settings page loads and saves weather location and pool chemistry settings
               sortOrder: 30
             }
           ],
-          source: "postgres"
+          source: "sqlite"
         },
         error: null
       });
@@ -145,7 +145,7 @@ test("settings page loads and saves weather location and pool chemistry settings
               sortOrder: 30
             }
           ],
-          source: "postgres"
+          source: "sqlite"
         },
         error: null
       });

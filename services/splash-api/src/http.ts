@@ -39,6 +39,11 @@ export interface HttpHandlers {
   getEquipment(): Array<Record<string, unknown>>;
   getHealth(): Record<string, unknown>;
   getControllerSchedules(): Record<string, unknown>;
+  getControllerClock(): Record<string, unknown>;
+  updateControllerClock(input: ControllerClockUpdateRequest): Promise<{ commandId: string; clock: Record<string, unknown> }>;
+  getControllerPumpConfigurations(): Record<string, unknown>;
+  updateControllerPumpConfiguration(input: PumpConfigWriteRequest): Promise<{ commandId: string; pumpConfiguration: Record<string, unknown> }>;
+  getControllerHeater(): Record<string, unknown>;
   getTemperatureTelemetryLatest(): Promise<Record<string, unknown>>;
   getTemperatureTelemetryHistory(input: {
     sensorType: string | null;
@@ -86,6 +91,27 @@ export interface HttpHandlers {
   publishRemoteLayoutRequest(input: { pageIndex: number }): Promise<{ commandId: string }>;
   publishPumpInfoRequest(input: { pumpSlot: number }): Promise<{ commandId: string }>;
   publishControllerScheduleRequest(input: { scheduleId: number }): Promise<{ commandId: string }>;
+  updateControllerSchedule(input: {
+    scheduleId: number;
+    mode: "repeat" | "egg_timer";
+    circuitId: number;
+    startTimeMinutes?: number;
+    endTimeMinutes?: number;
+    daysMask?: number;
+    runtimeMinutes?: number;
+  }): Promise<{ commandId: string; schedule: Record<string, unknown> }>;
+  updateControllerHeaterConfiguration(input: {
+    heaterType: "ultratempHeatPumpCom" | "ultratempEtiHybrid";
+    coolingEnabled: boolean;
+    freezeProtectionEnabled: boolean;
+  }): Promise<{ commandId: string; heater: Record<string, unknown> }>;
+  updateControllerHeaterSettings(input: {
+    poolSetpoint: number;
+    spaSetpoint: number;
+    poolHeatMode: 0 | 1 | 2 | 3;
+    spaHeatMode: 0 | 1 | 2 | 3;
+    coolSetpoint: number;
+  }): Promise<{ commandId: string; heater: Record<string, unknown> }>;
   publishCircuitConfigRequest(input: { startIndex: number; endIndex: number }): Promise<{ commandId: string }>;
   publishCustomNameRequest(input: { nameIndex: number }): Promise<{ commandId: string }>;
   publishControllerSoftwareVersionRequest(): Promise<{ commandId: string }>;
@@ -111,6 +137,41 @@ export interface PumpConfigWriteRequest {
   slots: PumpConfigWriteSlot[];
   primingSpeed: number;
   trailingBytes: number[];
+}
+
+interface ControllerScheduleUpdateRequest {
+  scheduleId: number;
+  mode: "repeat" | "egg_timer";
+  circuitId: number;
+  startTimeMinutes?: number;
+  endTimeMinutes?: number;
+  daysMask?: number;
+  runtimeMinutes?: number;
+}
+
+interface ControllerHeaterConfigurationUpdateRequest {
+  heaterType: "ultratempHeatPumpCom" | "ultratempEtiHybrid";
+  coolingEnabled: boolean;
+  freezeProtectionEnabled: boolean;
+}
+
+interface ControllerHeaterSettingsUpdateRequest {
+  poolSetpoint: number;
+  spaSetpoint: number;
+  poolHeatMode: 0 | 1 | 2 | 3;
+  spaHeatMode: 0 | 1 | 2 | 3;
+  coolSetpoint: number;
+}
+
+interface ControllerClockUpdateRequest {
+  month: number;
+  day: number;
+  year: number;
+  dayOfWeek: number;
+  hour24: number;
+  minute: number;
+  daylightSavingsAuto: boolean | null;
+  clockAdvance: number | null;
 }
 
 export class LocalHttpServer implements HttpServer {
@@ -157,6 +218,18 @@ export class LocalHttpServer implements HttpServer {
 
       if (req.method === "GET" && req.url === "/controller/schedules") {
         return json(req, res, 200, { data: this.handlers.getControllerSchedules(), error: null });
+      }
+
+      if (req.method === "GET" && req.url === "/controller/clock") {
+        return json(req, res, 200, { data: this.handlers.getControllerClock(), error: null });
+      }
+
+      if (req.method === "GET" && req.url === "/controller/pumps/configuration") {
+        return json(req, res, 200, { data: this.handlers.getControllerPumpConfigurations(), error: null });
+      }
+
+      if (req.method === "GET" && req.url === "/controller/heater") {
+        return json(req, res, 200, { data: this.handlers.getControllerHeater(), error: null });
       }
 
       if (req.method === "GET" && req.url === "/telemetry/temperatures/latest") {
@@ -236,6 +309,80 @@ export class LocalHttpServer implements HttpServer {
       if (req.method === "PUT" && req.url === "/api/settings/pool-chemistry") {
         const body = await readJsonBody(req);
         return json(req, res, 200, { data: await this.handlers.updatePoolChemistrySettings(body), error: null });
+      }
+
+      const controllerScheduleUpdateMatch = req.url?.match(/^\/controller\/schedules\/([^/]+)$/);
+      if (req.method === "PUT" && controllerScheduleUpdateMatch) {
+        const body = await readJsonBody(req);
+        const result = await this.handlers.updateControllerSchedule(
+          readControllerScheduleUpdateRequest(decodeURIComponent(controllerScheduleUpdateMatch[1]), body)
+        );
+        return json(req, res, 200, {
+          data: {
+            command_id: result.commandId,
+            status: "completed",
+            schedule: result.schedule
+          },
+          error: null
+        });
+      }
+
+      if (req.method === "PUT" && req.url === "/controller/heater/configuration") {
+        const body = await readJsonBody(req);
+        const result = await this.handlers.updateControllerHeaterConfiguration(readControllerHeaterConfigurationUpdateRequest(body));
+        return json(req, res, 200, {
+          data: {
+            command_id: result.commandId,
+            status: "completed",
+            heater: result.heater
+          },
+          error: null
+        });
+      }
+
+      if (req.method === "PUT" && req.url === "/controller/heater/settings") {
+        const body = await readJsonBody(req);
+        const result = await this.handlers.updateControllerHeaterSettings(readControllerHeaterSettingsUpdateRequest(body));
+        return json(req, res, 200, {
+          data: {
+            command_id: result.commandId,
+            status: "completed",
+            heater: result.heater
+          },
+          error: null
+        });
+      }
+
+      if (req.method === "PUT" && req.url === "/controller/clock") {
+        const body = await readJsonBody(req);
+        const result = await this.handlers.updateControllerClock(readControllerClockUpdateRequest(body));
+        return json(req, res, 200, {
+          data: {
+            command_id: result.commandId,
+            status: "completed",
+            clock: result.clock
+          },
+          error: null
+        });
+      }
+
+      const pumpConfigurationUpdateMatch = req.url?.match(/^\/controller\/pumps\/([^/]+)\/configuration$/);
+      if (req.method === "PUT" && pumpConfigurationUpdateMatch) {
+        const body = await readJsonBody(req);
+        const input = readPumpConfigWriteRequest(body);
+        const pumpId = Number.parseInt(decodeURIComponent(pumpConfigurationUpdateMatch[1]), 10);
+        if (!Number.isInteger(pumpId) || pumpId < 1 || pumpId > 255) {
+          throw new HttpRequestError("Pump configuration update requires pump_id path parameter between 1 and 255.");
+        }
+        const result = await this.handlers.updateControllerPumpConfiguration({ ...input, pumpId });
+        return json(req, res, 200, {
+          data: {
+            command_id: result.commandId,
+            status: "completed",
+            pump_configuration: result.pumpConfiguration
+          },
+          error: null
+        });
       }
 
       if (req.method === "GET" && req.url === "/health") {
@@ -697,6 +844,131 @@ function readCircuitConfigRange(body: Record<string, unknown>): { startIndex: nu
   return { startIndex, endIndex };
 }
 
+function readControllerScheduleUpdateRequest(
+  scheduleIdParam: string,
+  body: Record<string, unknown>
+): ControllerScheduleUpdateRequest {
+  const scheduleId = Number.parseInt(scheduleIdParam, 10);
+  if (!Number.isInteger(scheduleId) || scheduleId < 1 || scheduleId > 12) {
+    throw new HttpRequestError("Controller schedule update requires schedule_id path parameter between 1 and 12.");
+  }
+
+  const mode = body.mode;
+  if (mode !== "repeat" && mode !== "egg_timer") {
+    throw new HttpRequestError("Controller schedule update requires mode 'repeat' or 'egg_timer'.");
+  }
+
+  const circuitId = body.circuit_id;
+  if (typeof circuitId !== "number" || !Number.isInteger(circuitId) || circuitId < 1 || circuitId > 255) {
+    throw new HttpRequestError("Controller schedule update requires integer circuit_id between 1 and 255.");
+  }
+
+  if (mode === "repeat") {
+    const startTimeMinutes = body.start_time_minutes;
+    const endTimeMinutes = body.end_time_minutes;
+    const daysMask = body.days_mask;
+    if (typeof startTimeMinutes !== "number" || !Number.isInteger(startTimeMinutes) || startTimeMinutes < 0 || startTimeMinutes > 1439) {
+      throw new HttpRequestError("Controller repeat schedule update requires integer start_time_minutes between 0 and 1439.");
+    }
+    if (typeof endTimeMinutes !== "number" || !Number.isInteger(endTimeMinutes) || endTimeMinutes < 0 || endTimeMinutes > 1439) {
+      throw new HttpRequestError("Controller repeat schedule update requires integer end_time_minutes between 0 and 1439.");
+    }
+    if (typeof daysMask !== "number" || !Number.isInteger(daysMask) || daysMask < 1 || daysMask > 127) {
+      throw new HttpRequestError("Controller repeat schedule update requires integer days_mask between 1 and 127.");
+    }
+    return {
+      scheduleId,
+      mode,
+      circuitId,
+      startTimeMinutes,
+      endTimeMinutes,
+      daysMask
+    };
+  }
+
+  const runtimeMinutes = body.runtime_minutes;
+  if (typeof runtimeMinutes !== "number" || !Number.isInteger(runtimeMinutes) || runtimeMinutes < 1 || runtimeMinutes > 1439) {
+    throw new HttpRequestError("Controller egg timer update requires integer runtime_minutes between 1 and 1439.");
+  }
+  return {
+    scheduleId,
+    mode,
+    circuitId,
+    runtimeMinutes
+  };
+}
+
+function readControllerHeaterConfigurationUpdateRequest(
+  body: Record<string, unknown>
+): ControllerHeaterConfigurationUpdateRequest {
+  const heaterType = body.heater_type;
+  if (heaterType !== "ultratempHeatPumpCom" && heaterType !== "ultratempEtiHybrid") {
+    throw new HttpRequestError("Controller heater configuration requires heater_type 'ultratempHeatPumpCom' or 'ultratempEtiHybrid'.");
+  }
+
+  const coolingEnabled = body.cooling_enabled;
+  if (typeof coolingEnabled !== "boolean") {
+    throw new HttpRequestError("Controller heater configuration requires boolean cooling_enabled.");
+  }
+
+  const freezeProtectionEnabled = body.freeze_protection_enabled;
+  if (typeof freezeProtectionEnabled !== "boolean") {
+    throw new HttpRequestError("Controller heater configuration requires boolean freeze_protection_enabled.");
+  }
+
+  return {
+    heaterType,
+    coolingEnabled,
+    freezeProtectionEnabled
+  };
+}
+
+function readControllerHeaterSettingsUpdateRequest(
+  body: Record<string, unknown>
+): ControllerHeaterSettingsUpdateRequest {
+  const poolSetpoint = readIntegerRange(body.pool_setpoint, "pool_setpoint", 40, 104);
+  const spaSetpoint = readIntegerRange(body.spa_setpoint, "spa_setpoint", 40, 104);
+  const poolHeatMode = readHeatMode(body.pool_heat_mode, "pool_heat_mode");
+  const spaHeatMode = readHeatMode(body.spa_heat_mode, "spa_heat_mode");
+  const coolSetpoint = body.cool_setpoint == null ? 0 : readIntegerRange(body.cool_setpoint, "cool_setpoint", 0, 255);
+
+  return {
+    poolSetpoint,
+    spaSetpoint,
+    poolHeatMode,
+    spaHeatMode,
+    coolSetpoint
+  };
+}
+
+function readControllerClockUpdateRequest(
+  body: Record<string, unknown>
+): ControllerClockUpdateRequest {
+  return {
+    month: readByte(body.month, "month"),
+    day: readByte(body.day, "day"),
+    year: readByte(body.year, "year"),
+    dayOfWeek: readByte(body.day_of_week, "day_of_week"),
+    hour24: readByte(body.hour_24, "hour_24"),
+    minute: readByte(body.minute, "minute"),
+    daylightSavingsAuto: readNullableBoolean(body.daylight_savings_auto, "daylight_savings_auto"),
+    clockAdvance: readNullableByte(body.clock_advance, "clock_advance")
+  };
+}
+
+function readIntegerRange(value: unknown, fieldName: string, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
+    throw new HttpRequestError(`Controller heater settings require integer ${fieldName} between ${min} and ${max}.`);
+  }
+
+  return value;
+}
+
+function readHeatMode(value: unknown, fieldName: string): 0 | 1 | 2 | 3 {
+  const nextValue = readIntegerRange(value, fieldName, 0, 3);
+  return nextValue as 0 | 1 | 2 | 3;
+}
+
 export function readCustomNameIndex(body: Record<string, unknown>): { nameIndex: number } {
   const nameIndex = body.name_index;
   if (typeof nameIndex !== "number" || !Number.isInteger(nameIndex) || nameIndex < 0 || nameIndex > 9) {
@@ -810,6 +1082,23 @@ function readRpmValue(value: unknown, fieldName: string): number {
     throw new HttpRequestError(`${fieldName} must be an integer RPM between 0 and 3450.`);
   }
   return value;
+}
+
+function readNullableBoolean(value: unknown, fieldName: string): boolean | null {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value !== "boolean") {
+    throw new HttpRequestError(`${fieldName} must be a boolean when provided.`);
+  }
+  return value;
+}
+
+function readNullableByte(value: unknown, fieldName: string): number | null {
+  if (value == null) {
+    return null;
+  }
+  return readByte(value, fieldName);
 }
 
 export function readPumpConfigWriteRequest(body: Record<string, unknown>): PumpConfigWriteRequest {
@@ -971,7 +1260,7 @@ export function corsHeaders(req: Pick<IncomingMessage, "headers">): Record<strin
   const origin = req.headers.origin;
   return {
     "access-control-allow-origin": typeof origin === "string" && origin.length > 0 ? origin : "*",
-    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-methods": "GET,POST,PUT,OPTIONS",
     "access-control-allow-headers": "content-type",
     vary: "Origin"
   };

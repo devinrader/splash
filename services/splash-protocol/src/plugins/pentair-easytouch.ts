@@ -3,6 +3,18 @@ import {
   type CommandEncodingPlan,
   type NormalizedCommandIntent
 } from "../commands/types.js";
+import {
+  buildEasyTouchEggTimerPayload,
+  buildEasyTouchSchedulePayload,
+  buildEasyTouchScheduleSetCommandFrame
+} from "./pentair-easytouch-schedules.js";
+import {
+  buildEasyTouchSetHeatTemperaturePayload,
+  buildEasyTouchSetSolarHeatPumpPayload,
+  createSetHeatTemperatureFrame,
+  createSetSolarHeatPumpFrame,
+  parseEasyTouchSolarHeatPumpStatusPayload
+} from "./pentair-easytouch-heat-pump.js";
 import type { ProtocolPlugin } from "./types.js";
 import { bytesToHex } from "../protocol/hex.js";
 import {
@@ -169,6 +181,15 @@ function decodeCircuitBaseFunction(functionId: number | null): string | null {
     return null;
   }
 
+  switch (functionId) {
+    case 65:
+      return "LO-TEMP";
+    case 66:
+      return "HI-TEMP";
+    default:
+      break;
+  }
+
   switch (functionId & 0x3f) {
     case 0:
       return "Generic";
@@ -181,35 +202,35 @@ function decodeCircuitBaseFunction(functionId: number | null): string | null {
     case 4:
       return "Master Cleaner";
     case 5:
-      return "Cleaner";
+      return "MSTR CLEANER";
     case 6:
       return "Solar";
     case 7:
-      return "Heat Boost";
+      return "Light";
     case 8:
       return "Heat Enable";
     case 9:
-      return "Jets";
+      return "SAM LIGHT";
     case 10:
-      return "Aux (standard relay)";
+      return "SAL LIGHT";
     case 11:
-      return "Feature";
+      return "PHOTON GEN";
     case 12:
-      return "Light";
+      return "COLOR WHEEL";
     case 13:
-      return "IntelliBrite";
+      return "VALVE";
     case 14:
-      return "MagicStream";
+      return "SPILLWAY";
     case 15:
-      return "Laminar";
+      return "FLOOR CLEANER";
     case 16:
-      return "Waterfall";
+      return "INTELLIBRITE";
     case 17:
-      return "Fountain";
+      return "MAGICSTREAM";
     case 18:
       return "Blower";
     case 19:
-      return "Pool Light";
+      return "NOT USED";
     case 20:
       return "Spa Light";
     case 21:
@@ -242,81 +263,55 @@ function decodeCircuitNameLabel(nameId: number | null): string | null {
     case 0:
       return "NOT USED";
     case 1:
-      return "SPA";
+      return "AERATOR";
     case 2:
-      return "POOL";
+      return "AIR BLOWER";
     case 3:
-      return "SPA LIGHT";
-    case 4:
-      return "POOL LIGHT";
-    case 5:
       return "AUX 1";
-    case 6:
+    case 4:
       return "AUX 2";
-    case 7:
+    case 5:
       return "AUX 3";
-    case 8:
+    case 6:
       return "AUX 4";
-    case 9:
+    case 7:
       return "AUX 5";
-    case 10:
+    case 8:
       return "AUX 6";
-    case 11:
+    case 9:
       return "AUX 7";
+    case 10:
+      return "AUX 8";
+    case 11:
+      return "AUX 9";
     case 12:
-      return "FEATURE 1";
+      return "AUX 10";
     case 13:
-      return "FEATURE 2";
+      return "FEATURE 1";
     case 14:
-      return "FEATURE 3";
+      return "FEATURE 2";
     case 15:
-      return "FEATURE 4";
+      return "FEATURE 3";
     case 16:
-      return "FEATURE 5";
+      return "FEATURE 4";
     case 17:
-      return "FEATURE 6";
+      return "FEATURE 5";
     case 18:
-      return "FEATURE 7";
+      return "FEATURE 6";
     case 19:
-      return "VALVE 1";
+      return "FEATURE 7";
     case 20:
-      return "VALVE 2";
+      return "FEATURE 8";
     case 21:
-      return "VALVE 3";
+      return "AUX EXTRA";
     case 22:
-      return "VALVE 4";
-    case 23:
-      return "SOLAR";
-    case 24:
-      return "HEATER";
-    case 25:
-      return "HEAT PUMP";
-    case 26:
       return "CLEANER";
-    case 27:
-      return "BOOSTER";
-    case 28:
-      return "WATERFALL";
-    case 29:
-      return "FOUNTAIN";
-    case 30:
-      return "BLOWER";
-    case 31:
-      return "LIGHTS";
-    case 32:
-      return "LANDSCAPE LIGHT";
-    case 33:
-      return "INTELLIBRITE";
-    case 34:
-      return "MAGICSTREAM";
-    case 35:
-      return "LAMINAR";
-    case 36:
-      return "COLOR WHEEL";
-    case 37:
-      return "DIMMER";
-    case 38:
-      return "GENERIC";
+    case 47:
+      return "POOL LOW";
+    case 61:
+      return "POOL";
+    case 62:
+      return "POOL HIGH";
     default:
       return null;
   }
@@ -524,6 +519,8 @@ function decodeMessageType(actionCode: number): string {
   }
 
   switch (actionCode) {
+    case 0x22:
+      return "controller_solar_heat_pump_status";
     case 0x0a:
       return "custom_name";
     case 0xfc:
@@ -604,6 +601,20 @@ function decodeFields(actionCode: number, payload: Uint8Array, sourceAddress: nu
         unknown_byte_6: payload[6] ?? null,
         daylight_savings_auto: payload[7] == null ? null : payload[7] === 1
       };
+    case 0x22:
+      {
+        const status = parseEasyTouchSolarHeatPumpStatusPayload(payload);
+        return {
+          payload_hex: payloadHex,
+          payload_length: payload.length,
+          solar_or_heat_pump_enabled: status.solarOrHeatPumpEnabled,
+          heating_enabled: status.heatingEnabled ?? null,
+          cooling_enabled: status.coolingEnabled ?? null,
+          freeze_protection_enabled: status.freezeProtectionEnabled ?? null,
+          detected_heater_type: status.detectedHeaterType ?? null,
+          raw_payload: status.raw
+        };
+      }
     case 0x02:
       {
         const circuitsByte = payload[2] ?? 0;
@@ -1041,6 +1052,26 @@ function parseRpmArgument(value: unknown, fieldName: string): number {
   return value;
 }
 
+function parseMinutesAfterMidnightArgument(value: unknown, fieldName: string, requirePositive = false): { hour: number; minute: number } {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 1439) {
+    throw new ProtocolCommandError(`${fieldName} must be an integer minute value between 0 and 1439.`, "command_arguments_invalid");
+  }
+  if (requirePositive && value <= 0) {
+    throw new ProtocolCommandError(`${fieldName} must be greater than zero.`, "command_arguments_invalid");
+  }
+  return {
+    hour: Math.floor(value / 60),
+    minute: value % 60
+  };
+}
+
+function parseDayMaskArgument(value: unknown, fieldName: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 127) {
+    throw new ProtocolCommandError(`${fieldName} must be an integer day mask between 1 and 127.`, "command_arguments_invalid");
+  }
+  return value;
+}
+
 function decodeFixedWidthAscii(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((byte) => String.fromCharCode(byte))
@@ -1267,6 +1298,156 @@ function encodePentairCommand(intent: NormalizedCommandIntent, protocolConfig: R
       ],
       correlation: {
         kind: "transport_ack"
+      }
+    };
+  }
+
+  if (intent.command_type === "set_controller_schedule") {
+    const scheduleId = intent.arguments.schedule_id;
+    if (typeof scheduleId !== "number" || !Number.isInteger(scheduleId) || scheduleId < 1 || scheduleId > 12) {
+      throw new ProtocolCommandError(
+        "Pentair controller schedule writes require integer schedule_id between 1 and 12.",
+        "command_arguments_invalid"
+      );
+    }
+
+    const mode = intent.arguments.mode;
+    if (mode !== "repeat" && mode !== "egg_timer") {
+      throw new ProtocolCommandError(
+        "Pentair controller schedule writes currently support only mode 'repeat' or 'egg_timer'.",
+        "command_arguments_invalid"
+      );
+    }
+
+    const circuitId = parseByteArgument(intent.arguments.circuit_id, "circuit_id");
+    const payload = mode === "repeat"
+      ? (() => {
+          const start = parseMinutesAfterMidnightArgument(intent.arguments.start_time_minutes, "start_time_minutes");
+          const end = parseMinutesAfterMidnightArgument(intent.arguments.end_time_minutes, "end_time_minutes");
+          const daysMask = parseDayMaskArgument(intent.arguments.days_mask, "days_mask");
+          return buildEasyTouchSchedulePayload({
+            scheduleId,
+            circuitId,
+            startHour: start.hour,
+            startMinute: start.minute,
+            endHour: end.hour,
+            endMinute: end.minute,
+            days: daysMask
+          });
+        })()
+      : (() => {
+          const runtime = parseMinutesAfterMidnightArgument(intent.arguments.runtime_minutes, "runtime_minutes", true);
+          return buildEasyTouchEggTimerPayload({
+            scheduleId,
+            circuitId,
+            runtimeHours: runtime.hour,
+            runtimeMinutes: runtime.minute
+          });
+        })();
+
+    const bytes = buildEasyTouchScheduleSetCommandFrame(payload);
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "controller_schedule_write",
+        scheduleId,
+        mode,
+        circuitId: payload[1] & 0x7f,
+        startTimeMinutes: mode === "repeat" ? payload[2] * 60 + payload[3] : undefined,
+        endTimeMinutes: mode === "repeat" ? payload[4] * 60 + payload[5] : undefined,
+        daysMask: mode === "repeat" ? payload[6] & 0x7f : undefined,
+        runtimeMinutes: mode === "egg_timer" ? payload[4] * 60 + payload[5] : undefined
+      }
+    };
+  }
+
+  if (intent.command_type === "set_heater_configuration") {
+    const heaterType = intent.arguments.heater_type;
+    if (heaterType !== "ultratempHeatPumpCom" && heaterType !== "ultratempEtiHybrid") {
+      throw new ProtocolCommandError(
+        "Pentair heater configuration writes currently support only heater_type 'ultratempHeatPumpCom' or 'ultratempEtiHybrid'.",
+        "command_arguments_invalid"
+      );
+    }
+    const coolingEnabled = parseBooleanArgument(intent.arguments.cooling_enabled, "cooling_enabled");
+    const freezeProtectionEnabled = parseBooleanArgument(intent.arguments.freeze_protection_enabled, "freeze_protection_enabled");
+    const payload = buildEasyTouchSetSolarHeatPumpPayload({
+      heaterType,
+      coolingEnabled,
+      freezeProtectionEnabled
+    });
+    const bytes = createSetSolarHeatPumpFrame({
+      heaterType,
+      coolingEnabled,
+      freezeProtectionEnabled
+    });
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "controller_heater_configuration",
+        heaterType,
+        coolingEnabled,
+        freezeProtectionEnabled
+      }
+    };
+  }
+
+  if (intent.command_type === "set_heater_settings") {
+    const poolSetpoint = parseByteArgument(intent.arguments.pool_setpoint, "pool_setpoint");
+    const spaSetpoint = parseByteArgument(intent.arguments.spa_setpoint, "spa_setpoint");
+    const poolHeatMode = parseHeatModeArgument(intent.arguments.pool_heat_mode, "pool_heat_mode");
+    const spaHeatMode = parseHeatModeArgument(intent.arguments.spa_heat_mode, "spa_heat_mode");
+    const coolSetpoint = intent.arguments.cool_setpoint == null ? 0 : parseByteArgument(intent.arguments.cool_setpoint, "cool_setpoint");
+    buildEasyTouchSetHeatTemperaturePayload({
+      poolSetpoint,
+      spaSetpoint,
+      poolHeatMode,
+      spaHeatMode,
+      coolSetpoint
+    });
+    const bytes = createSetHeatTemperatureFrame({
+      poolSetpoint,
+      spaSetpoint,
+      poolHeatMode,
+      spaHeatMode,
+      coolSetpoint
+    });
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "controller_heater_settings",
+        poolSetpoint,
+        spaSetpoint,
+        poolHeatMode,
+        spaHeatMode,
+        coolSetpoint
       }
     };
   }
@@ -1500,6 +1681,21 @@ function encodePentairCommand(intent: NormalizedCommandIntent, protocolConfig: R
   };
 }
 
+function parseBooleanArgument(value: unknown, fieldName: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new ProtocolCommandError(`${fieldName} must be a boolean.`, "command_arguments_invalid");
+  }
+  return value;
+}
+
+function parseHeatModeArgument(value: unknown, fieldName: string): 0 | 1 | 2 | 3 {
+  const parsed = parseByteArgument(value, fieldName);
+  if (parsed < 0 || parsed > 3) {
+    throw new ProtocolCommandError(`${fieldName} must be an integer heat mode between 0 and 3.`, "command_arguments_invalid");
+  }
+  return parsed as 0 | 1 | 2 | 3;
+}
+
 export function encodePentairPumpConfigWriteFromBaseline(input: {
   poolId: string;
   commandId: string;
@@ -1580,6 +1776,31 @@ export function encodePentairPumpInfoRequest(input: {
       command_type: "request_pump_info",
       arguments: {
         pump_slot: input.pumpSlot
+      },
+      dry_run: false
+    },
+    {}
+  );
+}
+
+export function encodePentairControllerScheduleRequest(input: {
+  poolId: string;
+  commandId: string;
+  scheduleId: number;
+}): CommandEncodingPlan {
+  return encodePentairCommand(
+    {
+      pool_id: input.poolId,
+      command_id: input.commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_controller_schedule",
+      arguments: {
+        schedule_id: input.scheduleId
       },
       dry_run: false
     },

@@ -105,6 +105,38 @@ function controllerAckFrame(): MessagePayload {
   };
 }
 
+function controllerScheduleFrame(scheduleId: number, circuitId: number, mode: "repeat" | "egg_timer"): MessagePayload {
+  return {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    frame_id: `frame-schedule-${scheduleId}`,
+    protocol_name: "pentair_easytouch",
+    frame_family: "pentair",
+    decoded_at: "2026-03-30T00:00:02Z",
+    message_type: "controller_schedule",
+    action_code: "0x11",
+    source_address: "0x10",
+    destination_address: "0x21",
+    checksum_status: "valid",
+    fields: mode === "repeat"
+      ? {
+          schedule_id: scheduleId,
+          circuit_id: circuitId,
+          frame_type: "easytouch_schedule",
+          start_time_minutes: 510,
+          end_time_minutes: 1020,
+          schedule_days: 62
+        }
+      : {
+          schedule_id: scheduleId,
+          circuit_id: circuitId,
+          frame_type: "easytouch_egg_timer",
+          egg_timer_run_time_minutes: 390
+        },
+    unknown_fields: []
+  };
+}
+
 test("command coordinator encodes, transmits, and completes the initial pump speed flow", async () => {
   const session = new FakeSession();
   const coordinator = new CommandCoordinator(noopLogger, 100);
@@ -421,6 +453,82 @@ test("command coordinator waits for controller ack before completing set_circuit
 
   results = session.published
     .filter((entry) => entry.subject === "command.result.command-circuit-toggle")
+    .map((entry) => entry.payload.status);
+  assert.ok(results.includes("completed"));
+});
+
+test("command coordinator refreshes and verifies controller schedule writes before completion", async () => {
+  const session = new FakeSession();
+  const coordinator = new CommandCoordinator(noopLogger, 100);
+  coordinator.setActiveSelection(selection, pentairEasyTouchPlugin);
+  coordinator.attach(session);
+
+  await session.emit("serial.port.status", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    status: "connected",
+    reported_at: "2026-03-30T00:00:00Z"
+  });
+  await session.emit(
+    "protocol.command.intent",
+    commandIntent({
+      command_id: "command-schedule-write",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "set_controller_schedule",
+      arguments: {
+        schedule_id: 6,
+        mode: "repeat",
+        circuit_id: 12,
+        start_time_minutes: 510,
+        end_time_minutes: 1020,
+        days_mask: 62
+      }
+    })
+  );
+
+  let writes = session.published.filter((entry) => entry.subject === "serial.write.request");
+  assert.equal(writes.length, 1);
+
+  await session.emit("serial.tx.raw", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    command_id: "command-schedule-write",
+    written_at: "2026-03-30T00:00:01Z",
+    bytes_hex: writes[0]?.payload.bytes_hex,
+    byte_count: writes[0]?.payload.byte_count,
+    write_result: "ok",
+    error_code: null,
+    detail: null
+  });
+
+  writes = session.published.filter((entry) => entry.subject === "serial.write.request");
+  assert.equal(writes.length, 2);
+
+  await session.emit("serial.tx.raw", {
+    pool_id: "pool-1",
+    stream_id: "stream-1",
+    command_id: "command-schedule-write",
+    written_at: "2026-03-30T00:00:02Z",
+    bytes_hex: writes[1]?.payload.bytes_hex,
+    byte_count: writes[1]?.payload.byte_count,
+    write_result: "ok",
+    error_code: null,
+    detail: null
+  });
+
+  let results = session.published
+    .filter((entry) => entry.subject === "command.result.command-schedule-write")
+    .map((entry) => entry.payload.status);
+  assert.ok(results.includes("transmitted"));
+  assert.ok(!results.includes("completed"));
+
+  await session.emit("protocol.frame.decoded", controllerScheduleFrame(6, 12, "repeat"));
+
+  results = session.published
+    .filter((entry) => entry.subject === "command.result.command-schedule-write")
     .map((entry) => entry.payload.status);
   assert.ok(results.includes("completed"));
 });

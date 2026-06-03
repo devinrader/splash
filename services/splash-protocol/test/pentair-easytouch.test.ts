@@ -3,6 +3,15 @@ import assert from "node:assert/strict";
 import { ProtocolCommandError } from "../src/commands/types.js";
 import { ProtocolDecodeError } from "../src/protocol/types.js";
 import {
+  buildEasyTouchSetHeatTemperaturePayload,
+  buildEasyTouchSetSolarHeatPumpPayload,
+  createSetHeatTemperatureFrame,
+  createSetSolarHeatPumpFrame,
+  EasyTouchHeatPumpPayloadValidationError,
+  EasyTouchHeatPumpUnsupportedOperationError,
+  parseEasyTouchSolarHeatPumpStatusPayload
+} from "../src/plugins/pentair-easytouch-heat-pump.js";
+import {
   buildEasyTouchDayMask,
   buildEasyTouchEggTimerPayload,
   buildEasyTouchSchedulePayload,
@@ -119,11 +128,13 @@ test("decodePentairFrame classifies pump and chlorinator action codes", () => {
   const pump = decodePentairFrame(buildPentairFrame(0x07, [0x01, 0x02]));
   const chlorinator = decodePentairFrame(buildPentairFrame(0x19, [0x10, 0x20]));
   const controllerDatetime = decodePentairFrame(buildPentairFrame(0x05, [0x12, 0x34, 0x10, 0x17, 0x04, 0x1a, 0x00, 0x00]));
+  const heatPumpStatus = decodePentairFrame(buildPentairFrame(0x22, [0x02, 0x33, 0x00]));
 
   assert.equal(controllerAck.messageType, "controller_ack");
   assert.equal(pump.messageType, "pump_status");
   assert.equal(chlorinator.messageType, "chlorinator_status");
   assert.equal(controllerDatetime.messageType, "controller_datetime");
+  assert.equal(heatPumpStatus.messageType, "controller_solar_heat_pump_status");
   assert.deepEqual(controllerDatetime.fields, {
     payload_hex: "12341017041a0000",
     payload_length: 8,
@@ -136,6 +147,146 @@ test("decodePentairFrame classifies pump and chlorinator action codes", () => {
     unknown_byte_6: 0,
     daylight_savings_auto: false
   });
+  assert.deepEqual(heatPumpStatus.fields, {
+    payload_hex: "023300",
+    payload_length: 3,
+    solar_or_heat_pump_enabled: true,
+    heating_enabled: true,
+    cooling_enabled: true,
+    freeze_protection_enabled: false,
+    detected_heater_type: "ultratempHeatPumpCom",
+    raw_payload: [0x02, 0x33, 0x00]
+  });
+});
+
+test("buildEasyTouchSetHeatTemperaturePayload builds the documented packed heat payload", () => {
+  assert.deepEqual(buildEasyTouchSetHeatTemperaturePayload({
+    poolSetpoint: 89,
+    spaSetpoint: 99,
+    poolHeatMode: 3,
+    spaHeatMode: 1
+  }), [89, 99, 7, 0]);
+});
+
+test("buildEasyTouchSetHeatTemperaturePayload packs pool and spa heat modes", () => {
+  assert.deepEqual(buildEasyTouchSetHeatTemperaturePayload({
+    poolSetpoint: 80,
+    spaSetpoint: 100,
+    poolHeatMode: 2,
+    spaHeatMode: 3,
+    coolSetpoint: 55
+  }), [80, 100, 14, 55]);
+});
+
+test("buildEasyTouchSetHeatTemperaturePayload rejects invalid setpoints", () => {
+  assert.throws(() => buildEasyTouchSetHeatTemperaturePayload({
+    poolSetpoint: 39,
+    spaSetpoint: 99,
+    poolHeatMode: 1,
+    spaHeatMode: 1
+  }), (error: unknown) => {
+    assert.ok(error instanceof EasyTouchHeatPumpPayloadValidationError);
+    assert.equal(error.code, "heat_pump_payload_invalid");
+    return true;
+  });
+});
+
+test("buildEasyTouchSetHeatTemperaturePayload rejects invalid heat modes", () => {
+  assert.throws(() => buildEasyTouchSetHeatTemperaturePayload({
+    poolSetpoint: 89,
+    spaSetpoint: 99,
+    poolHeatMode: 4,
+    spaHeatMode: 1
+  }), (error: unknown) => {
+    assert.ok(error instanceof EasyTouchHeatPumpPayloadValidationError);
+    return true;
+  });
+});
+
+test("buildEasyTouchSetHeatTemperaturePayload defaults cool setpoint to zero", () => {
+  const payload = buildEasyTouchSetHeatTemperaturePayload({
+    poolSetpoint: 85,
+    spaSetpoint: 100,
+    poolHeatMode: 1,
+    spaHeatMode: 0
+  });
+
+  assert.equal(payload[3], 0);
+});
+
+test("buildEasyTouchSetSolarHeatPumpPayload builds Heat Pump Com payloads with optional cooling", () => {
+  assert.deepEqual(buildEasyTouchSetSolarHeatPumpPayload({
+    heaterType: "ultratempHeatPumpCom",
+    coolingEnabled: true
+  }), [0x02, 0x30, 0x00]);
+
+  assert.deepEqual(buildEasyTouchSetSolarHeatPumpPayload({
+    heaterType: "ultratempHeatPumpCom",
+    coolingEnabled: false
+  }), [0x02, 0x10, 0x00]);
+});
+
+test("buildEasyTouchSetSolarHeatPumpPayload builds ETi hybrid payloads", () => {
+  assert.deepEqual(buildEasyTouchSetSolarHeatPumpPayload({
+    heaterType: "ultratempEtiHybrid"
+  }), [5, 16, 118]);
+});
+
+test("buildEasyTouchSetSolarHeatPumpPayload rejects unsupported heater types", () => {
+  assert.throws(() => buildEasyTouchSetSolarHeatPumpPayload({
+    heaterType: "gas"
+  }), (error: unknown) => {
+    assert.ok(error instanceof EasyTouchHeatPumpUnsupportedOperationError);
+    return true;
+  });
+});
+
+test("parseEasyTouchSolarHeatPumpStatusPayload parses heat pump status flags", () => {
+  const parsed = parseEasyTouchSolarHeatPumpStatusPayload([0x02, 0xb3, 0x00]);
+
+  assert.deepEqual(parsed, {
+    solarOrHeatPumpEnabled: true,
+    heatingEnabled: true,
+    coolingEnabled: true,
+    freezeProtectionEnabled: true,
+    detectedHeaterType: "ultratempHeatPumpCom",
+    raw: [0x02, 0xb3, 0x00]
+  });
+});
+
+test("parseEasyTouchSolarHeatPumpStatusPayload handles unknown combinations conservatively", () => {
+  const parsed = parseEasyTouchSolarHeatPumpStatusPayload([0x02, 0x80]);
+
+  assert.equal(parsed.detectedHeaterType, "solar");
+  assert.deepEqual(parsed.raw, [0x02, 0x80]);
+});
+
+test("createSetHeatTemperatureFrame wraps action 136 payloads", () => {
+  const frame = createSetHeatTemperatureFrame({
+    poolSetpoint: 89,
+    spaSetpoint: 99,
+    poolHeatMode: 3,
+    spaHeatMode: 1
+  });
+
+  assert.equal(frame[4], 0x34);
+  assert.equal(frame[5], 0x10);
+  assert.equal(frame[6], 0x21);
+  assert.equal(frame[7], 0x88);
+  assert.deepEqual([...frame.slice(9, 13)], [89, 99, 7, 0]);
+});
+
+test("createSetSolarHeatPumpFrame wraps action 162 payloads", () => {
+  const frame = createSetSolarHeatPumpFrame({
+    heaterType: "ultratempHeatPumpCom",
+    coolingEnabled: true
+  });
+
+  assert.equal(frame[4], 0x34);
+  assert.equal(frame[5], 0x10);
+  assert.equal(frame[6], 0x21);
+  assert.equal(frame[7], 0xa2);
+  assert.deepEqual([...frame.slice(9, 12)], [0x02, 0x30, 0x00]);
 });
 
 test("decodePentairFrame rejects invalid checksum", () => {
@@ -364,6 +515,66 @@ test("decodePentairFrame decodes circuit configuration replies", () => {
   assert.equal(decoded.fields.high_flag, false);
   assert.equal(decoded.fields.name_id, 0x00);
   assert.equal(decoded.fields.name_label, "NOT USED");
+});
+
+test("decodePentairFrame uses live-observed EasyTouch name labels for mapped circuit values", () => {
+  const aerator = decodePentairFrame(buildPentairFrame(0x0b, [0x04, 0x00, 0x01, 0x00, 0x00]));
+  const cleaner = decodePentairFrame(buildPentairFrame(0x0b, [0x04, 0x00, 0x16, 0x00, 0x00]));
+  const poolLow = decodePentairFrame(buildPentairFrame(0x0b, [0x04, 0x00, 0x2f, 0x00, 0x00]));
+  const pool = decodePentairFrame(buildPentairFrame(0x0b, [0x04, 0x00, 0x3d, 0x00, 0x00]));
+  const poolHigh = decodePentairFrame(buildPentairFrame(0x0b, [0x04, 0x00, 0x3e, 0x00, 0x00]));
+
+  assert.equal(aerator.fields.name_id, 0x01);
+  assert.equal(aerator.fields.name_label, "AERATOR");
+
+  assert.equal(cleaner.fields.name_id, 0x16);
+  assert.equal(cleaner.fields.name_label, "CLEANER");
+
+  assert.equal(poolLow.fields.name_id, 0x2f);
+  assert.equal(poolLow.fields.name_label, "POOL LOW");
+
+  assert.equal(pool.fields.name_id, 0x3d);
+  assert.equal(pool.fields.name_label, "POOL");
+
+  assert.equal(poolHigh.fields.name_id, 0x3e);
+  assert.equal(poolHigh.fields.name_label, "POOL HIGH");
+});
+
+test("decodePentairFrame uses live-observed EasyTouch function labels for mapped circuit values", () => {
+  const colorWheel = decodePentairFrame(buildPentairFrame(0x0b, [0x04, 0x0c, 0x2f, 0x00, 0x00]));
+  const spillway = decodePentairFrame(buildPentairFrame(0x0b, [0x04, 0x0e, 0x2f, 0x00, 0x00]));
+  const intelliBrite = decodePentairFrame(buildPentairFrame(0x0b, [0x04, 0x10, 0x2f, 0x00, 0x00]));
+  const magicStream = decodePentairFrame(buildPentairFrame(0x0b, [0x04, 0x11, 0x2f, 0x00, 0x00]));
+  const loTemp = decodePentairFrame(buildPentairFrame(0x0b, [0x04, 0x41, 0x2f, 0x00, 0x00]));
+  const hiTemp = decodePentairFrame(buildPentairFrame(0x0b, [0x04, 0x42, 0x2f, 0x00, 0x00]));
+
+  assert.equal(colorWheel.fields.function_id, 0x0c);
+  assert.equal(colorWheel.fields.base_function_id, 12);
+  assert.equal(colorWheel.fields.base_function_label, "COLOR WHEEL");
+
+  assert.equal(spillway.fields.function_id, 0x0e);
+  assert.equal(spillway.fields.base_function_id, 14);
+  assert.equal(spillway.fields.base_function_label, "SPILLWAY");
+
+  assert.equal(intelliBrite.fields.function_id, 0x10);
+  assert.equal(intelliBrite.fields.base_function_id, 16);
+  assert.equal(intelliBrite.fields.base_function_label, "INTELLIBRITE");
+
+  assert.equal(magicStream.fields.function_id, 0x11);
+  assert.equal(magicStream.fields.base_function_id, 17);
+  assert.equal(magicStream.fields.base_function_label, "MAGICSTREAM");
+
+  assert.equal(loTemp.fields.function_id, 0x41);
+  assert.equal(loTemp.fields.base_function_id, 1);
+  assert.equal(loTemp.fields.base_function_label, "LO-TEMP");
+  assert.equal(loTemp.fields.freeze_flag, true);
+  assert.equal(loTemp.fields.high_flag, false);
+
+  assert.equal(hiTemp.fields.function_id, 0x42);
+  assert.equal(hiTemp.fields.base_function_id, 2);
+  assert.equal(hiTemp.fields.base_function_label, "HI-TEMP");
+  assert.equal(hiTemp.fields.freeze_flag, true);
+  assert.equal(hiTemp.fields.high_flag, false);
 });
 
 test("decodePentairFrame decodes custom name bank payloads", () => {
@@ -973,6 +1184,37 @@ test("buildEasyTouchScheduleSetCommandFrame wraps the payload with action 145", 
   assert.equal(frame[7], 0x91);
   assert.equal(frame[8], 7);
   assert.deepEqual(Array.from(frame.slice(9, 16)), [6, 12, 8, 30, 17, 0, 62]);
+});
+
+test("pentairEasyTouchPlugin encodes a controller schedule write using action 145", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-schedule-write",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "set_controller_schedule",
+      arguments: {
+        schedule_id: 6,
+        mode: "repeat",
+        circuit_id: 12,
+        start_time_minutes: 510,
+        end_time_minutes: 1020,
+        days_mask: 62
+      },
+      dry_run: false
+    },
+    {}
+  );
+
+  assert.equal(encoded.writes.length, 1);
+  assert.equal(encoded.writes[0]?.bytes[7], 0x91);
+  assert.deepEqual(Array.from(encoded.writes[0]?.bytes.slice(9, 16) ?? []), [6, 12, 8, 30, 17, 0, 62]);
+  assert.equal(encoded.correlation?.kind, "controller_schedule_write");
 });
 
 test("pentairEasyTouchPlugin encodes the milestone-1 controller circuit baseline request for set_speed", () => {

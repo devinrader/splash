@@ -1,0 +1,24 @@
+---
+- name: Ensure splash-core SQLite data directory exists
+  ansible.builtin.file:
+    path: "{{ splash_sqlite_data_dir }}"
+    state: directory
+    owner: "{{ splash_sqlite_owner }}"
+    group: "{{ splash_sqlite_group }}"
+    mode: "{{ splash_sqlite_dir_mode }}"
+
+- name: Ensure splash-core SQLite backup directory exists
+  ansible.builtin.file:
+    path: "{{ splash_sqlite_backup_dir }}"
+    state: directory
+    owner: "{{ splash_sqlite_backup_owner }}"
+    group: "{{ splash_sqlite_backup_group }}"
+    mode: "{{ splash_sqlite_backup_mode }}"
+
+- name: Ensure splash-core SQLite database file exists
+  ansible.builtin.file:
+    path: "{{ splash_sqlite_data_dir }}/{{ splash_sqlite_file_name }}"
+    state: touch
+    owner: "{{ splash_sqlite_owner }}"
+    group: "{{ splash_sqlite_group }}"
+    mode: "{{ splash_sqlite_file_mode }}"

@@ -163,6 +163,85 @@ test("renders milestone equipment values from the API snapshot", async () => {
         });
       }
 
+      if (input.endsWith("/controller/heater")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "unavailable",
+            message: "Unavailable",
+            last_checked: null,
+            configuration: {
+              detected_heater_type: null,
+              solar_or_heat_pump_enabled: null,
+              heating_enabled: null,
+              cooling_enabled: null,
+              freeze_protection_enabled: null,
+              raw_payload: [],
+              updated_at: null
+            },
+            settings: {
+              pool_setpoint: null,
+              spa_setpoint: null,
+              cool_setpoint: null,
+              pool_heat_mode: null,
+              spa_heat_mode: null,
+              heat_setting_byte: null,
+              source: null,
+              updated_at: null
+            },
+            capabilities: {
+              editable_configuration_fields: [],
+              editable_setting_fields: []
+            }
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/controller/clock")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "unavailable",
+            message: "No controller clock data has been observed yet.",
+            last_checked: null,
+            summary: {
+              month: null,
+              day: null,
+              year: null,
+              day_of_week: null,
+              hour_24: null,
+              minute: null,
+              daylight_savings_auto: null,
+              clock_advance: null,
+              source: null,
+              updated_at: null
+            },
+            capabilities: {
+              editable_fields: [],
+              provisional_fields: []
+            }
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/controller/pumps/configuration")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "unavailable",
+            message: "No installed EasyTouch pump configuration has been observed yet.",
+            last_checked: null,
+            pumps: []
+          },
+          error: null
+        });
+      }
+
       return platformStatusResponse();
     })
   );
@@ -395,6 +474,85 @@ test("renders working Automation tabs from the approved mockup slice", async () 
         });
       }
 
+      if (input.endsWith("/controller/heater")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "unavailable",
+            message: "Unavailable",
+            last_checked: null,
+            configuration: {
+              detected_heater_type: null,
+              solar_or_heat_pump_enabled: null,
+              heating_enabled: null,
+              cooling_enabled: null,
+              freeze_protection_enabled: null,
+              raw_payload: [],
+              updated_at: null
+            },
+            settings: {
+              pool_setpoint: null,
+              spa_setpoint: null,
+              cool_setpoint: null,
+              pool_heat_mode: null,
+              spa_heat_mode: null,
+              heat_setting_byte: null,
+              source: null,
+              updated_at: null
+            },
+            capabilities: {
+              editable_configuration_fields: [],
+              editable_setting_fields: []
+            }
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/controller/clock")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "unavailable",
+            message: "No controller clock data has been observed yet.",
+            last_checked: null,
+            summary: {
+              month: null,
+              day: null,
+              year: null,
+              day_of_week: null,
+              hour_24: null,
+              minute: null,
+              daylight_savings_auto: null,
+              clock_advance: null,
+              source: null,
+              updated_at: null
+            },
+            capabilities: {
+              editable_fields: [],
+              provisional_fields: []
+            }
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/controller/pumps/configuration")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "unavailable",
+            message: "No installed EasyTouch pump configuration has been observed yet.",
+            last_checked: null,
+            pumps: []
+          },
+          error: null
+        });
+      }
+
       return platformStatusResponse();
     })
   );
@@ -427,7 +585,7 @@ test("renders working Automation tabs from the approved mockup slice", async () 
     assert.ok(screen.getByText("9 max per circuit"));
     assert.ok(screen.getByText("Programs remaining"));
     assert.ok(screen.getByText("11 active slots available"));
-    assert.ok(screen.getByText("Local edit preview"));
+    assert.ok(screen.getByText("Controller-backed save"));
     assert.ok(screen.getByText("Selected program posture"));
     assert.ok(screen.getByRole("button", { name: "Back to Program 1" }));
     assert.equal((screen.getByLabelText("Circuit") as HTMLSelectElement).value, "6");
@@ -768,6 +926,7 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
   await waitFor(() => {
     assert.ok(screen.getByText("History Trends"));
     assert.ok(screen.getByRole("tab", { name: "Temperature", selected: true }));
+    assert.equal((screen.getByLabelText("Time range") as HTMLSelectElement).value, "36h");
     assert.ok(screen.getByRole("img", { name: "Air history chart" }));
     assert.ok(screen.getByRole("img", { name: "Pool Water history chart" }));
     assert.ok(screen.getByRole("img", { name: "Spa Water history chart" }));
@@ -781,7 +940,7 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
   const temperatureHistoryRequest = requests.find((entry) => entry.includes("/telemetry/temperatures/history"));
   assert.ok(temperatureHistoryRequest);
   const temperatureHistoryUrl = new URL(temperatureHistoryRequest as string, "http://127.0.0.1:8080");
-  assert.equal(temperatureHistoryUrl.searchParams.get("interval"), "10m");
+  assert.equal(temperatureHistoryUrl.searchParams.get("interval"), "15m");
   const start = Date.parse(temperatureHistoryUrl.searchParams.get("start") as string);
   const end = Date.parse(temperatureHistoryUrl.searchParams.get("end") as string);
   assert.ok(Number.isFinite(start));
@@ -790,6 +949,40 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
   assert.equal(end - start, 36 * 60 * 60 * 1000);
   assert.equal(requests.some((entry) => entry.includes("/telemetry/pumps/history")), false);
   assert.equal(requests.some((entry) => entry.includes("/weather/history")), false);
+
+  fireEvent.change(screen.getByLabelText("Time range"), {
+    target: { value: "12h" }
+  });
+
+  await waitFor(() => {
+    const temperatureRequests = requests.filter((entry) => entry.includes("/telemetry/temperatures/history"));
+    assert.equal(temperatureRequests.length, 2);
+  });
+
+  const midRangeTemperatureHistoryRequest = requests.filter((entry) => entry.includes("/telemetry/temperatures/history")).at(-1);
+  assert.ok(midRangeTemperatureHistoryRequest);
+  const midRangeTemperatureHistoryUrl = new URL(midRangeTemperatureHistoryRequest as string, "http://127.0.0.1:8080");
+  assert.equal(midRangeTemperatureHistoryUrl.searchParams.get("interval"), "15m");
+  const midRangeTemperatureStart = Date.parse(midRangeTemperatureHistoryUrl.searchParams.get("start") as string);
+  const midRangeTemperatureEnd = Date.parse(midRangeTemperatureHistoryUrl.searchParams.get("end") as string);
+  assert.equal(midRangeTemperatureEnd - midRangeTemperatureStart, 12 * 60 * 60 * 1000);
+
+  fireEvent.change(screen.getByLabelText("Time range"), {
+    target: { value: "7d" }
+  });
+
+  await waitFor(() => {
+    const temperatureRequests = requests.filter((entry) => entry.includes("/telemetry/temperatures/history"));
+    assert.equal(temperatureRequests.length, 3);
+  });
+
+  const latestTemperatureHistoryRequest = requests.filter((entry) => entry.includes("/telemetry/temperatures/history")).at(-1);
+  assert.ok(latestTemperatureHistoryRequest);
+  const latestTemperatureHistoryUrl = new URL(latestTemperatureHistoryRequest as string, "http://127.0.0.1:8080");
+  assert.equal(latestTemperatureHistoryUrl.searchParams.get("interval"), "4h");
+  const latestTemperatureStart = Date.parse(latestTemperatureHistoryUrl.searchParams.get("start") as string);
+  const latestTemperatureEnd = Date.parse(latestTemperatureHistoryUrl.searchParams.get("end") as string);
+  assert.equal(latestTemperatureEnd - latestTemperatureStart, 7 * 24 * 60 * 60 * 1000);
 
   fireEvent.click(screen.getByRole("tab", { name: "Pump" }));
 
@@ -803,7 +996,7 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
   assert.ok(pumpHistoryRequest);
   const pumpHistoryUrl = new URL(pumpHistoryRequest as string, "http://127.0.0.1:8080");
   assert.equal(pumpHistoryUrl.searchParams.get("pumpId"), "pump-main");
-  assert.equal(pumpHistoryUrl.searchParams.get("interval"), "10m");
+  assert.equal(pumpHistoryUrl.searchParams.get("interval"), "4h");
 
   fireEvent.click(screen.getByRole("tab", { name: "Weather" }));
 
@@ -820,7 +1013,7 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
   assert.equal(weatherHistoryRequests.length, 5);
   for (const request of weatherHistoryRequests) {
     const url = new URL(request, "http://127.0.0.1:8080");
-    assert.equal(url.searchParams.get("interval"), null);
+    assert.equal(url.searchParams.get("interval"), "4h");
   }
 });
 
@@ -918,7 +1111,7 @@ test("renders custom name bank values as text inputs on the EasyTouch hardware d
     assert.ok(screen.getByLabelText("Save custom name row 0"));
     assert.ok(screen.getByLabelText("Discard custom name row 0"));
   });
-});
+}, 10000);
 
 test("renders EasyTouch circuit configuration rows as staged editors from live controller metadata", async () => {
   vi.stubGlobal(
@@ -1000,24 +1193,523 @@ test("renders EasyTouch circuit configuration rows as staged editors from live c
     assert.ok(screen.getByText("Circuit Configuration"));
     assert.ok(screen.getByText("ID"));
     assert.ok(screen.getByText("Type"));
-    assert.ok(screen.getByText("Name"));
     assert.ok(screen.getByText("Function"));
+    assert.ok(screen.getByText("Function Value"));
+    assert.ok(screen.getByText("Name"));
+    assert.ok(screen.getByText("Name Value"));
     assert.ok(screen.getByText("Freeze"));
     assert.ok(screen.getByText("State"));
     assert.ok(screen.getAllByText("Action").length >= 2);
-    assert.ok(screen.getByText("11"));
+    const poolRow = screen.getByLabelText("Save circuit row pool").closest("tr");
+    assert.ok(poolRow);
     assert.equal((screen.getByLabelText("Circuit name pool") as HTMLSelectElement).value, "POOL");
     assert.equal((screen.getByLabelText("Circuit function pool") as HTMLSelectElement).value, "Pool");
+    const poolCells = within(poolRow).getAllByRole("cell");
+    assert.equal(poolCells[3]?.textContent, "2");
+    assert.equal(poolCells[5]?.textContent, "2");
     assert.equal((screen.getByLabelText("Freeze pool") as HTMLButtonElement).getAttribute("aria-checked"), "false");
     assert.equal((screen.getByLabelText("State pool") as HTMLButtonElement).getAttribute("aria-checked"), "true");
+    const featureRow = screen.getByLabelText("Save circuit row feature1").closest("tr");
+    assert.ok(featureRow);
     assert.equal((screen.getByLabelText("Circuit name feature1") as HTMLSelectElement).value, "POOL LOW");
     assert.equal((screen.getByLabelText("Circuit function feature1") as HTMLSelectElement).value, "Feature");
+    const featureCells = within(featureRow).getAllByRole("cell");
+    assert.equal(featureCells[3]?.textContent, "11");
+    assert.equal(featureCells[5]?.textContent, "44");
     assert.equal((screen.getByLabelText("Freeze feature1") as HTMLButtonElement).getAttribute("aria-checked"), "true");
     assert.equal((screen.getByLabelText("State feature1") as HTMLButtonElement).getAttribute("aria-checked"), "false");
     assert.ok(screen.getByLabelText("Save circuit row pool"));
     assert.ok(screen.getByLabelText("Discard circuit row pool"));
   });
+}, 10000);
+
+test("renders EasyTouch controller clock and live pump configuration cards", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                controller_hour_24: 18,
+                controller_minute: 52
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/controller/heater")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "unavailable",
+            message: "Unavailable",
+            last_checked: null,
+            configuration: {
+              detected_heater_type: null,
+              solar_or_heat_pump_enabled: null,
+              heating_enabled: null,
+              cooling_enabled: null,
+              freeze_protection_enabled: null,
+              raw_payload: [],
+              updated_at: null
+            },
+            settings: {
+              pool_setpoint: null,
+              spa_setpoint: null,
+              cool_setpoint: null,
+              pool_heat_mode: null,
+              spa_heat_mode: null,
+              heat_setting_byte: null,
+              source: null,
+              updated_at: null
+            },
+            capabilities: {
+              editable_configuration_fields: [],
+              editable_setting_fields: []
+            }
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/controller/clock")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "available",
+            message: "Controller clock data is available.",
+            last_checked: "2026-05-23T18:52:00.000Z",
+            summary: {
+              month: 5,
+              day: 23,
+              year: 26,
+              day_of_week: 6,
+              hour_24: 18,
+              minute: 52,
+              daylight_savings_auto: false,
+              clock_advance: null,
+              source: "controller_datetime_reply",
+              updated_at: "2026-05-23T18:52:00.000Z"
+            },
+            capabilities: {
+              editable_fields: ["month", "day", "year", "day_of_week", "hour_24", "minute", "daylight_savings_auto", "clock_advance"],
+              provisional_fields: ["daylight_savings_auto", "clock_advance"]
+            }
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/controller/pumps/configuration")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "available",
+            message: "Live installed-pump configuration is available.",
+            last_checked: "2026-05-23T18:52:00.000Z",
+            pumps: [
+              {
+                pump_id: 1,
+                installed: true,
+                pump_type: 128,
+                pump_type_label: "Variable Speed",
+                supported_branch: "vs",
+                priming_time: 0,
+                unknown_3: 2,
+                unknown_4: 0,
+                priming_speed: 1000,
+                slots: [
+                  { slot: 1, circuit_assignment: 5, rpm: 2000 },
+                  { slot: 2, circuit_assignment: 6, rpm: 1500 },
+                  { slot: 3, circuit_assignment: 0, rpm: 0 },
+                  { slot: 4, circuit_assignment: 0, rpm: 0 },
+                  { slot: 5, circuit_assignment: 0, rpm: 0 },
+                  { slot: 6, circuit_assignment: 0, rpm: 0 },
+                  { slot: 7, circuit_assignment: 0, rpm: 0 },
+                  { slot: 8, circuit_assignment: 0, rpm: 0 }
+                ],
+                trailing_bytes: [],
+                updated_at: "2026-05-23T18:52:00.000Z"
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
+      return platformStatusResponse();
+    })
+  );
+
+  renderApp(["/system/hardware/easytouch8"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getAllByText("Main Controller").length >= 2);
+    assert.ok(screen.getByText("Date / Time / DST / Clock Adjust"));
+    assert.ok(screen.getByText("Pump Configuration"));
+    assert.ok(screen.getByText("5/23/26"));
+    assert.ok(screen.getAllByText("Manual").length >= 1);
+    assert.ok(screen.getByDisplayValue("18"));
+    assert.ok(screen.getByDisplayValue("52"));
+    assert.ok(screen.getByText("Pump #1"));
+    assert.ok(screen.getByText("Variable Speed"));
+    assert.ok(screen.getByRole("button", { name: "Save pump #1 configuration" }));
+  });
 });
+
+test("renders EasyTouch circuit configuration rows from full controller circuit state, including circuit 1", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              hardware: {
+                circuits: [
+                  {
+                    circuit_key: "spa",
+                    display_name: "Spa",
+                    circuit_type: "fixed",
+                    installed: false,
+                    writable: true,
+                    configuration_circuit_index: 1,
+                    write_circuit_id: 1
+                  },
+                  {
+                    circuit_key: "pool",
+                    display_name: "Pool",
+                    circuit_type: "fixed",
+                    installed: true,
+                    writable: true,
+                    configuration_circuit_index: 2,
+                    write_circuit_id: 2
+                  },
+                  {
+                    circuit_key: "aux2",
+                    display_name: "Aux 2",
+                    circuit_type: "relay",
+                    installed: true,
+                    writable: true,
+                    configuration_circuit_index: 4,
+                    write_circuit_id: 4
+                  }
+                ]
+              },
+              latest_state: {
+                mode: "pool",
+                circuits: {
+                  pool: true,
+                  spa: false,
+                  aux2: false
+                },
+                active_circuit_keys: ["pool"],
+                circuit_configurations: {
+                  "1": {
+                    circuit_id: 1,
+                    function_value: 1,
+                    function_label: "Spa",
+                    name_value: 82,
+                    name_label: "SPA",
+                    freeze_flag: false,
+                    high_flag: false
+                  },
+                  "2": {
+                    circuit_id: 2,
+                    function_value: 2,
+                    function_label: "Pool",
+                    name_value: 70,
+                    name_label: "POOL",
+                    freeze_flag: false,
+                    high_flag: false
+                  },
+                  "4": {
+                    circuit_id: 4,
+                    function_value: 12,
+                    function_label: "COLOR WHEEL",
+                    name_value: 5,
+                    name_label: "AUX 2",
+                    freeze_flag: false,
+                    high_flag: false
+                  }
+                }
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/health")) {
+        return healthResponse();
+      }
+
+      if (input.endsWith("/controller/heater")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "available",
+            message: "Heater data is available",
+            last_checked: "2026-05-24T12:00:00.000Z",
+            configuration: {
+              detected_heater_type: "ultratempHeatPumpCom",
+              solar_or_heat_pump_enabled: true,
+              heating_enabled: true,
+              cooling_enabled: false,
+              freeze_protection_enabled: true,
+              raw_payload: [2, 17, 0],
+              updated_at: "2026-05-24T12:00:00.000Z"
+            },
+            settings: {
+              pool_setpoint: 84,
+              spa_setpoint: 100,
+              cool_setpoint: 0,
+              pool_heat_mode: "heater",
+              spa_heat_mode: "off",
+              heat_setting_byte: 1,
+              source: "controller_status",
+              updated_at: "2026-05-24T12:00:00.000Z"
+            },
+            capabilities: {
+              editable_configuration_fields: ["heater_type", "cooling_enabled", "freeze_protection_enabled"],
+              editable_setting_fields: ["pool_setpoint", "spa_setpoint", "pool_heat_mode", "spa_heat_mode", "cool_setpoint"]
+            }
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/controller/clock")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "available",
+            message: "Controller clock available",
+            last_checked: "2026-05-24T12:00:00.000Z",
+            summary: {
+              month: 5,
+              day: 24,
+              year: 2026,
+              day_of_week: 0,
+              hour_24: 18,
+              minute: 52,
+              daylight_savings_auto: true,
+              clock_advance: 0,
+              source: "combined",
+              updated_at: "2026-05-24T12:00:00.000Z"
+            },
+            capabilities: {
+              editable_fields: ["month", "day", "year", "day_of_week", "hour_24", "minute"],
+              provisional_fields: ["daylight_savings_auto", "clock_advance"]
+            }
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/controller/pumps/configuration")) {
+        return response({
+          data: {
+            source: "controller_native",
+            controller_type: "easytouch",
+            status: "available",
+            message: "Pump configuration available",
+            last_checked: "2026-05-24T12:00:00.000Z",
+            pumps: []
+          },
+          error: null
+        });
+      }
+
+      return platformStatusResponse();
+    })
+  );
+
+  renderApp(["/system/hardware/easytouch8"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Circuit Configuration"));
+    assert.equal(screen.queryByLabelText("Circuit name spa"), null);
+    assert.equal(screen.queryByLabelText("Circuit function spa"), null);
+    assert.equal(screen.queryByLabelText("Freeze spa"), null);
+    assert.equal(screen.queryByLabelText("Save circuit row spa"), null);
+    assert.ok(screen.getAllByText("Unavailable").length >= 1);
+    assert.ok(screen.getByText("Not installed"));
+    assert.ok(screen.getByRole("button", { name: "Refresh circuit configuration" }));
+    assert.equal((screen.getByLabelText("Circuit function aux2") as HTMLSelectElement).value, "COLOR WHEEL");
+    assert.ok(screen.getByLabelText("Save circuit row aux2"));
+  });
+}, 10000);
+
+test("refreshes circuit configuration from the EasyTouch8 circuit configuration card", async () => {
+  const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+    if (input.endsWith("/protocol/bundles")) {
+      return response({ data: [], error: null });
+    }
+
+    if (input.endsWith("/equipment")) {
+      return response({
+        data: [
+          {
+            id: "controller-main",
+            equipment_type: "controller",
+            display_name: "Main Controller",
+            protocol_name: "pentair_easytouch",
+            latest_state: {
+              mode: "pool",
+              circuits: {
+                pool: true
+              },
+              active_circuit_keys: ["pool"],
+              circuit_configurations: {
+                "2": {
+                  circuit_id: 2,
+                  function_value: 2,
+                  function_label: "Pool",
+                  name_value: 17,
+                  name_label: "POOL",
+                  freeze_flag: false,
+                  high_flag: false
+                }
+              }
+            }
+          }
+        ],
+        error: null
+      });
+    }
+
+    if (input.endsWith("/protocol/circuit-config/request")) {
+      assert.equal(init?.method, "POST");
+      return response({
+        data: {
+          command_id: "refresh-command-1"
+        },
+        error: null
+      });
+    }
+
+    if (input.endsWith("/controller/heater")) {
+      return response({
+        data: {
+          source: "controller_native",
+          controller_type: "easytouch",
+          status: "available",
+          message: "Heater data is available",
+          last_checked: "2026-05-24T12:00:00.000Z",
+          configuration: {
+            detected_heater_type: "ultratempHeatPumpCom",
+            solar_or_heat_pump_enabled: true,
+            heating_enabled: true,
+            cooling_enabled: false,
+            freeze_protection_enabled: true,
+            raw_payload: [2, 17, 0],
+            updated_at: "2026-05-24T12:00:00.000Z"
+          },
+          settings: {
+            pool_setpoint: 84,
+            spa_setpoint: 100,
+            cool_setpoint: 0,
+            pool_heat_mode: "heater",
+            spa_heat_mode: "off",
+            heat_setting_byte: 1,
+            source: "controller_status",
+            updated_at: "2026-05-24T12:00:00.000Z"
+          },
+          capabilities: {
+            editable_configuration_fields: ["heater_type", "cooling_enabled", "freeze_protection_enabled"],
+            editable_setting_fields: ["pool_setpoint", "spa_setpoint", "pool_heat_mode", "spa_heat_mode", "cool_setpoint"]
+          }
+        },
+        error: null
+      });
+    }
+
+    if (input.endsWith("/controller/clock")) {
+      return response({
+        data: {
+          source: "controller_native",
+          controller_type: "easytouch",
+          status: "available",
+          message: "Controller clock available",
+          last_checked: "2026-05-24T12:00:00.000Z",
+          summary: {
+            month: 5,
+            day: 24,
+            year: 2026,
+            day_of_week: 0,
+            hour_24: 18,
+            minute: 52,
+            daylight_savings_auto: true,
+            clock_advance: 0,
+            source: "combined",
+            updated_at: "2026-05-24T12:00:00.000Z"
+          },
+          capabilities: {
+            editable_fields: ["month", "day", "year", "day_of_week", "hour_24", "minute"],
+            provisional_fields: ["daylight_savings_auto", "clock_advance"]
+          }
+        },
+        error: null
+      });
+    }
+
+    if (input.endsWith("/controller/pumps/configuration")) {
+      return response({
+        data: {
+          source: "controller_native",
+          controller_type: "easytouch",
+          status: "available",
+          message: "Pump configuration available",
+          last_checked: "2026-05-24T12:00:00.000Z",
+          pumps: []
+        },
+        error: null
+      });
+    }
+
+    return platformStatusResponse();
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
+
+  renderApp(["/system/hardware/easytouch8"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByRole("button", { name: "Refresh circuit configuration" }));
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Refresh circuit configuration" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Controller circuit configuration discovery accepted for indexes 1-20. Command refresh-command-1."));
+  });
+}, 10000);
 
 test("switches sidebar views and renders Diagnostics network cards", async () => {
   vi.stubGlobal(
@@ -1718,6 +2410,78 @@ test("tracks active Remote Layout requests until command completion is seen", as
   });
 
   await waitFor(() => {
+    assert.ok(screen.getByText("No active platform requests."));
+  });
+});
+
+test("requests one circuit configuration from Protocol Explorer and shows the matching reply", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/protocol/circuit-config/request") && init?.method === "POST") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          start_index?: number;
+          end_index?: number;
+        };
+        assert.equal(body.start_index, 4);
+        assert.equal(body.end_index, 4);
+        return response({
+          data: {
+            command_id: "command-circuit-config-4",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      return platformStatusResponse();
+    })
+  );
+
+  renderApp();
+  await waitFor(() => assert.ok(FakeEventSource.instances.length === 2));
+  await openDiagnostics();
+
+  fireEvent.change(screen.getByLabelText("Circuit config index"), {
+    target: { value: "4" }
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Request circuit config" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Circuit config index 4"));
+    assert.ok(screen.getByText("Waiting for matching circuit_configuration reply"));
+    assert.ok(screen.getByText(/Requested circuit config for index 4/));
+  });
+
+  FakeEventSource.instances[1].emit("protocol.frame.decoded", {
+    message_type: "circuit_configuration",
+    decoded_at: new Date(Date.now() + 1000).toISOString(),
+    fields: {
+      circuit_id: 4,
+      function_id: 12,
+      base_function_id: 12,
+      base_function_label: "COLOR WHEEL",
+      name_id: 47,
+      name_label: "POOL LOW",
+      freeze_flag: true,
+      high_flag: false
+    }
+  });
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Circuit 4 configuration"));
+    assert.ok(screen.getByText("Function 12 · COLOR WHEEL"));
+    assert.ok(screen.getByText("Name 47 · POOL LOW"));
+    assert.ok(screen.getByText("Freeze true · High false"));
+    assert.ok(screen.getByText("Matched circuit_configuration reply for index 4."));
     assert.ok(screen.getByText("No active platform requests."));
   });
 });

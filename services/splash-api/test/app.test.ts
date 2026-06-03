@@ -621,6 +621,52 @@ test("app metrics expose platform health gauges and connectivity rates", async (
   assert.match(metrics, /splash_platform_service_check_failures_total\{service="nats"\} 1/);
 });
 
+test("app platform status includes SQLite when configured and reachable", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      natsMonitoringUrl: null,
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      sqlite: {
+        path: ":memory:",
+        migrationsDir: "migrations"
+        ,
+        busyTimeoutMs: 5000,
+        journalMode: "WAL"
+      }
+    },
+    logger: noopLogger
+  }) as unknown as {
+    sqliteDatabase: {
+      get(sql: string): { ok: number };
+    } | null;
+    getPlatformStatus(): Promise<{
+      services: Array<{
+        name: string;
+        status: string;
+        message: string;
+      }>;
+    }>;
+  };
+
+  app.sqliteDatabase = {
+    get(sql: string) {
+      assert.equal(sql, "SELECT 1 AS ok");
+      return { ok: 1 };
+    }
+  };
+
+  const status = await app.getPlatformStatus();
+  const sqlite = status.services.find((service) => service.name === "sqlite");
+
+  assert.ok(sqlite);
+  assert.equal(sqlite.status, "healthy");
+  assert.equal(sqlite.message, "SQLite query succeeded");
+});
+
 test("app projects circuit configuration decoded frames into dashboard equipment state", async () => {
   const app = new App({
     config: {

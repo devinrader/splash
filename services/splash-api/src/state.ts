@@ -4,9 +4,11 @@ export interface ControllerLatestState {
   controllerHour24: number | null;
   controllerMinute: number | null;
   controllerDateReply: ControllerDatetimeReply | null;
+  controllerClockAdvance: number | null;
   controllerSoftwareVersionReply: ControllerSoftwareVersionReply | null;
   controllerSchedules: Record<string, ControllerScheduleRecord>;
   controllerScheduleObservations: ControllerScheduleObservation[];
+  pumpConfigurations: Record<string, ControllerPumpConfiguration>;
   controllerSubModelByte: number | null;
   controllerModelByte: number | null;
   controllerModelFamily: string | null;
@@ -14,6 +16,11 @@ export interface ControllerLatestState {
   airTempF: number | null;
   waterTempF: number | null;
   heaterEnabled: boolean | null;
+  heatSettingByte: number | null;
+  poolHeatMode: string | null;
+  spaHeatMode: string | null;
+  heaterConfiguration: ControllerHeaterConfiguration | null;
+  heaterSettings: ControllerHeaterSettings | null;
   mode: string | null;
   controllerModeByte: number | null;
   controllerModeLabel: string | null;
@@ -22,6 +29,58 @@ export interface ControllerLatestState {
   circuitConfigurations: Record<string, ControllerCircuitConfiguration>;
   customNameBank: Record<string, ControllerCustomName>;
   updatedAt: string | null;
+}
+
+export interface ControllerHeaterConfiguration {
+  solarOrHeatPumpEnabled: boolean | null;
+  heatingEnabled: boolean | null;
+  coolingEnabled: boolean | null;
+  freezeProtectionEnabled: boolean | null;
+  detectedHeaterType: string | null;
+  rawPayload: number[];
+  updatedAt: string | null;
+}
+
+export interface ControllerHeaterSettings {
+  poolSetpoint: number | null;
+  spaSetpoint: number | null;
+  coolSetpoint: number | null;
+  poolHeatMode: string | null;
+  spaHeatMode: string | null;
+  heatSettingByte: number | null;
+  source: "controller_status" | "command_cache";
+  updatedAt: string | null;
+}
+
+export interface ControllerHeaterView {
+  source: "controller_native";
+  controller_type: "easytouch";
+  status: "available" | "unavailable";
+  message: string;
+  last_checked: string | null;
+  configuration: {
+    detected_heater_type: string | null;
+    solar_or_heat_pump_enabled: boolean | null;
+    heating_enabled: boolean | null;
+    cooling_enabled: boolean | null;
+    freeze_protection_enabled: boolean | null;
+    raw_payload: number[];
+    updated_at: string | null;
+  };
+  settings: {
+    pool_setpoint: number | null;
+    spa_setpoint: number | null;
+    cool_setpoint: number | null;
+    pool_heat_mode: string | null;
+    spa_heat_mode: string | null;
+    heat_setting_byte: number | null;
+    source: "controller_status" | "command_cache" | null;
+    updated_at: string | null;
+  };
+  capabilities: {
+    editable_configuration_fields: string[];
+    editable_setting_fields: string[];
+  };
 }
 
 export interface ControllerCustomName {
@@ -73,6 +132,30 @@ export interface ControllerDatetimeReplyView {
   minute: number | null;
   daylight_savings_auto: boolean | null;
   updated_at: string | null;
+}
+
+export interface ControllerClockView {
+  source: "controller_native";
+  controller_type: "easytouch";
+  status: "available" | "unavailable";
+  message: string;
+  last_checked: string | null;
+  summary: {
+    month: number | null;
+    day: number | null;
+    year: number | null;
+    day_of_week: number | null;
+    hour_24: number | null;
+    minute: number | null;
+    daylight_savings_auto: boolean | null;
+    clock_advance: number | null;
+    source: "controller_status" | "controller_datetime_reply" | "combined" | null;
+    updated_at: string | null;
+  };
+  capabilities: {
+    editable_fields: string[];
+    provisional_fields: string[];
+  };
 }
 
 export interface ControllerSoftwareVersionReply {
@@ -151,6 +234,48 @@ export interface ControllerSchedulesView {
   observed_payloads: ControllerScheduleObservationView[];
 }
 
+export interface ControllerPumpConfigurationSlotView {
+  slot: number;
+  circuit_assignment: number | null;
+  rpm: number | null;
+}
+
+export interface ControllerPumpConfiguration {
+  pumpId: number;
+  pumpType: number | null;
+  primingTime: number | null;
+  unknown3: number | null;
+  unknown4: number | null;
+  primingSpeed: number | null;
+  slots: ControllerPumpConfigurationSlotView[];
+  trailingBytes: number[];
+  updatedAt: string | null;
+}
+
+export interface ControllerPumpConfigurationView {
+  pump_id: number;
+  installed: boolean;
+  pump_type: number | null;
+  pump_type_label: string | null;
+  supported_branch: "vf" | "vs" | "unknown" | null;
+  priming_time: number | null;
+  unknown_3: number | null;
+  unknown_4: number | null;
+  priming_speed: number | null;
+  slots: ControllerPumpConfigurationSlotView[];
+  trailing_bytes: number[];
+  updated_at: string | null;
+}
+
+export interface ControllerPumpConfigurationsView {
+  source: "controller_native";
+  controller_type: "easytouch";
+  status: "available" | "unavailable";
+  message: string;
+  last_checked: string | null;
+  pumps: ControllerPumpConfigurationView[];
+}
+
 export interface ControllerCustomNameView {
   name_index: number;
   custom_name_bytes: number[];
@@ -181,9 +306,11 @@ export class LatestStateProjection {
     controllerHour24: null,
     controllerMinute: null,
     controllerDateReply: null,
+    controllerClockAdvance: null,
     controllerSoftwareVersionReply: null,
     controllerSchedules: {},
     controllerScheduleObservations: [],
+    pumpConfigurations: {},
     controllerSubModelByte: null,
     controllerModelByte: null,
     controllerModelFamily: null,
@@ -191,6 +318,11 @@ export class LatestStateProjection {
     airTempF: null,
     waterTempF: null,
     heaterEnabled: null,
+    heatSettingByte: null,
+    poolHeatMode: null,
+    spaHeatMode: null,
+    heaterConfiguration: null,
+    heaterSettings: null,
     mode: null,
     controllerModeByte: null,
     controllerModeLabel: null,
@@ -219,10 +351,12 @@ export class LatestStateProjection {
       controllerHour24: readNumber(payload, "controller_hour_24"),
       controllerMinute: readNumber(payload, "controller_minute"),
       controllerDateReply: this.controller.controllerDateReply == null ? null : { ...this.controller.controllerDateReply },
+      controllerClockAdvance: this.controller.controllerClockAdvance,
       controllerSoftwareVersionReply:
         this.controller.controllerSoftwareVersionReply == null ? null : { ...this.controller.controllerSoftwareVersionReply },
       controllerSchedules: { ...this.controller.controllerSchedules },
       controllerScheduleObservations: [...this.controller.controllerScheduleObservations],
+      pumpConfigurations: { ...this.controller.pumpConfigurations },
       controllerSubModelByte: readNumber(payload, "controller_sub_model_byte"),
       controllerModelByte: readNumber(payload, "controller_model_byte"),
       controllerModelFamily: readString(payload, "controller_model_family"),
@@ -230,6 +364,20 @@ export class LatestStateProjection {
       airTempF: readNumber(payload, "air_temp_f"),
       waterTempF: readNumber(payload, "water_temp_f"),
       heaterEnabled: readNestedBoolean(payload, ["heater", "enabled"]),
+      heatSettingByte: readNumber(payload, "heat_setting_byte"),
+      poolHeatMode: readString(payload, "pool_heat_mode"),
+      spaHeatMode: readString(payload, "spa_heat_mode"),
+      heaterConfiguration: this.controller.heaterConfiguration == null ? null : { ...this.controller.heaterConfiguration },
+      heaterSettings: {
+        poolSetpoint: this.controller.heaterSettings?.poolSetpoint ?? null,
+        spaSetpoint: this.controller.heaterSettings?.spaSetpoint ?? null,
+        coolSetpoint: this.controller.heaterSettings?.coolSetpoint ?? null,
+        poolHeatMode: readString(payload, "pool_heat_mode"),
+        spaHeatMode: readString(payload, "spa_heat_mode"),
+        heatSettingByte: readNumber(payload, "heat_setting_byte"),
+        source: this.controller.heaterSettings?.source ?? "controller_status",
+        updatedAt: readString(payload, "occurred_at")
+      },
       mode: readString(payload, "mode"),
       controllerModeByte: readNumber(payload, "controller_mode_byte"),
       controllerModeLabel: readString(payload, "controller_mode_label"),
@@ -286,6 +434,37 @@ export class LatestStateProjection {
     return this.getControllerDatetimeReply();
   }
 
+  cacheControllerClock(payload: {
+    month: number;
+    day: number;
+    year: number;
+    dayOfWeek: number;
+    hour24: number;
+    minute: number;
+    daylightSavingsAuto: boolean | null;
+    clockAdvance: number | null;
+    updatedAt: string;
+  }): ControllerClockView {
+    this.controller = {
+      ...this.controller,
+      controllerHour24: payload.hour24,
+      controllerMinute: payload.minute,
+      controllerClockAdvance: payload.clockAdvance,
+      controllerDateReply: {
+        month: payload.month,
+        day: payload.day,
+        year: payload.year,
+        dayOfWeek: payload.dayOfWeek,
+        hour24: payload.hour24,
+        minute: payload.minute,
+        daylightSavingsAuto: payload.daylightSavingsAuto,
+        updatedAt: payload.updatedAt
+      }
+    };
+
+    return this.getControllerClockView();
+  }
+
   updateControllerSoftwareVersionReply(payload: Record<string, unknown>): ControllerSoftwareVersionReplyView | null {
     this.controller = {
       ...this.controller,
@@ -299,6 +478,86 @@ export class LatestStateProjection {
     };
 
     return this.getControllerSoftwareVersionReply();
+  }
+
+  updateControllerHeaterConfiguration(payload: Record<string, unknown>): ControllerHeaterView {
+    this.controller = {
+      ...this.controller,
+      heaterConfiguration: {
+        solarOrHeatPumpEnabled: readBoolean(payload, "solar_or_heat_pump_enabled"),
+        heatingEnabled: readBoolean(payload, "heating_enabled"),
+        coolingEnabled: readBoolean(payload, "cooling_enabled"),
+        freezeProtectionEnabled: readBoolean(payload, "freeze_protection_enabled"),
+        detectedHeaterType: readString(payload, "detected_heater_type"),
+        rawPayload: readNumberArray(payload, "raw_payload"),
+        updatedAt: readString(payload, "occurred_at")
+      }
+    };
+
+    return this.getControllerHeaterView();
+  }
+
+  updateControllerPumpConfiguration(payload: Record<string, unknown>): ControllerPumpConfigurationsView {
+    const pumpId = readNumber(payload, "pump_slot") ?? readNumber(payload, "pump_id");
+    if (pumpId === null) {
+      return this.getControllerPumpConfigurationsView();
+    }
+
+    const slotsValue = readObjectArray(payload, "slots")
+      .map((slot, index) => ({
+        slot: readNumber(slot, "slot") ?? index + 1,
+        circuit_assignment: readNumber(slot, "circuit_assignment"),
+        rpm: readNumber(slot, "rpm")
+      }));
+
+    this.controller = {
+      ...this.controller,
+      pumpConfigurations: {
+        ...this.controller.pumpConfigurations,
+        [String(pumpId)]: {
+          pumpId,
+          pumpType: readNumber(payload, "pump_type"),
+          primingTime: readNumber(payload, "priming_time"),
+          unknown3: readNumber(payload, "unknown_3"),
+          unknown4: readNumber(payload, "unknown_4"),
+          primingSpeed: readNumber(payload, "priming_speed"),
+          slots: slotsValue,
+          trailingBytes: readNumberArray(payload, "trailing_bytes"),
+          updatedAt: readString(payload, "occurred_at")
+        }
+      }
+    };
+
+    return this.getControllerPumpConfigurationsView();
+  }
+
+  cacheControllerHeaterSettings(payload: {
+    poolSetpoint: number;
+    spaSetpoint: number;
+    coolSetpoint: number;
+    poolHeatMode: string;
+    spaHeatMode: string;
+    heatSettingByte: number;
+    updatedAt: string;
+  }): ControllerHeaterView {
+    this.controller = {
+      ...this.controller,
+      heatSettingByte: payload.heatSettingByte,
+      poolHeatMode: payload.poolHeatMode,
+      spaHeatMode: payload.spaHeatMode,
+      heaterSettings: {
+        poolSetpoint: payload.poolSetpoint,
+        spaSetpoint: payload.spaSetpoint,
+        coolSetpoint: payload.coolSetpoint,
+        poolHeatMode: payload.poolHeatMode,
+        spaHeatMode: payload.spaHeatMode,
+        heatSettingByte: payload.heatSettingByte,
+        source: "command_cache",
+        updatedAt: payload.updatedAt
+      }
+    };
+
+    return this.getControllerHeaterView();
   }
 
   updateControllerScheduleObservation(payload: Record<string, unknown>): ControllerSchedulesView {
@@ -424,6 +683,7 @@ export class LatestStateProjection {
               controller_hour_24: this.controller.controllerHour24,
               controller_minute: this.controller.controllerMinute,
               controller_datetime_reply: this.getControllerDatetimeReply(),
+              controller_clock: this.getControllerClockView().summary,
               controller_software_version_reply: this.getControllerSoftwareVersionReply(),
               controller_sub_model_byte: this.controller.controllerSubModelByte,
               controller_model_byte: this.controller.controllerModelByte,
@@ -432,6 +692,28 @@ export class LatestStateProjection {
               air_temp_f: this.controller.airTempF,
               water_temp_f: this.controller.waterTempF,
               heater_enabled: this.controller.heaterEnabled,
+              heat_setting_byte: this.controller.heatSettingByte,
+              pool_heat_mode: this.controller.poolHeatMode,
+              spa_heat_mode: this.controller.spaHeatMode,
+              heater_configuration: this.controller.heaterConfiguration == null ? null : {
+                detected_heater_type: this.controller.heaterConfiguration.detectedHeaterType,
+                solar_or_heat_pump_enabled: this.controller.heaterConfiguration.solarOrHeatPumpEnabled,
+                heating_enabled: this.controller.heaterConfiguration.heatingEnabled,
+                cooling_enabled: this.controller.heaterConfiguration.coolingEnabled,
+                freeze_protection_enabled: this.controller.heaterConfiguration.freezeProtectionEnabled,
+                raw_payload: [...this.controller.heaterConfiguration.rawPayload],
+                updated_at: this.controller.heaterConfiguration.updatedAt
+              },
+              heater_settings: this.controller.heaterSettings == null ? null : {
+                pool_setpoint: this.controller.heaterSettings.poolSetpoint,
+                spa_setpoint: this.controller.heaterSettings.spaSetpoint,
+                cool_setpoint: this.controller.heaterSettings.coolSetpoint,
+                pool_heat_mode: this.controller.heaterSettings.poolHeatMode,
+                spa_heat_mode: this.controller.heaterSettings.spaHeatMode,
+                heat_setting_byte: this.controller.heaterSettings.heatSettingByte,
+                source: this.controller.heaterSettings.source,
+                updated_at: this.controller.heaterSettings.updatedAt
+              },
               mode: this.controller.mode,
               controller_mode_byte: this.controller.controllerModeByte,
               controller_mode_label: this.controller.controllerModeLabel,
@@ -439,6 +721,7 @@ export class LatestStateProjection {
               circuits: { ...this.controller.circuits },
               circuit_configurations: this.getControllerCircuitConfigurations(),
               custom_name_bank: this.getControllerCustomNameBank(),
+              pump_configurations: this.getControllerPumpConfigurationsView().pumps,
               updated_at: this.controller.updatedAt
             }
           };
@@ -519,6 +802,124 @@ export class LatestStateProjection {
       schedules: [],
       observed_payloads: []
     };
+  }
+
+  getControllerHeaterView(): ControllerHeaterView {
+    const configuration = this.controller.heaterConfiguration;
+    const settings = this.controller.heaterSettings;
+    const lastChecked = configuration?.updatedAt ?? settings?.updatedAt ?? this.controller.updatedAt ?? null;
+    const available = configuration != null || settings != null || this.controller.heatSettingByte !== null;
+
+    return {
+      source: "controller_native",
+      controller_type: "easytouch",
+      status: available ? "available" : "unavailable",
+      message: available
+        ? "EasyTouch-owned heater state is available."
+        : "EasyTouch heater state has not been observed yet.",
+      last_checked: lastChecked,
+      configuration: {
+        detected_heater_type: configuration?.detectedHeaterType ?? null,
+        solar_or_heat_pump_enabled: configuration?.solarOrHeatPumpEnabled ?? null,
+        heating_enabled: configuration?.heatingEnabled ?? null,
+        cooling_enabled: configuration?.coolingEnabled ?? null,
+        freeze_protection_enabled: configuration?.freezeProtectionEnabled ?? null,
+        raw_payload: configuration ? [...configuration.rawPayload] : [],
+        updated_at: configuration?.updatedAt ?? null
+      },
+      settings: {
+        pool_setpoint: settings?.poolSetpoint ?? null,
+        spa_setpoint: settings?.spaSetpoint ?? null,
+        cool_setpoint: settings?.coolSetpoint ?? null,
+        pool_heat_mode: settings?.poolHeatMode ?? this.controller.poolHeatMode,
+        spa_heat_mode: settings?.spaHeatMode ?? this.controller.spaHeatMode,
+        heat_setting_byte: settings?.heatSettingByte ?? this.controller.heatSettingByte,
+        source: settings?.source ?? (this.controller.heatSettingByte !== null ? "controller_status" : null),
+        updated_at: settings?.updatedAt ?? this.controller.updatedAt
+      },
+      capabilities: {
+        editable_configuration_fields: ["heater_type", "cooling_enabled", "freeze_protection_enabled"],
+        editable_setting_fields: ["pool_setpoint", "spa_setpoint", "pool_heat_mode", "spa_heat_mode", "cool_setpoint"]
+      }
+    };
+  }
+
+  getControllerClockView(): ControllerClockView {
+    const reply = this.controller.controllerDateReply;
+    const hasStatusTime = this.controller.controllerHour24 !== null || this.controller.controllerMinute !== null;
+    const hasReply = reply !== null;
+    const status = hasStatusTime || hasReply ? "available" : "unavailable";
+    const source =
+      hasStatusTime && hasReply
+        ? "combined"
+        : hasReply
+          ? "controller_datetime_reply"
+          : hasStatusTime
+            ? "controller_status"
+            : null;
+
+    return {
+      source: "controller_native",
+      controller_type: "easytouch",
+      status,
+      message:
+        status === "available"
+          ? "Controller clock data is available."
+          : "No controller clock data has been observed yet.",
+      last_checked: reply?.updatedAt ?? this.controller.updatedAt,
+      summary: {
+        month: reply?.month ?? null,
+        day: reply?.day ?? null,
+        year: reply?.year ?? null,
+        day_of_week: reply?.dayOfWeek ?? null,
+        hour_24: reply?.hour24 ?? this.controller.controllerHour24,
+        minute: reply?.minute ?? this.controller.controllerMinute,
+        daylight_savings_auto: reply?.daylightSavingsAuto ?? null,
+        clock_advance: this.controller.controllerClockAdvance,
+        source,
+        updated_at: reply?.updatedAt ?? this.controller.updatedAt
+      },
+      capabilities: {
+        editable_fields: ["month", "day", "year", "day_of_week", "hour_24", "minute", "daylight_savings_auto", "clock_advance"],
+        provisional_fields: ["daylight_savings_auto", "clock_advance"]
+      }
+    };
+  }
+
+  getControllerPumpConfigurationsView(): ControllerPumpConfigurationsView {
+    const pumps = Object.values(this.controller.pumpConfigurations)
+      .filter((pump) => (pump.pumpType ?? 0) > 0)
+      .sort((left, right) => left.pumpId - right.pumpId)
+      .map((pump) => ({
+        pump_id: pump.pumpId,
+        installed: true,
+        pump_type: pump.pumpType,
+        pump_type_label: formatPumpTypeLabel(pump.pumpType),
+        supported_branch: mapPumpTypeBranch(pump.pumpType),
+        priming_time: pump.primingTime,
+        unknown_3: pump.unknown3,
+        unknown_4: pump.unknown4,
+        priming_speed: pump.primingSpeed,
+        slots: pump.slots.map((slot) => ({ ...slot })),
+        trailing_bytes: [...pump.trailingBytes],
+        updated_at: pump.updatedAt
+      }));
+
+    return {
+      source: "controller_native",
+      controller_type: "easytouch",
+      status: pumps.length > 0 ? "available" : "unavailable",
+      message:
+        pumps.length > 0
+          ? "Live installed-pump configuration is available."
+          : "No installed EasyTouch pump configuration has been observed yet.",
+      last_checked: pumps[0]?.updated_at ?? null,
+      pumps
+    };
+  }
+
+  getControllerPumpConfiguration(pumpId: number): ControllerPumpConfigurationView | null {
+    return this.getControllerPumpConfigurationsView().pumps.find((pump) => pump.pump_id === pumpId) ?? null;
   }
 
   private getControllerCircuitConfigurations(): Record<string, ControllerCircuitConfigurationView> {
@@ -625,6 +1026,41 @@ export class LatestStateProjection {
   }
 }
 
+function formatPumpTypeLabel(pumpType: number | null): string | null {
+  switch (pumpType) {
+    case 0:
+      return "None";
+    case 1:
+      return "Single Speed";
+    case 2:
+      return "Two Speed";
+    case 4:
+      return "Solar / Booster";
+    case 8:
+      return "Feature / Aux";
+    case 16:
+      return "VF";
+    case 32:
+      return "VS";
+    case 128:
+      return "Variable Speed";
+    default:
+      return pumpType === null ? null : `Unknown (${pumpType})`;
+  }
+}
+
+function mapPumpTypeBranch(pumpType: number | null): "vf" | "vs" | "unknown" | null {
+  switch (pumpType) {
+    case 16:
+      return "vf";
+    case 32:
+    case 128:
+      return "vs";
+    default:
+      return pumpType === null ? null : "unknown";
+  }
+}
+
 function readNumber(payload: Record<string, unknown>, key: string): number | null {
   const value = payload[key];
   return typeof value === "number" ? value : null;
@@ -656,6 +1092,15 @@ function readNumberArray(payload: Record<string, unknown>, key: string): number[
   }
 
   return value.filter((entry): entry is number => typeof entry === "number");
+}
+
+function readObjectArray(payload: Record<string, unknown>, key: string): Array<Record<string, unknown>> {
+  const value = payload[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((entry): entry is Record<string, unknown> => entry != null && typeof entry === "object" && !Array.isArray(entry));
 }
 
 function readParseConfidence(

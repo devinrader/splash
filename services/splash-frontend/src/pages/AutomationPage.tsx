@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { fetchControllerSchedules } from "../api";
+import { fetchControllerSchedules, updateControllerSchedule } from "../api";
 import { Card } from "../components/mockUi";
 import { AUTOMATION_TABS, getActiveAutomationTab } from "../navigation";
 import type { ControllerScheduleRecord, ControllerSchedulesData } from "../types";
@@ -118,6 +118,19 @@ function formatProgramUsage(used: number, max: number): string {
   return `${used} / ${max}`;
 }
 
+function parseTimeInputToMinutes(value: string): number | null {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) {
+    return null;
+  }
+  const hour = Number.parseInt(match[1], 10);
+  const minute = Number.parseInt(match[2], 10);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return null;
+  }
+  return hour * 60 + minute;
+}
+
 function formatTimeInputValue(value: number | null | undefined): string {
   if (typeof value !== "number") {
     return "08:00";
@@ -183,15 +196,19 @@ export function AutomationPage() {
   const [controllerSchedules, setControllerSchedules] = useState<ControllerSchedulesData | null>(null);
   const [controllerSchedulesError, setControllerSchedulesError] = useState<string | null>(null);
 
+  async function refreshControllerSchedules(): Promise<void> {
+    const response = await fetchControllerSchedules();
+    setControllerSchedules(response.data);
+    setControllerSchedulesError(null);
+  }
+
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
       try {
-        const response = await fetchControllerSchedules();
         if (!cancelled) {
-          setControllerSchedules(response.data);
-          setControllerSchedulesError(null);
+          await refreshControllerSchedules();
         }
       } catch (error) {
         if (!cancelled) {
@@ -233,6 +250,7 @@ export function AutomationPage() {
                 key={controllerSchedules?.last_checked ?? "controller-schedules-empty"}
                 controllerSchedules={controllerSchedules}
                 controllerSchedulesError={controllerSchedulesError}
+                onSchedulesUpdated={async () => refreshControllerSchedules()}
               />
             }
           />
@@ -298,10 +316,12 @@ function AutomationOverviewTab() {
 
 function AutomationSchedulesTab({
   controllerSchedules,
-  controllerSchedulesError
+  controllerSchedulesError,
+  onSchedulesUpdated
 }: {
   controllerSchedules: ControllerSchedulesData | null;
   controllerSchedulesError: string | null;
+  onSchedulesUpdated: () => Promise<void>;
 }) {
   const liveSchedules = controllerSchedules?.schedules ?? [];
   const activeSchedules = liveSchedules.filter(isActiveSchedule);
@@ -330,9 +350,12 @@ function AutomationSchedulesTab({
   );
   const [draftMarkedActive, setDraftMarkedActive] = useState(defaultEditorSchedule?.active === true);
   const [useDefaultEditorSeed, setUseDefaultEditorSeed] = useState(true);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<number>(defaultEditorSchedule?.schedule_id ?? 1);
   const [selectedScheduleLabel, setSelectedScheduleLabel] = useState(
     defaultEditorSchedule?.schedule_id ? `Program ${defaultEditorSchedule.schedule_id}` : "Program 1"
   );
+  const [scheduleSavePending, setScheduleSavePending] = useState(false);
+  const [scheduleSaveMessage, setScheduleSaveMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const nextDefault = findDefaultEditorSchedule(liveSchedules);
@@ -341,6 +364,7 @@ function AutomationSchedulesTab({
     }
 
     setUseDefaultEditorSeed(true);
+    setSelectedScheduleId(nextDefault.schedule_id ?? 1);
     setSelectedScheduleLabel(nextDefault.schedule_id ? `Program ${nextDefault.schedule_id}` : "Program 1");
     setDraftCircuitId(nextDefault.circuit_id ?? fallbackCircuitId);
     setDraftScheduleType(getScheduleTypeValue(nextDefault));
@@ -410,11 +434,13 @@ function AutomationSchedulesTab({
         : formatTimeInputValue(baseline?.end_time_minutes)
     );
     setDraftMarkedActive(baseline?.active === true);
+    setSelectedScheduleId(baseline?.schedule_id ?? 1);
     setSelectedScheduleLabel(baseline?.schedule_id ? `Program ${baseline.schedule_id}` : "Program 1");
   }
 
   function handleReviewSchedule(row: ControllerScheduleRecord) {
     setUseDefaultEditorSeed(false);
+    setSelectedScheduleId(row.schedule_id ?? 1);
     setSelectedScheduleLabel(typeof row.schedule_id === "number" ? `Program ${row.schedule_id}` : describeScheduleName(row));
     setDraftCircuitId(row.circuit_id ?? fallbackCircuitId);
     setDraftScheduleType(getScheduleTypeValue(row));
@@ -430,6 +456,52 @@ function AutomationSchedulesTab({
         : formatTimeInputValue(row.end_time_minutes)
     );
     setDraftMarkedActive(row.active === true);
+  }
+
+  async function handleSaveSchedule(): Promise<void> {
+    setScheduleSaveMessage(null);
+    const normalizedMode = editorScheduleType === "egg_timer" ? "egg_timer" : "repeat";
+    const payload = normalizedMode === "repeat"
+      ? {
+          scheduleId: selectedScheduleId,
+          mode: "repeat" as const,
+          circuitId: editorCircuitId,
+          startTimeMinutes: parseTimeInputToMinutes(editorStartTime),
+          endTimeMinutes: parseTimeInputToMinutes(editorStopTime),
+          daysMask: editorSelectedDays.reduce((mask, value) => mask | (1 << value), 0)
+        }
+      : {
+          scheduleId: selectedScheduleId,
+          mode: "egg_timer" as const,
+          circuitId: editorCircuitId,
+          runtimeMinutes: parseTimeInputToMinutes(editorStopTime)
+        };
+
+    if (payload.mode === "repeat") {
+      if (payload.startTimeMinutes === null || payload.endTimeMinutes === null) {
+        setScheduleSaveMessage("Enter valid start and stop times before saving.");
+        return;
+      }
+      if (payload.daysMask < 1 || payload.daysMask > 127) {
+        setScheduleSaveMessage("Select at least one schedule day before saving.");
+        return;
+      }
+    } else if (payload.runtimeMinutes === null || payload.runtimeMinutes < 1) {
+      setScheduleSaveMessage("Enter a valid egg timer runtime before saving.");
+      return;
+    }
+
+    setScheduleSavePending(true);
+    try {
+      await updateControllerSchedule(payload);
+      await onSchedulesUpdated();
+      setUseDefaultEditorSeed(true);
+      setScheduleSaveMessage(`Program ${selectedScheduleId} saved to the controller.`);
+    } catch (error) {
+      setScheduleSaveMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setScheduleSavePending(false);
+    }
   }
 
   return (
@@ -555,10 +627,10 @@ function AutomationSchedulesTab({
                   <div>
                     <strong>{selectedScheduleLabel}</strong>
                     <p className="panel-copy">
-                      This editor is local to the browser for now. It mirrors the controller-managed layout without claiming controller write support yet.
+                      This editor writes validated EasyTouch repeat and egg-timer schedules directly to the controller and reloads from refreshed controller data after save.
                     </p>
                   </div>
-                  <span className="system-status-chip system-status-chip-watch">Local edit preview</span>
+                  <span className="system-status-chip system-status-chip-watch">{scheduleSavePending ? "Saving..." : "Controller-backed save"}</span>
                 </div>
                 <div className="automation-schedule-editor-grid">
                   <label className="automation-field">
@@ -584,7 +656,6 @@ function AutomationSchedulesTab({
                       }}
                     >
                       <option value="repeat">Repeat</option>
-                      <option value="run_once">Run Once</option>
                       <option value="egg_timer">Egg Timer</option>
                     </select>
                   </label>
@@ -655,8 +726,17 @@ function AutomationSchedulesTab({
                       <strong>Editor summary</strong>
                       <span>{`Circuit ${editorCircuitId} · ${editorScheduleType === "egg_timer" ? "Egg Timer" : editorScheduleType === "run_once" ? "Run Once" : "Repeat"} · ${draftDaySummary || "No days selected"} · ${editorScheduleType === "egg_timer" ? `${editorStopTime} runtime` : `${editorStartTime} to ${editorStopTime}`}`}</span>
                     </div>
+                    {scheduleSaveMessage ? (
+                      <div className="automation-record-row">
+                        <strong>Save status</strong>
+                        <span>{scheduleSaveMessage}</span>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="automation-inline-actions">
+                    <button type="button" onClick={() => void handleSaveSchedule()} disabled={scheduleSavePending}>
+                      {scheduleSavePending ? "Saving..." : "Save schedule"}
+                    </button>
                     <button type="button" className="automation-secondary-button" onClick={resetDraftEditor}>Back to Program 1</button>
                   </div>
                 </div>

@@ -1,5 +1,4 @@
-import type { QueryResultRow } from "pg";
-import type { Queryable } from "./database.js";
+import type { SqliteDatabase } from "./database.js";
 
 export type PoolChemistryKey =
   | "free_chlorine"
@@ -26,7 +25,7 @@ export interface PoolChemistrySetting {
 
 export interface PoolChemistrySettingsView {
   settings: PoolChemistrySetting[];
-  source: "postgres" | "defaults";
+  source: "sqlite" | "defaults";
 }
 
 export interface PoolChemistrySettingsUpdateItem {
@@ -204,10 +203,10 @@ export class PoolChemistrySettingsService {
     }
 
     const stored = await this.repository.get(this.poolId);
-    return {
-      settings: listPoolChemistrySettings(stored?.settings ?? defaultPoolChemistrySettingsMap()),
-      source: stored ? "postgres" : "defaults"
-    };
+      return {
+        settings: listPoolChemistrySettings(stored?.settings ?? defaultPoolChemistrySettingsMap()),
+        source: stored ? "sqlite" : "defaults"
+      };
   }
 
   async updatePoolChemistrySettings(input: unknown): Promise<PoolChemistrySettingsView> {
@@ -222,7 +221,7 @@ export class PoolChemistrySettingsService {
     });
     return {
       settings: listPoolChemistrySettings(saved.settings),
-      source: "postgres"
+      source: "sqlite"
     };
   }
 
@@ -237,37 +236,37 @@ export class PoolChemistrySettingsService {
 
   private requireRepository(): PoolChemistrySettingsRepository {
     if (!this.repository) {
-      throw new PoolChemistrySettingsUnavailableError("PostgreSQL-backed pool chemistry settings are not configured.");
+      throw new PoolChemistrySettingsUnavailableError("SQLite-backed pool chemistry settings are not configured.");
     }
     return this.repository;
   }
 }
 
-export class PostgresPoolChemistrySettingsRepository implements PoolChemistrySettingsRepository {
-  constructor(private readonly queryable: Queryable) {}
+export class SqlitePoolChemistrySettingsRepository implements PoolChemistrySettingsRepository {
+  constructor(private readonly database: SqliteDatabase) {}
 
   async get(poolId: string): Promise<StoredPoolChemistrySettings | null> {
-    const result = await this.queryable.query<PoolChemistrySettingsRow>(
+    const row = this.database.get<PoolChemistrySettingsRow>(
       `
         SELECT pool_id, chemistry_bounds
         FROM pool_settings
-        WHERE pool_id = $1
+        WHERE pool_id = ?
       `,
       [poolId]
     );
 
-    if (result.rows.length === 0) {
+    if (!row) {
       return null;
     }
 
     return {
-      poolId: result.rows[0].pool_id,
-      settings: mapStoredChemistryBounds(result.rows[0].chemistry_bounds)
+      poolId: row.pool_id,
+      settings: mapStoredChemistryBounds(row.chemistry_bounds)
     };
   }
 
   async upsert(settings: StoredPoolChemistrySettings): Promise<StoredPoolChemistrySettings> {
-    const result = await this.queryable.query<PoolChemistrySettingsRow>(
+    const row = this.database.get<PoolChemistrySettingsRow>(
       `
         INSERT INTO pool_settings (
           pool_id,
@@ -280,23 +279,27 @@ export class PostgresPoolChemistrySettingsRepository implements PoolChemistrySet
           chemistry_bounds,
           updated_at
         )
-        VALUES ($1, 'address', '', '', '', '', '', $2::jsonb, NOW())
+        VALUES (?, 'address', '', '', '', '', '', ?, CURRENT_TIMESTAMP)
         ON CONFLICT (pool_id) DO UPDATE SET
           chemistry_bounds = EXCLUDED.chemistry_bounds,
-          updated_at = NOW()
+          updated_at = CURRENT_TIMESTAMP
         RETURNING pool_id, chemistry_bounds
       `,
       [settings.poolId, JSON.stringify(settings.settings)]
     );
 
+    if (!row) {
+      throw new Error("SQLite chemistry settings upsert did not return a row.");
+    }
+
     return {
-      poolId: result.rows[0].pool_id,
-      settings: mapStoredChemistryBounds(result.rows[0].chemistry_bounds)
+      poolId: row.pool_id,
+      settings: mapStoredChemistryBounds(row.chemistry_bounds)
     };
   }
 }
 
-interface PoolChemistrySettingsRow extends QueryResultRow {
+interface PoolChemistrySettingsRow extends Record<string, unknown> {
   pool_id: string;
   chemistry_bounds: Record<string, unknown> | string | null;
 }

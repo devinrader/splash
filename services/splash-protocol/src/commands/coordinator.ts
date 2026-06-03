@@ -1,6 +1,7 @@
 import type { Logger } from "../logger.js";
 import type { MessagingSession } from "../messaging.js";
 import {
+  encodePentairControllerScheduleRequest,
   encodePentairPumpConfigWriteFromBaseline,
   encodePentairPumpInfoRequest
 } from "../plugins/pentair-easytouch.js";
@@ -32,6 +33,33 @@ interface PendingCommand {
         phase: "awaiting_transport" | "awaiting_reply";
         nextWriteIndex: number;
         receivedReplies: number;
+      }
+    | {
+        kind: "controller_schedule_write";
+        phase: "awaiting_write_transport" | "awaiting_refresh_transport" | "awaiting_verification";
+        scheduleId: number;
+        mode: "repeat" | "egg_timer";
+        circuitId: number;
+        startTimeMinutes?: number;
+        endTimeMinutes?: number;
+        daysMask?: number;
+        runtimeMinutes?: number;
+      }
+    | {
+        kind: "controller_heater_configuration";
+        phase: "awaiting_transport" | "awaiting_verification";
+        heaterType: "ultratempHeatPumpCom" | "ultratempEtiHybrid";
+        coolingEnabled: boolean;
+        freezeProtectionEnabled: boolean;
+      }
+    | {
+        kind: "controller_heater_settings";
+        phase: "awaiting_transport" | "awaiting_verification";
+        poolSetpoint: number;
+        spaSetpoint: number;
+        poolHeatMode: number;
+        spaHeatMode: number;
+        coolSetpoint: number;
       };
 }
 
@@ -140,6 +168,36 @@ export class CommandCoordinator {
                   nextWriteIndex: 1,
                   receivedReplies: 0
                 }
+            : encoded.correlation?.kind === "controller_schedule_write"
+              ? {
+                  kind: "controller_schedule_write",
+                  phase: "awaiting_write_transport",
+                  scheduleId: encoded.correlation.scheduleId ?? 0,
+                  mode: encoded.correlation.mode === "egg_timer" ? "egg_timer" : "repeat",
+                  circuitId: encoded.correlation.circuitId ?? 0,
+                  startTimeMinutes: encoded.correlation.startTimeMinutes,
+                  endTimeMinutes: encoded.correlation.endTimeMinutes,
+                  daysMask: encoded.correlation.daysMask,
+                  runtimeMinutes: encoded.correlation.runtimeMinutes
+                }
+            : encoded.correlation?.kind === "controller_heater_configuration"
+              ? {
+                  kind: "controller_heater_configuration",
+                  phase: "awaiting_transport",
+                  heaterType: encoded.correlation.heaterType === "ultratempEtiHybrid" ? "ultratempEtiHybrid" : "ultratempHeatPumpCom",
+                  coolingEnabled: encoded.correlation.coolingEnabled === true,
+                  freezeProtectionEnabled: encoded.correlation.freezeProtectionEnabled === true
+                }
+            : encoded.correlation?.kind === "controller_heater_settings"
+              ? {
+                  kind: "controller_heater_settings",
+                  phase: "awaiting_transport",
+                  poolSetpoint: encoded.correlation.poolSetpoint ?? 0,
+                  spaSetpoint: encoded.correlation.spaSetpoint ?? 0,
+                  poolHeatMode: encoded.correlation.poolHeatMode ?? 0,
+                  spaHeatMode: encoded.correlation.spaHeatMode ?? 0,
+                  coolSetpoint: encoded.correlation.coolSetpoint ?? 0
+                }
             : null,
         timeout: setTimeout(() => {
           void this.endPending(
@@ -244,6 +302,18 @@ export class CommandCoordinator {
         await this.handleControllerCircuitTransportAck(commandId, pending);
         return;
       }
+      if (pending.workflow?.kind === "controller_schedule_write") {
+        await this.handleControllerScheduleTransportAck(commandId, pending);
+        return;
+      }
+      if (pending.workflow?.kind === "controller_heater_configuration") {
+        await this.handleControllerHeaterConfigurationTransportAck(commandId, pending);
+        return;
+      }
+      if (pending.workflow?.kind === "controller_heater_settings") {
+        await this.handleControllerHeaterSettingsTransportAck(commandId, pending);
+        return;
+      }
 
       await this.publishResult(pending.intent.pool_id, pending.intent.command_id, "transmitted", null, "transport_write_observed", "All command writes reached the transport layer.");
       if (pending.encoded.correlation?.kind === "transport_ack") {
@@ -261,6 +331,21 @@ export class CommandCoordinator {
 
     if (messageType === "controller_ack") {
       await this.handleControllerAckReply();
+      return;
+    }
+
+    if (messageType === "controller_schedule") {
+      await this.handleControllerScheduleReply(payload);
+      return;
+    }
+
+    if (messageType === "controller_solar_heat_pump_status") {
+      await this.handleControllerHeaterConfigurationReply(payload);
+      return;
+    }
+
+    if (messageType === "controller_status") {
+      await this.handleControllerHeaterSettingsReply(payload);
       return;
     }
 
@@ -551,6 +636,199 @@ export class CommandCoordinator {
       return;
     }
   }
+
+  private async handleControllerScheduleTransportAck(commandId: string, pending: PendingCommand): Promise<void> {
+    const workflow = pending.workflow;
+    if (!workflow || workflow.kind !== "controller_schedule_write") {
+      return;
+    }
+
+    if (workflow.phase === "awaiting_write_transport") {
+      const refreshPlan = encodePentairControllerScheduleRequest({
+        poolId: pending.intent.pool_id,
+        commandId,
+        scheduleId: workflow.scheduleId
+      });
+      pending.encoded = refreshPlan;
+      pending.acknowledgedWrites = 0;
+      pending.workflow = {
+        ...workflow,
+        phase: "awaiting_refresh_transport"
+      };
+
+      for (const [index, write] of refreshPlan.writes.entries()) {
+        await this.publishEncoded(pending.intent, refreshPlan, write, index);
+      }
+      await this.publishResult(
+        pending.intent.pool_id,
+        pending.intent.command_id,
+        "transmitted",
+        null,
+        "schedule_write_transmitted",
+        "Controller schedule write reached the transport layer; requesting refreshed schedule confirmation."
+      );
+      for (const [index, write] of refreshPlan.writes.entries()) {
+        await this.publishWriteRequest(pending.intent, refreshPlan, write, index);
+      }
+      return;
+    }
+
+    if (workflow.phase === "awaiting_refresh_transport") {
+      pending.workflow = {
+        ...workflow,
+        phase: "awaiting_verification"
+      };
+      await this.publishResult(
+        pending.intent.pool_id,
+        pending.intent.command_id,
+        "transmitted",
+        null,
+        "schedule_refresh_transmitted",
+        "Schedule refresh request reached the transport layer; awaiting refreshed controller schedule."
+      );
+    }
+  }
+
+  private async handleControllerHeaterConfigurationTransportAck(commandId: string, pending: PendingCommand): Promise<void> {
+    const workflow = pending.workflow;
+    if (!workflow || workflow.kind !== "controller_heater_configuration") {
+      return;
+    }
+
+    workflow.phase = "awaiting_verification";
+    await this.publishResult(
+      pending.intent.pool_id,
+      pending.intent.command_id,
+      "transmitted",
+      null,
+      "heater_configuration_write_transmitted",
+      "Heater configuration write reached the transport layer and is awaiting controller follow-up."
+    );
+  }
+
+  private async handleControllerHeaterSettingsTransportAck(commandId: string, pending: PendingCommand): Promise<void> {
+    const workflow = pending.workflow;
+    if (!workflow || workflow.kind !== "controller_heater_settings") {
+      return;
+    }
+
+    workflow.phase = "awaiting_verification";
+    await this.publishResult(
+      pending.intent.pool_id,
+      pending.intent.command_id,
+      "transmitted",
+      null,
+      "heater_settings_write_transmitted",
+      "Heater settings write reached the transport layer and is awaiting refreshed controller status."
+    );
+  }
+
+  private async handleControllerScheduleReply(payload: Record<string, unknown>): Promise<void> {
+    const fields = readObject(payload, "fields");
+    const scheduleId = readNumber(fields, "schedule_id");
+
+    for (const [commandId, pending] of this.pending.entries()) {
+      const workflow = pending.workflow;
+      if (!workflow || workflow.kind !== "controller_schedule_write" || workflow.phase !== "awaiting_verification") {
+        continue;
+      }
+      if (scheduleId !== workflow.scheduleId) {
+        continue;
+      }
+      if (!matchesControllerScheduleVerification(fields, workflow)) {
+        continue;
+      }
+
+      await this.completePending(commandId, "schedule_write_verified", "Observed refreshed controller schedule matching the requested write.");
+      return;
+    }
+  }
+
+  private async handleControllerHeaterConfigurationReply(payload: Record<string, unknown>): Promise<void> {
+    const fields = readObject(payload, "fields");
+    for (const [commandId, pending] of this.pending.entries()) {
+      const workflow = pending.workflow;
+      if (!workflow || workflow.kind !== "controller_heater_configuration" || workflow.phase !== "awaiting_verification") {
+        continue;
+      }
+
+      if (matchesControllerHeaterConfigurationVerification(fields, workflow)) {
+        await this.completePending(commandId, "command_completed", "Observed controller heat-pump status matched the requested heater configuration.");
+      }
+    }
+  }
+
+  private async handleControllerHeaterSettingsReply(payload: Record<string, unknown>): Promise<void> {
+    const fields = readObject(payload, "fields");
+    for (const [commandId, pending] of this.pending.entries()) {
+      const workflow = pending.workflow;
+      if (!workflow || workflow.kind !== "controller_heater_settings" || workflow.phase !== "awaiting_verification") {
+        continue;
+      }
+
+      if (matchesControllerHeaterSettingsVerification(fields, workflow)) {
+        await this.completePending(commandId, "command_completed", "Observed controller status matched the requested heater heat modes.");
+      }
+    }
+  }
+}
+
+function matchesControllerScheduleVerification(
+  fields: Record<string, unknown>,
+  workflow: Extract<PendingCommand["workflow"], { kind: "controller_schedule_write" }>
+): boolean {
+  if (readNumber(fields, "circuit_id") !== workflow.circuitId) {
+    return false;
+  }
+
+  if (workflow.mode === "repeat") {
+    return readString(fields, "frame_type") === "easytouch_schedule"
+      && readNumber(fields, "start_time_minutes") === workflow.startTimeMinutes
+      && readNumber(fields, "end_time_minutes") === workflow.endTimeMinutes
+      && readNumber(fields, "schedule_days") === workflow.daysMask;
+  }
+
+  return readString(fields, "frame_type") === "easytouch_egg_timer"
+    && readNumber(fields, "egg_timer_run_time_minutes") === workflow.runtimeMinutes;
+}
+
+function matchesControllerHeaterConfigurationVerification(
+  fields: Record<string, unknown>,
+  workflow: Extract<PendingCommand["workflow"], { kind: "controller_heater_configuration" }>
+): boolean {
+  if (readString(fields, "detected_heater_type") !== workflow.heaterType) {
+    return false;
+  }
+
+  if (readBoolean(fields, "cooling_enabled") !== workflow.coolingEnabled) {
+    return false;
+  }
+
+  return readBoolean(fields, "freeze_protection_enabled") === workflow.freezeProtectionEnabled;
+}
+
+function matchesControllerHeaterSettingsVerification(
+  fields: Record<string, unknown>,
+  workflow: Extract<PendingCommand["workflow"], { kind: "controller_heater_settings" }>
+): boolean {
+  return readNumber(fields, "heat_setting_byte") === (((workflow.spaHeatMode & 0x03) << 2) | (workflow.poolHeatMode & 0x03))
+    && readString(fields, "pool_heat_mode") === mapHeatModeLabel(workflow.poolHeatMode)
+    && readString(fields, "spa_heat_mode") === mapHeatModeLabel(workflow.spaHeatMode);
+}
+
+function mapHeatModeLabel(value: number): string {
+  switch (value) {
+    case 0:
+      return "off";
+    case 1:
+      return "heater";
+    case 2:
+      return "solar_preferred";
+    case 3:
+      return "solar";
+    default:
+      return "unknown";
+  }
 }
 
 function normalizeCommandError(error: unknown): ProtocolCommandError {
@@ -613,4 +891,9 @@ function readString(payload: Record<string, unknown>, key: string): string | nul
 function readNumber(payload: Record<string, unknown>, key: string): number | null {
   const value = payload[key];
   return typeof value === "number" ? value : null;
+}
+
+function readBoolean(payload: Record<string, unknown>, key: string): boolean | null {
+  const value = payload[key];
+  return typeof value === "boolean" ? value : null;
 }

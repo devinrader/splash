@@ -1,6 +1,18 @@
 import type {
   CommandAcceptedResponse,
+  ControllerClockData,
+  ControllerClockUpdateInput,
+  ControllerClockUpdateResponse,
+  ControllerHeaterConfigurationUpdateInput,
+  ControllerHeaterResponse,
+  ControllerHeaterSettingsUpdateInput,
+  ControllerHeaterUpdateResponse,
+  ControllerPumpConfigurationUpdateInput,
+  ControllerPumpConfigurationUpdateResponse,
+  ControllerPumpConfigurationsResponse,
   CircuitConfigRequestResponse,
+  ControllerScheduleUpdateInput,
+  ControllerScheduleUpdateResponse,
   ControllerSchedulesResponse,
   PumpTelemetryHistoryResponse,
   TemperatureTelemetryHistoryResponse,
@@ -57,6 +69,169 @@ export async function fetchControllerSchedules(): Promise<ControllerSchedulesRes
     throw new Error(`Controller schedules request failed with HTTP ${response.status}.`);
   }
   return (await response.json()) as ControllerSchedulesResponse;
+}
+
+export async function updateControllerSchedule(input: ControllerScheduleUpdateInput): Promise<ControllerScheduleUpdateResponse> {
+  const response = await fetch(buildApiUrl(`/controller/schedules/${encodeURIComponent(String(input.scheduleId))}`), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      mode: input.mode,
+      circuit_id: input.circuitId,
+      start_time_minutes: input.startTimeMinutes,
+      end_time_minutes: input.endTimeMinutes,
+      days_mask: input.daysMask,
+      runtime_minutes: input.runtimeMinutes
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Controller schedule update failed.");
+  }
+  return (await response.json()) as ControllerScheduleUpdateResponse;
+}
+
+export async function fetchControllerHeater(): Promise<ControllerHeaterResponse> {
+  const response = await fetch(buildApiUrl("/controller/heater"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Controller heater request failed.");
+  }
+  return (await response.json()) as ControllerHeaterResponse;
+}
+
+export async function fetchControllerClock(): Promise<{ data: ControllerClockData; error: unknown }> {
+  const response = await fetch(buildApiUrl("/controller/clock"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Controller clock request failed.");
+  }
+  return (await response.json()) as { data: ControllerClockData; error: unknown };
+}
+
+export async function updateControllerClock(input: ControllerClockUpdateInput): Promise<ControllerClockUpdateResponse> {
+  const response = await fetch(buildApiUrl("/controller/clock"), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      month: input.month,
+      day: input.day,
+      year: input.year,
+      day_of_week: input.dayOfWeek,
+      hour_24: input.hour24,
+      minute: input.minute,
+      daylight_savings_auto: input.daylightSavingsAuto,
+      clock_advance: input.clockAdvance
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Controller clock update failed.");
+  }
+  return (await response.json()) as ControllerClockUpdateResponse;
+}
+
+export async function requestControllerClockRefresh(): Promise<CommandAcceptedResponse> {
+  const response = await fetch(buildApiUrl("/protocol/controller-datetime/request"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({})
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Controller clock refresh request failed.");
+  }
+  return (await response.json()) as CommandAcceptedResponse;
+}
+
+export async function fetchControllerPumpConfigurations(): Promise<ControllerPumpConfigurationsResponse> {
+  const response = await fetch(buildApiUrl("/controller/pumps/configuration"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Controller pump configuration request failed.");
+  }
+  return (await response.json()) as ControllerPumpConfigurationsResponse;
+}
+
+export async function requestPumpInfo(pumpSlot: number): Promise<CommandAcceptedResponse> {
+  const response = await fetch(buildApiUrl("/protocol/pump-info/request"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ pump_slot: pumpSlot })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Controller pump info request failed.");
+  }
+  return (await response.json()) as CommandAcceptedResponse;
+}
+
+export async function updateControllerPumpConfiguration(
+  input: ControllerPumpConfigurationUpdateInput
+): Promise<ControllerPumpConfigurationUpdateResponse> {
+  const response = await fetch(buildApiUrl(`/controller/pumps/${encodeURIComponent(String(input.pumpId))}/configuration`), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      pump_id: input.pumpId,
+      pump_type: input.pumpType,
+      priming_time: input.primingTime,
+      unknown_3: input.unknown3,
+      unknown_4: input.unknown4,
+      slots: input.slots,
+      priming_speed: input.primingSpeed,
+      trailing_bytes: input.trailingBytes
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Controller pump configuration update failed.");
+  }
+  return (await response.json()) as ControllerPumpConfigurationUpdateResponse;
+}
+
+export async function updateControllerHeaterConfiguration(
+  input: ControllerHeaterConfigurationUpdateInput
+): Promise<ControllerHeaterUpdateResponse> {
+  const response = await fetch(buildApiUrl("/controller/heater/configuration"), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      heater_type: input.heaterType,
+      cooling_enabled: input.coolingEnabled,
+      freeze_protection_enabled: input.freezeProtectionEnabled
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Controller heater configuration update failed.");
+  }
+  return (await response.json()) as ControllerHeaterUpdateResponse;
+}
+
+export async function updateControllerHeaterSettings(
+  input: ControllerHeaterSettingsUpdateInput
+): Promise<ControllerHeaterUpdateResponse> {
+  const response = await fetch(buildApiUrl("/controller/heater/settings"), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      pool_setpoint: input.poolSetpoint,
+      spa_setpoint: input.spaSetpoint,
+      pool_heat_mode: input.poolHeatMode,
+      spa_heat_mode: input.spaHeatMode,
+      cool_setpoint: input.coolSetpoint
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Controller heater settings update failed.");
+  }
+  return (await response.json()) as ControllerHeaterUpdateResponse;
 }
 
 export async function fetchTemperatureTelemetryLatest(): Promise<TemperatureTelemetryLatestResponse> {

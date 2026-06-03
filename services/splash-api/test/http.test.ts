@@ -17,6 +17,7 @@ test("corsHeaders echoes browser origin when present", () => {
   });
 
   assert.equal(headers["access-control-allow-origin"], "http://127.0.0.1:3000");
+  assert.match(headers["access-control-allow-methods"], /PUT/);
   assert.match(headers["access-control-allow-methods"], /OPTIONS/);
   assert.equal(headers["access-control-allow-headers"], "content-type");
 });

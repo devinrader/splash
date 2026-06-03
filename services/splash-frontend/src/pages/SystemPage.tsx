@@ -1,12 +1,31 @@
 import { useEffect, useState } from "react";
 import type React from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  fetchControllerClock,
+  fetchControllerHeater,
+  fetchControllerPumpConfigurations,
+  requestControllerClockRefresh,
+  requestPumpInfo,
+  updateControllerClock,
+  updateControllerHeaterConfiguration,
+  updateControllerHeaterSettings,
+  updateControllerPumpConfiguration
+} from "../api";
 import { MetricTrendChart } from "../components/MetricTrendChart";
 import { SplashIcon } from "../components/icons/SplashIcon";
 import { Card, MetricCard, MockEntityRow, MockModeRow } from "../components/mockUi";
 import type { SystemHardwareDetailId } from "../navigation";
 import { SYSTEM_TABS, getActiveSystemTab } from "../navigation";
-import type { ConnectivityHistorySample, EquipmentRecord, PlatformStatusResponse, PlatformServiceHealthRecord } from "../types";
+import type {
+  ConnectivityHistorySample,
+  ControllerClockData,
+  ControllerHeaterData,
+  ControllerPumpConfigurationData,
+  EquipmentRecord,
+  PlatformStatusResponse,
+  PlatformServiceHealthRecord
+} from "../types";
 import type { ControllerCircuitDefinition, PendingCircuitToggle } from "../viewUtils";
 import {
   formatBoolean,
@@ -211,14 +230,266 @@ function HardwareListTab({ controller, pump, chlorinator }: SystemPageProps) {
   );
 }
 
-function HardwareDetailTab({ controller, pump, chlorinator, installedCircuits }: SystemPageProps) {
+function HardwareDetailTab({
+  controller,
+  pump,
+  chlorinator,
+  installedCircuits,
+  controllerCircuitStates,
+  isRequestingCircuitConfig,
+  handleCircuitConfigRequest,
+  circuitConfigRequestMessage
+}: SystemPageProps) {
   const params = useParams<{ hardwareId: string }>();
   const detail = isHardwareDetailId(params.hardwareId) ? params.hardwareId : "easytouch8";
-  const [draftRows, setDraftRows] = useState<EditableCircuitConfigRow[]>(() => getEditableCircuitRows(installedCircuits));
+  const [draftRows, setDraftRows] = useState<EditableCircuitConfigRow[]>(() => getEditableCircuitRows(controllerCircuitStates));
+  const [controllerClock, setControllerClock] = useState<ControllerClockData | null>(null);
+  const [controllerClockError, setControllerClockError] = useState<string | null>(null);
+  const [controllerClockDraft, setControllerClockDraft] = useState({
+    month: "",
+    day: "",
+    year: "",
+    dayOfWeek: "",
+    hour24: "",
+    minute: "",
+    daylightSavingsAuto: "auto",
+    clockAdvance: ""
+  });
+  const [controllerClockPending, setControllerClockPending] = useState(false);
+  const [controllerClockRefreshPending, setControllerClockRefreshPending] = useState(false);
+  const [controllerClockMessage, setControllerClockMessage] = useState<string | null>(null);
+  const [pumpConfigurations, setPumpConfigurations] = useState<ControllerPumpConfigurationData[]>([]);
+  const [pumpConfigurationError, setPumpConfigurationError] = useState<string | null>(null);
+  const [pumpConfigurationDrafts, setPumpConfigurationDrafts] = useState<Record<number, PumpConfigurationDraft>>({});
+  const [pumpConfigurationPending, setPumpConfigurationPending] = useState<Record<number, boolean>>({});
+  const [pumpConfigurationMessages, setPumpConfigurationMessages] = useState<Record<number, string | null>>({});
+  const [pumpConfigurationRefreshPending, setPumpConfigurationRefreshPending] = useState(false);
+  const [heater, setHeater] = useState<ControllerHeaterData | null>(null);
+  const [heaterError, setHeaterError] = useState<string | null>(null);
+  const [heaterConfigDraft, setHeaterConfigDraft] = useState({
+    heaterType: "ultratempHeatPumpCom" as "ultratempHeatPumpCom" | "ultratempEtiHybrid",
+    coolingEnabled: false,
+    freezeProtectionEnabled: false
+  });
+  const [heaterSettingsDraft, setHeaterSettingsDraft] = useState({
+    poolSetpoint: "84",
+    spaSetpoint: "100",
+    poolHeatMode: "0",
+    spaHeatMode: "0",
+    coolSetpoint: "0"
+  });
+  const [heaterConfigPending, setHeaterConfigPending] = useState(false);
+  const [heaterSettingsPending, setHeaterSettingsPending] = useState(false);
+  const [heaterConfigMessage, setHeaterConfigMessage] = useState<string | null>(null);
+  const [heaterSettingsMessage, setHeaterSettingsMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    setDraftRows(getEditableCircuitRows(installedCircuits));
-  }, [installedCircuits]);
+    setDraftRows(getEditableCircuitRows(controllerCircuitStates));
+  }, [controllerCircuitStates]);
+
+  useEffect(() => {
+    if (detail !== "easytouch8") {
+      return;
+    }
+    void (async () => {
+      try {
+        const [heaterResponse, clockResponse, pumpConfigurationResponse] = await Promise.all([
+          fetchControllerHeater(),
+          fetchControllerClock(),
+          fetchControllerPumpConfigurations()
+        ]);
+        setHeater(heaterResponse.data);
+        setHeaterError(null);
+        setControllerClock(clockResponse.data);
+        setControllerClockError(null);
+        setPumpConfigurations(pumpConfigurationResponse.data.pumps);
+        setPumpConfigurationError(null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to load EasyTouch8 controller state.";
+        setHeaterError(message);
+        setControllerClockError(message);
+        setPumpConfigurationError(message);
+      }
+    })();
+  }, [detail]);
+
+  useEffect(() => {
+    if (!controllerClock) {
+      return;
+    }
+    setControllerClockDraft({
+      month: controllerClock.summary.month == null ? "" : String(controllerClock.summary.month),
+      day: controllerClock.summary.day == null ? "" : String(controllerClock.summary.day),
+      year: controllerClock.summary.year == null ? "" : String(controllerClock.summary.year),
+      dayOfWeek: controllerClock.summary.day_of_week == null ? "" : String(controllerClock.summary.day_of_week),
+      hour24: controllerClock.summary.hour_24 == null ? "" : String(controllerClock.summary.hour_24),
+      minute: controllerClock.summary.minute == null ? "" : String(controllerClock.summary.minute),
+      daylightSavingsAuto: controllerClock.summary.daylight_savings_auto === false ? "manual" : "auto",
+      clockAdvance: controllerClock.summary.clock_advance == null ? "" : String(controllerClock.summary.clock_advance)
+    });
+  }, [controllerClock]);
+
+  useEffect(() => {
+    setPumpConfigurationDrafts(Object.fromEntries(pumpConfigurations.map((pumpConfiguration) => [pumpConfiguration.pump_id, createPumpConfigurationDraft(pumpConfiguration)])));
+  }, [pumpConfigurations]);
+
+  useEffect(() => {
+    if (!heater) {
+      return;
+    }
+    setHeaterConfigDraft({
+      heaterType: heater.configuration.detected_heater_type === "ultratempEtiHybrid" ? "ultratempEtiHybrid" : "ultratempHeatPumpCom",
+      coolingEnabled: heater.configuration.cooling_enabled === true,
+      freezeProtectionEnabled: heater.configuration.freeze_protection_enabled === true
+    });
+    setHeaterSettingsDraft({
+      poolSetpoint: String(heater.settings.pool_setpoint ?? 84),
+      spaSetpoint: String(heater.settings.spa_setpoint ?? 100),
+      poolHeatMode: String(parseHeatModeNumber(heater.settings.pool_heat_mode)),
+      spaHeatMode: String(parseHeatModeNumber(heater.settings.spa_heat_mode)),
+      coolSetpoint: String(heater.settings.cool_setpoint ?? 0)
+    });
+  }, [heater]);
+
+  async function handleHeaterConfigurationSave(): Promise<void> {
+    setHeaterConfigPending(true);
+    setHeaterConfigMessage(null);
+    try {
+      const response = await updateControllerHeaterConfiguration(heaterConfigDraft);
+      setHeater(response.data.heater);
+      setHeaterConfigMessage("Heater configuration saved.");
+      setHeaterError(null);
+    } catch (error) {
+      setHeaterConfigMessage(error instanceof Error ? error.message : "Failed to save heater configuration.");
+    } finally {
+      setHeaterConfigPending(false);
+    }
+  }
+
+  async function handleHeaterSettingsSave(): Promise<void> {
+    const poolSetpoint = Number.parseInt(heaterSettingsDraft.poolSetpoint, 10);
+    const spaSetpoint = Number.parseInt(heaterSettingsDraft.spaSetpoint, 10);
+    const poolHeatMode = Number.parseInt(heaterSettingsDraft.poolHeatMode, 10);
+    const spaHeatMode = Number.parseInt(heaterSettingsDraft.spaHeatMode, 10);
+    const coolSetpoint = Number.parseInt(heaterSettingsDraft.coolSetpoint, 10);
+
+    if ([poolSetpoint, spaSetpoint, poolHeatMode, spaHeatMode, coolSetpoint].some((value) => Number.isNaN(value))) {
+      setHeaterSettingsMessage("Enter valid numeric heater settings.");
+      return;
+    }
+
+    setHeaterSettingsPending(true);
+    setHeaterSettingsMessage(null);
+    try {
+      const response = await updateControllerHeaterSettings({
+        poolSetpoint,
+        spaSetpoint,
+        poolHeatMode: poolHeatMode as 0 | 1 | 2 | 3,
+        spaHeatMode: spaHeatMode as 0 | 1 | 2 | 3,
+        coolSetpoint
+      });
+      setHeater(response.data.heater);
+      setHeaterSettingsMessage("Heat settings saved.");
+      setHeaterError(null);
+    } catch (error) {
+      setHeaterSettingsMessage(error instanceof Error ? error.message : "Failed to save heater settings.");
+    } finally {
+      setHeaterSettingsPending(false);
+    }
+  }
+
+  async function handleControllerClockRefresh(): Promise<void> {
+    setControllerClockRefreshPending(true);
+    setControllerClockMessage(null);
+    try {
+      await requestControllerClockRefresh();
+      setControllerClockMessage("Controller clock refresh requested.");
+    } catch (error) {
+      setControllerClockMessage(error instanceof Error ? error.message : "Failed to request controller clock refresh.");
+    } finally {
+      setControllerClockRefreshPending(false);
+    }
+  }
+
+  async function handleControllerClockSave(): Promise<void> {
+    const month = Number.parseInt(controllerClockDraft.month, 10);
+    const day = Number.parseInt(controllerClockDraft.day, 10);
+    const year = Number.parseInt(controllerClockDraft.year, 10);
+    const dayOfWeek = Number.parseInt(controllerClockDraft.dayOfWeek, 10);
+    const hour24 = Number.parseInt(controllerClockDraft.hour24, 10);
+    const minute = Number.parseInt(controllerClockDraft.minute, 10);
+    const clockAdvance =
+      controllerClockDraft.clockAdvance.trim().length === 0 ? null : Number.parseInt(controllerClockDraft.clockAdvance, 10);
+    if ([month, day, year, dayOfWeek, hour24, minute].some((value) => Number.isNaN(value)) || (clockAdvance !== null && Number.isNaN(clockAdvance))) {
+      setControllerClockMessage("Enter valid numeric controller clock values.");
+      return;
+    }
+
+    setControllerClockPending(true);
+    setControllerClockMessage(null);
+    try {
+      const response = await updateControllerClock({
+        month,
+        day,
+        year,
+        dayOfWeek,
+        hour24,
+        minute,
+        daylightSavingsAuto: controllerClockDraft.daylightSavingsAuto === "auto",
+        clockAdvance
+      });
+      setControllerClock(response.data.clock);
+      setControllerClockError(null);
+      setControllerClockMessage("Controller clock configuration saved.");
+    } catch (error) {
+      setControllerClockMessage(error instanceof Error ? error.message : "Failed to save controller clock configuration.");
+    } finally {
+      setControllerClockPending(false);
+    }
+  }
+
+  async function handlePumpConfigurationRefresh(): Promise<void> {
+    setPumpConfigurationRefreshPending(true);
+    try {
+      await requestPumpInfo(1);
+      await requestPumpInfo(2);
+      const response = await fetchControllerPumpConfigurations();
+      setPumpConfigurations(response.data.pumps);
+      setPumpConfigurationError(null);
+    } catch (error) {
+      setPumpConfigurationError(error instanceof Error ? error.message : "Failed to refresh controller pump configuration.");
+    } finally {
+      setPumpConfigurationRefreshPending(false);
+    }
+  }
+
+  async function handlePumpConfigurationSave(pumpId: number): Promise<void> {
+    const draft = pumpConfigurationDrafts[pumpId];
+    if (!draft) {
+      return;
+    }
+    const normalized = normalizePumpConfigurationDraft(draft);
+    if (!normalized) {
+      setPumpConfigurationMessages((current) => ({ ...current, [pumpId]: "Enter valid numeric pump configuration values." }));
+      return;
+    }
+
+    setPumpConfigurationPending((current) => ({ ...current, [pumpId]: true }));
+    setPumpConfigurationMessages((current) => ({ ...current, [pumpId]: null }));
+    try {
+      const response = await updateControllerPumpConfiguration({
+        pumpId,
+        ...normalized
+      });
+      setPumpConfigurations((current) => current.map((entry) => entry.pump_id === pumpId ? response.data.pump_configuration : entry));
+      setPumpConfigurationMessages((current) => ({ ...current, [pumpId]: "Pump configuration saved." }));
+      setPumpConfigurationError(null);
+    } catch (error) {
+      setPumpConfigurationMessages((current) => ({ ...current, [pumpId]: error instanceof Error ? error.message : "Failed to save pump configuration." }));
+    } finally {
+      setPumpConfigurationPending((current) => ({ ...current, [pumpId]: false }));
+    }
+  }
 
   return (
     <section className="mock-system-page">
@@ -252,10 +523,17 @@ function HardwareDetailTab({ controller, pump, chlorinator, installedCircuits }:
       {detail === "easytouch8" ? (
         <>
           <Card title="Circuit Configuration">
+            <div className="mock-card-toolbar">
+              <p className="panel-copy">Live controller circuit configuration is diagnostic and controller-derived. Refresh to request fresh `0x0b` circuit configuration replies for the known EasyTouch circuit range.</p>
+              <button className="secondary-action" type="button" disabled={isRequestingCircuitConfig} onClick={() => void handleCircuitConfigRequest()}>
+                {isRequestingCircuitConfig ? "Refreshing circuit config..." : "Refresh circuit configuration"}
+              </button>
+            </div>
+            {circuitConfigRequestMessage ? <p className="form-caption">{circuitConfigRequestMessage}</p> : null}
             <div className="mock-table-shell mock-table-shell-scroll">
               <table className="system-data-table">
                 <thead>
-                  <tr><th>ID</th><th>Type</th><th>Name</th><th>Function</th><th>Freeze</th><th>State</th><th>Action</th></tr>
+                  <tr><th>ID</th><th>Type</th><th>Function</th><th>Function Value</th><th>Name</th><th>Name Value</th><th>Freeze</th><th>State</th><th>Action</th></tr>
                 </thead>
                 <tbody>
                   {draftRows.map((row) => (
@@ -263,55 +541,71 @@ function HardwareDetailTab({ controller, pump, chlorinator, installedCircuits }:
                       <td>{row.circuitId ?? "Unavailable"}</td>
                       <td>{humanizeCircuitType(row.circuitType)}</td>
                       <td>
-                        <select
-                          className="system-table-select"
-                          aria-label={`Circuit name ${row.key}`}
-                          value={row.nameLabel}
-                          onChange={(event) => {
-                            setDraftRows((current) =>
-                              current.map((entry) => entry.key === row.key ? { ...entry, nameLabel: event.target.value } : entry)
-                            );
-                          }}
-                        >
-                          {row.nameOptions.map((option) => (
-                            <option key={`${row.key}-name-${option}`} value={option}>{option}</option>
-                          ))}
-                        </select>
+                        {row.installed ? (
+                          <select
+                            className="system-table-select"
+                            aria-label={`Circuit function ${row.key}`}
+                            value={row.functionLabel}
+                            onChange={(event) => {
+                              setDraftRows((current) =>
+                                current.map((entry) => entry.key === row.key ? { ...entry, functionLabel: event.target.value } : entry)
+                              );
+                            }}
+                          >
+                            {row.functionOptions.map((option) => (
+                              <option key={`${row.key}-function-${option}`} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span>Unavailable</span>
+                        )}
+                      </td>
+                      <td>{row.installed ? (row.functionValue ?? "Unavailable") : "Unavailable"}</td>
+                      <td>
+                        {row.installed ? (
+                          <select
+                            className="system-table-select"
+                            aria-label={`Circuit name ${row.key}`}
+                            value={row.nameLabel}
+                            onChange={(event) => {
+                              setDraftRows((current) =>
+                                current.map((entry) => entry.key === row.key ? { ...entry, nameLabel: event.target.value } : entry)
+                              );
+                            }}
+                          >
+                            {row.nameOptions.map((option) => (
+                              <option key={`${row.key}-name-${option}`} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span>Unavailable</span>
+                        )}
+                      </td>
+                      <td>{row.installed ? (row.nameValue ?? "Unavailable") : "Unavailable"}</td>
+                      <td>
+                        {row.installed ? (
+                          <button
+                            className={`mock-switch ${row.freezeEnabled ? "mock-switch-on" : ""}`}
+                            type="button"
+                            role="switch"
+                            aria-label={`Freeze ${row.key}`}
+                            aria-checked={row.freezeEnabled}
+                            onClick={() => {
+                              setDraftRows((current) =>
+                                current.map((entry) => entry.key === row.key ? { ...entry, freezeEnabled: !entry.freezeEnabled } : entry)
+                              );
+                            }}
+                          >
+                            <span />
+                          </button>
+                        ) : (
+                          <span>Unavailable</span>
+                        )}
                       </td>
                       <td>
-                        <select
-                          className="system-table-select"
-                          aria-label={`Circuit function ${row.key}`}
-                          value={row.functionLabel}
-                          onChange={(event) => {
-                            setDraftRows((current) =>
-                              current.map((entry) => entry.key === row.key ? { ...entry, functionLabel: event.target.value } : entry)
-                            );
-                          }}
-                        >
-                          {row.functionOptions.map((option) => (
-                            <option key={`${row.key}-function-${option}`} value={option}>{option}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <button
-                          className={`mock-switch ${row.freezeEnabled ? "mock-switch-on" : ""}`}
-                          type="button"
-                          role="switch"
-                          aria-label={`Freeze ${row.key}`}
-                          aria-checked={row.freezeEnabled}
-                          onClick={() => {
-                            setDraftRows((current) =>
-                              current.map((entry) => entry.key === row.key ? { ...entry, freezeEnabled: !entry.freezeEnabled } : entry)
-                            );
-                          }}
-                        >
-                          <span />
-                        </button>
-                      </td>
-                      <td>
-                        {row.canToggleState ? (
+                        {!row.installed ? (
+                          "Not installed"
+                        ) : row.canToggleState ? (
                           <button
                             className={`mock-switch ${row.stateEnabled ? "mock-switch-on" : ""}`}
                             type="button"
@@ -331,24 +625,28 @@ function HardwareDetailTab({ controller, pump, chlorinator, installedCircuits }:
                         )}
                       </td>
                       <td>
-                        <div className="system-table-actions">
-                          <button
-                            className="system-icon-button"
-                            type="button"
-                            aria-label={`Save circuit row ${row.key}`}
-                            disabled
-                          >
-                            <SplashIcon name="confirm" size={16} />
-                          </button>
-                          <button
-                            className="system-icon-button system-icon-button-secondary"
-                            type="button"
-                            aria-label={`Discard circuit row ${row.key}`}
-                            disabled
-                          >
-                            <SplashIcon name="cancel" size={16} />
-                          </button>
-                        </div>
+                        {row.installed ? (
+                          <div className="system-table-actions">
+                            <button
+                              className="system-icon-button"
+                              type="button"
+                              aria-label={`Save circuit row ${row.key}`}
+                              disabled
+                            >
+                              <SplashIcon name="confirm" size={16} />
+                            </button>
+                            <button
+                              className="system-icon-button system-icon-button-secondary"
+                              type="button"
+                              aria-label={`Discard circuit row ${row.key}`}
+                              disabled
+                            >
+                              <SplashIcon name="cancel" size={16} />
+                            </button>
+                          </div>
+                        ) : (
+                          <span>Unavailable</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -399,6 +697,181 @@ function HardwareDetailTab({ controller, pump, chlorinator, installedCircuits }:
                   ))}
                 </tbody>
               </table>
+            </div>
+          </Card>
+          <Card title="Main Controller" status="Read-only">
+            <dl className="system-summary-list">
+              <div><dt>Controller date</dt><dd>{formatControllerDate(controllerClock)}</dd></div>
+              <div><dt>Controller time</dt><dd>{formatControllerClockTime(controllerClock)}</dd></div>
+              <div><dt>DST mode</dt><dd>{formatControllerDstMode(controllerClock)}</dd></div>
+              <div><dt>Clock advance</dt><dd>{formatControllerClockAdvance(controllerClock)}</dd></div>
+            </dl>
+            <p className="form-caption">
+              {controllerClock?.summary.source === "controller_datetime_reply"
+                ? "Values currently come from provisional 0x05 controller date/time reply data."
+                : "Values are read-only on this summary card."}
+            </p>
+            {controllerClockError ? <p className="form-caption">{controllerClockError}</p> : null}
+          </Card>
+          <Card title="Date / Time / DST / Clock Adjust" status="Provisional">
+            <p className="panel-copy">Save uses the current provisional EasyTouch clock write path. DST and clock advance remain fail-closed until their payload semantics are live-validated.</p>
+            <div className="control-form">
+              <label htmlFor="controller-clock-month">Month</label>
+              <input id="controller-clock-month" inputMode="numeric" value={controllerClockDraft.month} onChange={(event) => setControllerClockDraft((current) => ({ ...current, month: event.target.value }))} disabled={controllerClockPending} />
+              <label htmlFor="controller-clock-day">Day</label>
+              <input id="controller-clock-day" inputMode="numeric" value={controllerClockDraft.day} onChange={(event) => setControllerClockDraft((current) => ({ ...current, day: event.target.value }))} disabled={controllerClockPending} />
+              <label htmlFor="controller-clock-year">Year</label>
+              <input id="controller-clock-year" inputMode="numeric" value={controllerClockDraft.year} onChange={(event) => setControllerClockDraft((current) => ({ ...current, year: event.target.value }))} disabled={controllerClockPending} />
+              <label htmlFor="controller-clock-dow">Day of week</label>
+              <input id="controller-clock-dow" inputMode="numeric" value={controllerClockDraft.dayOfWeek} onChange={(event) => setControllerClockDraft((current) => ({ ...current, dayOfWeek: event.target.value }))} disabled={controllerClockPending} />
+              <label htmlFor="controller-clock-hour">Hour (24h)</label>
+              <input id="controller-clock-hour" inputMode="numeric" value={controllerClockDraft.hour24} onChange={(event) => setControllerClockDraft((current) => ({ ...current, hour24: event.target.value }))} disabled={controllerClockPending} />
+              <label htmlFor="controller-clock-minute">Minute</label>
+              <input id="controller-clock-minute" inputMode="numeric" value={controllerClockDraft.minute} onChange={(event) => setControllerClockDraft((current) => ({ ...current, minute: event.target.value }))} disabled={controllerClockPending} />
+              <label htmlFor="controller-clock-dst">DST mode</label>
+              <select id="controller-clock-dst" value={controllerClockDraft.daylightSavingsAuto} onChange={(event) => setControllerClockDraft((current) => ({ ...current, daylightSavingsAuto: event.target.value }))} disabled={controllerClockPending}>
+                <option value="auto">Auto</option>
+                <option value="manual">Manual</option>
+              </select>
+              <label htmlFor="controller-clock-advance">Clock advance</label>
+              <input id="controller-clock-advance" inputMode="numeric" value={controllerClockDraft.clockAdvance} onChange={(event) => setControllerClockDraft((current) => ({ ...current, clockAdvance: event.target.value }))} disabled={controllerClockPending} />
+              <div className="panel-actions">
+                <button type="button" className="secondary-action" onClick={() => void handleControllerClockRefresh()} disabled={controllerClockRefreshPending}>
+                  {controllerClockRefreshPending ? "Refreshing..." : "Refresh controller clock"}
+                </button>
+                <button type="button" onClick={() => void handleControllerClockSave()} disabled={controllerClockPending}>
+                  {controllerClockPending ? "Saving..." : "Save controller clock configuration"}
+                </button>
+              </div>
+              {controllerClockMessage ? <p className="form-caption">{controllerClockMessage}</p> : null}
+            </div>
+          </Card>
+          <Card title="Pump Configuration" status="Live installed pumps">
+            <div className="mock-card-toolbar">
+              <p className="panel-copy">Only pumps currently reported as installed by live EasyTouch pump-info reads are shown here. Branch-specific VF and VSF semantics remain partially decoded.</p>
+              <button className="secondary-action" type="button" onClick={() => void handlePumpConfigurationRefresh()} disabled={pumpConfigurationRefreshPending}>
+                {pumpConfigurationRefreshPending ? "Refreshing..." : "Refresh pump configuration"}
+              </button>
+            </div>
+            {pumpConfigurationError ? <p className="form-caption">{pumpConfigurationError}</p> : null}
+            {pumpConfigurations.length === 0 ? (
+              <p className="empty-state">No installed pump configuration has been observed yet.</p>
+            ) : (
+              <div className="mock-control-grid">
+                {pumpConfigurations.map((pumpConfiguration) => {
+                  const draft = pumpConfigurationDrafts[pumpConfiguration.pump_id];
+                  const pending = pumpConfigurationPending[pumpConfiguration.pump_id] === true;
+                  return (
+                    <section className="control-panel control-panel-stack" key={`pump-config-${pumpConfiguration.pump_id}`}>
+                      <div>
+                        <p className="panel-kicker">{`Pump #${pumpConfiguration.pump_id}`}</p>
+                        <h2>{pumpConfiguration.pump_type_label ?? "Unknown pump type"}</h2>
+                        <p className="panel-copy">
+                          {pumpConfiguration.supported_branch === "vf"
+                            ? "VF branch is shown from known decoded bytes; advanced VF-specific semantics remain partially mapped."
+                            : pumpConfiguration.supported_branch === "vs"
+                              ? "VS/variable-speed branch is editable from the currently decoded EasyTouch payload."
+                              : "Pump branch is only partially decoded; unsupported semantics remain unavailable."}
+                        </p>
+                      </div>
+                      {draft ? (
+                        <div className="control-form">
+                          <label>{`Pump type (${pumpConfiguration.pump_type_label ?? "Unknown"})`}</label>
+                          <input inputMode="numeric" value={draft.pumpType} onChange={(event) => setPumpConfigurationDrafts((current) => ({ ...current, [pumpConfiguration.pump_id]: { ...draft, pumpType: event.target.value } }))} disabled={pending} />
+                          <label>Priming time</label>
+                          <input inputMode="numeric" value={draft.primingTime} onChange={(event) => setPumpConfigurationDrafts((current) => ({ ...current, [pumpConfiguration.pump_id]: { ...draft, primingTime: event.target.value } }))} disabled={pending} />
+                          <label>Unknown byte 3</label>
+                          <input inputMode="numeric" value={draft.unknown3} onChange={(event) => setPumpConfigurationDrafts((current) => ({ ...current, [pumpConfiguration.pump_id]: { ...draft, unknown3: event.target.value } }))} disabled={pending} />
+                          <label>Unknown byte 4</label>
+                          <input inputMode="numeric" value={draft.unknown4} onChange={(event) => setPumpConfigurationDrafts((current) => ({ ...current, [pumpConfiguration.pump_id]: { ...draft, unknown4: event.target.value } }))} disabled={pending} />
+                          <label>Priming speed</label>
+                          <input inputMode="numeric" value={draft.primingSpeed} onChange={(event) => setPumpConfigurationDrafts((current) => ({ ...current, [pumpConfiguration.pump_id]: { ...draft, primingSpeed: event.target.value } }))} disabled={pending} />
+                          <div className="mock-table-shell mock-table-shell-scroll">
+                            <table className="system-data-table">
+                              <thead>
+                                <tr><th>Slot</th><th>Circuit</th><th>RPM</th></tr>
+                              </thead>
+                              <tbody>
+                                {draft.slots.map((slot, index) => (
+                                  <tr key={`pump-${pumpConfiguration.pump_id}-slot-${slot.slot}`}>
+                                    <td>{slot.slot}</td>
+                                    <td><input inputMode="numeric" value={slot.circuitAssignment} onChange={(event) => setPumpConfigurationDrafts((current) => ({ ...current, [pumpConfiguration.pump_id]: { ...draft, slots: draft.slots.map((entry, entryIndex) => entryIndex === index ? { ...entry, circuitAssignment: event.target.value } : entry) } }))} disabled={pending} /></td>
+                                    <td><input inputMode="numeric" value={slot.rpm} onChange={(event) => setPumpConfigurationDrafts((current) => ({ ...current, [pumpConfiguration.pump_id]: { ...draft, slots: draft.slots.map((entry, entryIndex) => entryIndex === index ? { ...entry, rpm: event.target.value } : entry) } }))} disabled={pending} /></td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          <button type="button" onClick={() => void handlePumpConfigurationSave(pumpConfiguration.pump_id)} disabled={pending}>
+                            {pending ? "Saving..." : `Save pump #${pumpConfiguration.pump_id} configuration`}
+                          </button>
+                          {pumpConfigurationMessages[pumpConfiguration.pump_id] ? <p className="form-caption">{pumpConfigurationMessages[pumpConfiguration.pump_id]}</p> : null}
+                        </div>
+                      ) : null}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+          <Card title="Heater Configuration & Control" status="EasyTouch-owned">
+            <p className="panel-copy">These controls send EasyTouch-owned heater configuration and heat-setting requests. Direct UltraTemp ownership remains out of scope.</p>
+            {heaterError ? <p className="form-caption">{heaterError}</p> : null}
+            <div className="mock-control-grid">
+              <section className="control-panel control-panel-stack">
+                <div>
+                  <p className="panel-kicker">Configuration</p>
+                  <h2>{formatHeaterTypeLabel(heater?.configuration.detected_heater_type)}</h2>
+                  <dl className="detail-grid detail-grid-compact">
+                    <div><dt>Heat pump enabled</dt><dd>{formatBoolean(heater?.configuration.solar_or_heat_pump_enabled)}</dd></div>
+                    <div><dt>Heating enabled</dt><dd>{formatBoolean(heater?.configuration.heating_enabled)}</dd></div>
+                    <div><dt>Cooling enabled</dt><dd>{formatBoolean(heater?.configuration.cooling_enabled)}</dd></div>
+                    <div><dt>Freeze protection</dt><dd>{formatBoolean(heater?.configuration.freeze_protection_enabled)}</dd></div>
+                  </dl>
+                </div>
+                <div className="control-form">
+                  <label htmlFor="heater-type">Heater type</label>
+                  <select id="heater-type" value={heaterConfigDraft.heaterType} onChange={(event) => setHeaterConfigDraft((current) => ({ ...current, heaterType: event.target.value as "ultratempHeatPumpCom" | "ultratempEtiHybrid" }))} disabled={heaterConfigPending}>
+                    <option value="ultratempHeatPumpCom">UltraTemp Heat Pump Com</option>
+                    <option value="ultratempEtiHybrid">UltraTemp ETi Hybrid</option>
+                  </select>
+                  <label className="system-inline-checkbox"><input type="checkbox" checked={heaterConfigDraft.coolingEnabled} onChange={(event) => setHeaterConfigDraft((current) => ({ ...current, coolingEnabled: event.target.checked }))} disabled={heaterConfigPending} />Cooling enabled</label>
+                  <label className="system-inline-checkbox"><input type="checkbox" checked={heaterConfigDraft.freezeProtectionEnabled} onChange={(event) => setHeaterConfigDraft((current) => ({ ...current, freezeProtectionEnabled: event.target.checked }))} disabled={heaterConfigPending} />Freeze protection enabled</label>
+                  <button type="button" onClick={() => void handleHeaterConfigurationSave()} disabled={heaterConfigPending}>{heaterConfigPending ? "Saving..." : "Save configuration"}</button>
+                  {heaterConfigMessage ? <p className="form-caption">{heaterConfigMessage}</p> : null}
+                </div>
+              </section>
+              <section className="control-panel control-panel-stack">
+                <div>
+                  <p className="panel-kicker">Heat Settings</p>
+                  <h2>Controller heat modes</h2>
+                  <dl className="detail-grid detail-grid-compact">
+                    <div><dt>Pool mode</dt><dd>{formatLabel(heater?.settings.pool_heat_mode)}</dd></div>
+                    <div><dt>Spa mode</dt><dd>{formatLabel(heater?.settings.spa_heat_mode)}</dd></div>
+                    <div><dt>Pool setpoint</dt><dd>{formatMetric(heater?.settings.pool_setpoint, "°F")}</dd></div>
+                    <div><dt>Spa setpoint</dt><dd>{formatMetric(heater?.settings.spa_setpoint, "°F")}</dd></div>
+                  </dl>
+                </div>
+                <div className="control-form">
+                  <label htmlFor="pool-setpoint">Pool setpoint</label>
+                  <input id="pool-setpoint" inputMode="numeric" value={heaterSettingsDraft.poolSetpoint} onChange={(event) => setHeaterSettingsDraft((current) => ({ ...current, poolSetpoint: event.target.value }))} disabled={heaterSettingsPending} />
+                  <label htmlFor="spa-setpoint">Spa setpoint</label>
+                  <input id="spa-setpoint" inputMode="numeric" value={heaterSettingsDraft.spaSetpoint} onChange={(event) => setHeaterSettingsDraft((current) => ({ ...current, spaSetpoint: event.target.value }))} disabled={heaterSettingsPending} />
+                  <label htmlFor="pool-heat-mode">Pool heat mode</label>
+                  <select id="pool-heat-mode" value={heaterSettingsDraft.poolHeatMode} onChange={(event) => setHeaterSettingsDraft((current) => ({ ...current, poolHeatMode: event.target.value }))} disabled={heaterSettingsPending}>
+                    {HEAT_MODE_OPTIONS.map((option) => <option key={`pool-${option.value}`} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <label htmlFor="spa-heat-mode">Spa heat mode</label>
+                  <select id="spa-heat-mode" value={heaterSettingsDraft.spaHeatMode} onChange={(event) => setHeaterSettingsDraft((current) => ({ ...current, spaHeatMode: event.target.value }))} disabled={heaterSettingsPending}>
+                    {HEAT_MODE_OPTIONS.map((option) => <option key={`spa-${option.value}`} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <label htmlFor="cool-setpoint">Cool setpoint</label>
+                  <input id="cool-setpoint" inputMode="numeric" value={heaterSettingsDraft.coolSetpoint} onChange={(event) => setHeaterSettingsDraft((current) => ({ ...current, coolSetpoint: event.target.value }))} disabled={heaterSettingsPending} />
+                  <button type="button" onClick={() => void handleHeaterSettingsSave()} disabled={heaterSettingsPending}>{heaterSettingsPending ? "Saving..." : "Save heat settings"}</button>
+                  {heaterSettingsMessage ? <p className="form-caption">{heaterSettingsMessage}</p> : null}
+                  <p className="form-caption">Setpoints may reflect the latest confirmed write cache when the controller does not expose a dedicated live setpoint read.</p>
+                </div>
+              </section>
             </div>
           </Card>
         </>
@@ -691,14 +1164,33 @@ interface EditableCircuitConfigRow {
   key: string;
   circuitId: number | null;
   circuitType: string;
+  installed: boolean;
   nameLabel: string;
+  nameValue: number | null;
   nameOptions: string[];
   functionLabel: string;
+  functionValue: number | null;
   functionOptions: string[];
   freezeEnabled: boolean;
   canToggleState: boolean;
   stateEnabled: boolean;
   state: boolean | null;
+}
+
+interface PumpConfigurationDraftSlot {
+  slot: number;
+  circuitAssignment: string;
+  rpm: string;
+}
+
+interface PumpConfigurationDraft {
+  pumpType: string;
+  primingTime: string;
+  unknown3: string;
+  unknown4: string;
+  primingSpeed: string;
+  slots: PumpConfigurationDraftSlot[];
+  trailingBytes: number[];
 }
 
 function getEditableCircuitRows(
@@ -711,9 +1203,12 @@ function getEditableCircuitRows(
       key: circuit.key,
       circuitId: circuit.circuitId,
       circuitType: circuit.circuitType,
+      installed: circuit.installed,
       nameLabel,
+      nameValue: circuit.nameValue,
       nameOptions: getCircuitNameOptions(nameLabel),
       functionLabel,
+      functionValue: circuit.functionValue,
       functionOptions: getCircuitFunctionOptions(functionLabel),
       freezeEnabled: circuit.freezeFlag === true,
       canToggleState: circuit.writable && typeof state === "boolean",
@@ -721,6 +1216,85 @@ function getEditableCircuitRows(
       state
     };
   });
+}
+
+function createPumpConfigurationDraft(pumpConfiguration: ControllerPumpConfigurationData): PumpConfigurationDraft {
+  return {
+    pumpType: String(pumpConfiguration.pump_type ?? 0),
+    primingTime: String(pumpConfiguration.priming_time ?? 0),
+    unknown3: String(pumpConfiguration.unknown_3 ?? 0),
+    unknown4: String(pumpConfiguration.unknown_4 ?? 0),
+    primingSpeed: String(pumpConfiguration.priming_speed ?? 0),
+    slots: pumpConfiguration.slots.map((slot) => ({
+      slot: slot.slot,
+      circuitAssignment: String(slot.circuit_assignment ?? 0),
+      rpm: String(slot.rpm ?? 0)
+    })),
+    trailingBytes: [...pumpConfiguration.trailing_bytes]
+  };
+}
+
+function normalizePumpConfigurationDraft(draft: PumpConfigurationDraft): {
+  pumpType: number;
+  primingTime: number;
+  unknown3: number;
+  unknown4: number;
+  primingSpeed: number;
+  slots: Array<{ circuit_assignment: number; rpm: number }>;
+  trailingBytes: number[];
+} | null {
+  const pumpType = Number.parseInt(draft.pumpType, 10);
+  const primingTime = Number.parseInt(draft.primingTime, 10);
+  const unknown3 = Number.parseInt(draft.unknown3, 10);
+  const unknown4 = Number.parseInt(draft.unknown4, 10);
+  const primingSpeed = Number.parseInt(draft.primingSpeed, 10);
+  const slots = draft.slots.map((slot) => ({
+    circuit_assignment: Number.parseInt(slot.circuitAssignment, 10),
+    rpm: Number.parseInt(slot.rpm, 10)
+  }));
+
+  if ([pumpType, primingTime, unknown3, unknown4, primingSpeed].some((value) => Number.isNaN(value)) || slots.some((slot) => Number.isNaN(slot.circuit_assignment) || Number.isNaN(slot.rpm))) {
+    return null;
+  }
+
+  return {
+    pumpType,
+    primingTime,
+    unknown3,
+    unknown4,
+    primingSpeed,
+    slots,
+    trailingBytes: [...draft.trailingBytes]
+  };
+}
+
+function formatControllerDate(clock: ControllerClockData | null): string {
+  const summary = clock?.summary;
+  if (!summary || summary.month == null || summary.day == null || summary.year == null) {
+    return "Unavailable";
+  }
+  return `${summary.month}/${summary.day}/${summary.year}`;
+}
+
+function formatControllerClockTime(clock: ControllerClockData | null): string {
+  const summary = clock?.summary;
+  if (!summary || summary.hour_24 == null || summary.minute == null) {
+    return "Unavailable";
+  }
+  return formatControllerTime(summary.hour_24, summary.minute);
+}
+
+function formatControllerDstMode(clock: ControllerClockData | null): string {
+  const value = clock?.summary.daylight_savings_auto;
+  if (value == null) {
+    return "Unavailable";
+  }
+  return value ? "Auto" : "Manual";
+}
+
+function formatControllerClockAdvance(clock: ControllerClockData | null): string {
+  const value = clock?.summary.clock_advance;
+  return value == null ? "Unavailable" : String(value);
 }
 
 function isHardwareDetailId(value: string | undefined): value is SystemHardwareDetailId {
@@ -800,6 +1374,8 @@ function formatPlatformServiceName(value: string): string {
       return "Prometheus";
     case "grafana":
       return "Grafana";
+    case "sqlite":
+      return "SQLite";
     case "influxdb":
       return "InfluxDB";
     case "weather-provider":
@@ -820,6 +1396,43 @@ function formatPlatformServiceRole(record: PlatformServiceHealthRecord): string 
   const typeLabel = record.type === "splash" ? "Splash service" : "Third-party service";
   const criticalityLabel = record.criticality.charAt(0).toUpperCase() + record.criticality.slice(1);
   return `${typeLabel} · ${criticalityLabel}`;
+}
+
+const HEAT_MODE_OPTIONS = [
+  { value: "0", label: "Off" },
+  { value: "1", label: "Heater" },
+  { value: "2", label: "Solar / Heat Pump Preferred" },
+  { value: "3", label: "Solar / Heat Pump Only" }
+] as const;
+
+function parseHeatModeNumber(value: string | null | undefined): 0 | 1 | 2 | 3 {
+  switch (value) {
+    case "heater":
+      return 1;
+    case "solar_preferred":
+      return 2;
+    case "solar":
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+function formatHeaterTypeLabel(value: string | null | undefined): string {
+  switch (value) {
+    case "ultratempHeatPumpCom":
+      return "UltraTemp Heat Pump Com";
+    case "ultratempEtiHybrid":
+      return "UltraTemp ETi Hybrid";
+    case "solar":
+      return "Solar";
+    case "gas":
+      return "Gas";
+    case "unknown":
+      return "Unknown";
+    default:
+      return "Heater unavailable";
+  }
 }
 
 function getPlatformServiceStatusClassName(value: PlatformServiceHealthRecord["status"]): string {

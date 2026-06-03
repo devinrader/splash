@@ -1,5 +1,4 @@
-import type { QueryResultRow } from "pg";
-import type { Queryable } from "./database.js";
+import type { SqliteDatabase } from "./database.js";
 
 export type WeatherLocationMode = "address" | "coordinates";
 export type WeatherLocationStatus = "resolved" | "requires_geocoding";
@@ -131,17 +130,17 @@ export class WeatherLocationSettingsService {
 
   private requireRepository(): WeatherLocationSettingsRepository {
     if (!this.repository) {
-      throw new WeatherLocationSettingsUnavailableError("PostgreSQL-backed weather location settings are not configured.");
+      throw new WeatherLocationSettingsUnavailableError("SQLite-backed weather location settings are not configured.");
     }
     return this.repository;
   }
 }
 
-export class PostgresWeatherLocationSettingsRepository implements WeatherLocationSettingsRepository {
-  constructor(private readonly queryable: Queryable) {}
+export class SqliteWeatherLocationSettingsRepository implements WeatherLocationSettingsRepository {
+  constructor(private readonly database: SqliteDatabase) {}
 
   async get(poolId: string): Promise<StoredWeatherLocationSettings | null> {
-    const result = await this.queryable.query<WeatherLocationSettingsRow>(
+    const row = this.database.get<WeatherLocationSettingsRow>(
       `
         SELECT
           pool_id,
@@ -160,20 +159,20 @@ export class PostgresWeatherLocationSettingsRepository implements WeatherLocatio
           weather_geocode_provider,
           weather_geocoded_at
         FROM pool_settings
-        WHERE pool_id = $1
+        WHERE pool_id = ?
       `,
       [poolId]
     );
 
-    if (result.rows.length === 0) {
+    if (!row) {
       return null;
     }
 
-    return mapWeatherLocationSettingsRow(result.rows[0]);
+    return mapWeatherLocationSettingsRow(row);
   }
 
   async upsert(settings: StoredWeatherLocationSettings): Promise<StoredWeatherLocationSettings> {
-    const result = await this.queryable.query<WeatherLocationSettingsRow>(
+    const row = this.database.get<WeatherLocationSettingsRow>(
       `
         INSERT INTO pool_settings (
           pool_id,
@@ -194,7 +193,7 @@ export class PostgresWeatherLocationSettingsRepository implements WeatherLocatio
           updated_at
         )
         VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW()
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
         )
         ON CONFLICT (pool_id) DO UPDATE SET
           weather_location_mode = EXCLUDED.weather_location_mode,
@@ -211,7 +210,7 @@ export class PostgresWeatherLocationSettingsRepository implements WeatherLocatio
           weather_geocoded_longitude = EXCLUDED.weather_geocoded_longitude,
           weather_geocode_provider = EXCLUDED.weather_geocode_provider,
           weather_geocoded_at = EXCLUDED.weather_geocoded_at,
-          updated_at = NOW()
+          updated_at = CURRENT_TIMESTAMP
         RETURNING
           pool_id,
           weather_location_mode,
@@ -248,11 +247,15 @@ export class PostgresWeatherLocationSettingsRepository implements WeatherLocatio
       ]
     );
 
-    return mapWeatherLocationSettingsRow(result.rows[0]);
+    if (!row) {
+      throw new Error("SQLite weather location upsert did not return a row.");
+    }
+
+    return mapWeatherLocationSettingsRow(row);
   }
 }
 
-interface WeatherLocationSettingsRow extends QueryResultRow {
+interface WeatherLocationSettingsRow extends Record<string, unknown> {
   pool_id: string;
   weather_location_mode: WeatherLocationMode;
   weather_location_address_line1: string | null;

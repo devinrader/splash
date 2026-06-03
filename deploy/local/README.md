@@ -9,7 +9,7 @@ milestone-1 Splash slice.
 - `splash-api` runs on the developer machine
 - `splash-protocol` runs on the developer machine
 - NATS runs locally on the developer machine
-- PostgreSQL may run locally in Docker for durable settings and relational
+- SQLite runs as a local database file for durable settings and relational
   metadata
 - `splash-serial` remains on the hardware host because it needs the live FTDI
   or RS-485 TTY device
@@ -47,22 +47,16 @@ Example env files are provided for:
 Copy the relevant example values into your local shell or `.env` tooling before
 running the services.
 
-## Local PostgreSQL
+## Local SQLite
 
-Splash now uses PostgreSQL for durable application settings such as
+Splash now uses SQLite for durable application settings such as
 weather-location configuration and pool chemistry bounds. InfluxDB remains
 reserved for telemetry and time-series history.
-
-The local Docker compose file includes a fixed-version PostgreSQL service:
-
-```bash
-docker compose -f deploy/local/docker-compose.milestone1.yml up -d postgres
-```
 
 The default example API env points at:
 
 ```env
-DATABASE_URL=postgres://splash:splash@127.0.0.1:5432/splash
+SQLITE_PATH=/tmp/splash-api.sqlite
 ```
 
 ## Database migrations
@@ -78,8 +72,8 @@ npm run migrate
 Notes:
 
 - migrations are applied in filename order from `services/splash-api/migrations`
-- applied migration ids are recorded in PostgreSQL `schema_migrations`
-- when PostgreSQL is configured, `splash-api` also applies pending migrations
+- applied migration ids are recorded in SQLite `schema_migrations`
+- when SQLite is configured, `splash-api` also applies pending migrations
   automatically during startup before serving requests
 - the chemistry-bounds migration seeds the first default saltwater residential
   profile into `pool_settings.chemistry_bounds`
@@ -108,9 +102,9 @@ Notes:
 - the script loads `deploy/local/splash-api.env.example` by default
 - the default API env example includes `API_PROMETHEUS_URL` and `API_GRAFANA_URL` so the Platform tab can report observability service health
 - the default API env example also includes `INFLUX_URL`, `INFLUX_TOKEN`, `INFLUX_ORG`, and `INFLUX_BUCKET` so EasyTouch temperature telemetry can be persisted when InfluxDB is available
-- the default API env example now also includes `DATABASE_URL` and
-  `DATABASE_MIGRATIONS_DIR` so PostgreSQL-backed settings can be stored
-- PostgreSQL-backed settings now include both weather location and pool
+- the default API env example now also includes `SQLITE_PATH` and
+  `DATABASE_MIGRATIONS_DIR` so SQLite-backed settings can be stored
+- SQLite-backed settings now include both weather location and pool
   chemistry bounds used by future swimmability and maintenance recommendation
   flows
 - weather refresh can be scheduled on fixed wall-clock minute marks with `WEATHER_REFRESH_MINUTES`, for example `15,45`

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { EventBroker } from "../src/events.js";
 import { LocalHttpServer, type HttpHandlers } from "../src/http.js";
 import {
-  PostgresWeatherLocationSettingsRepository,
+  SqliteWeatherLocationSettingsRepository,
   WeatherLocationSettingsService,
   WeatherLocationSettingsUnavailableError,
   WeatherLocationSettingsValidationError,
@@ -57,36 +57,35 @@ test("validateWeatherLocationSettingsInput rejects invalid latitude and longitud
 });
 
 test("repository maps saved weather location rows", async () => {
-  const queries: Array<{ text: string; values?: unknown[] }> = [];
-  const repository = new PostgresWeatherLocationSettingsRepository({
-    async query(text: string, values?: unknown[]) {
-      queries.push({ text, values });
+  const repository = new SqliteWeatherLocationSettingsRepository({
+    get() {
       return {
-        command: "SELECT",
-        rowCount: 1,
-        oid: 0,
-        fields: [],
-        rows: [
-          {
-            pool_id: "pool-1",
-            weather_location_mode: "coordinates",
-            weather_location_address_line1: null,
-            weather_location_address_line2: null,
-            weather_location_city: null,
-            weather_location_state_region: null,
-            weather_location_postal_code: null,
-            weather_location_country: null,
-            weather_location_latitude: "35.262100",
-            weather_location_longitude: "-81.187300",
-            weather_location_timezone: "America/New_York",
-            weather_geocoded_latitude: null,
-            weather_geocoded_longitude: null,
-            weather_geocode_provider: null,
-            weather_geocoded_at: null
-          }
-        ]
+        pool_id: "pool-1",
+        weather_location_mode: "coordinates",
+        weather_location_address_line1: null,
+        weather_location_address_line2: null,
+        weather_location_city: null,
+        weather_location_state_region: null,
+        weather_location_postal_code: null,
+        weather_location_country: null,
+        weather_location_latitude: "35.262100",
+        weather_location_longitude: "-81.187300",
+        weather_location_timezone: "America/New_York",
+        weather_geocoded_latitude: null,
+        weather_geocoded_longitude: null,
+        weather_geocode_provider: null,
+        weather_geocoded_at: null
       };
-    }
+    },
+    all() {
+      return [];
+    },
+    run() {},
+    exec() {},
+    transaction<T>(callback: () => T) {
+      return callback();
+    },
+    close() {}
   } as never);
 
   const result = await repository.get("pool-1");
@@ -94,8 +93,6 @@ test("repository maps saved weather location rows", async () => {
   assert.ok(result);
   assert.equal(result?.latitude, 35.2621);
   assert.equal(result?.longitude, -81.1873);
-  assert.equal(queries.length, 1);
-  assert.match(queries[0].text, /FROM pool_settings/);
 });
 
 test("service returns requires_geocoding for address mode without resolved coordinates", async () => {
@@ -208,6 +205,14 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
     getEquipment: () => [],
     getHealth: () => ({ status: "healthy", ready: true }),
     getControllerSchedules: () => ({}),
+    getControllerClock: () => ({}),
+    updateControllerClock: async () => ({ commandId: "command-0", clock: {} }),
+    getControllerPumpConfigurations: () => ({ source: "controller_native", controller_type: "easytouch", status: "unavailable", message: "", last_checked: null, pumps: [] }),
+    updateControllerPumpConfiguration: async () => ({ commandId: "command-0", pumpConfiguration: {} }),
+    getControllerHeater: () => ({}),
+    updateControllerSchedule: async () => ({ commandId: "command-0", schedule: {} }),
+    updateControllerHeaterConfiguration: async () => ({ commandId: "command-0", heater: {} }),
+    updateControllerHeaterSettings: async () => ({ commandId: "command-0", heater: {} }),
     getTemperatureTelemetryLatest: async () => ({}),
     getTemperatureTelemetryHistory: async () => ({}),
     getPumpTelemetryLatest: async () => ({}),

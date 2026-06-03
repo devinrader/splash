@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { EquipmentBridge } from "./bridge.js";
 import { defaultPoolSite, defaultWeatherProviderConfig, loadConfig, type ApiConfig } from "./config.js";
-import { createPostgresPool, DatabaseMigrator } from "./database.js";
+import { createSqliteDatabase, DatabaseMigrator, type SqliteDatabase } from "./database.js";
 import { EventBroker } from "./events.js";
 import { LocalHttpServer, type HttpServer } from "./http.js";
 import { createLogger, type Logger } from "./logger.js";
@@ -49,17 +49,16 @@ import {
   type WeatherHistoryMetric
 } from "./weather-forecast.js";
 import {
-  PostgresWeatherLocationSettingsRepository,
+  SqliteWeatherLocationSettingsRepository,
   WeatherLocationSettingsService,
   type WeatherLocationSettings
 } from "./weather-location-settings.js";
 import {
   PoolChemistrySettingsService,
-  PostgresPoolChemistrySettingsRepository,
+  SqlitePoolChemistrySettingsRepository,
   type PoolChemistryRecommendationBounds,
   type PoolChemistrySettingsView
 } from "./pool-chemistry-settings.js";
-import type { Pool } from "pg";
 
 export interface AppOptions {
   config?: ApiConfig;
@@ -73,6 +72,32 @@ export interface AppOptions {
   weatherLocationSettings?: WeatherLocationSettingsService;
   poolChemistrySettings?: PoolChemistrySettingsService;
 }
+
+interface ControllerScheduleUpdateInput {
+  scheduleId: number;
+  mode: "repeat" | "egg_timer";
+  circuitId: number;
+  startTimeMinutes?: number;
+  endTimeMinutes?: number;
+  daysMask?: number;
+  runtimeMinutes?: number;
+}
+
+interface ControllerHeaterConfigurationUpdateInput {
+  heaterType: "ultratempHeatPumpCom" | "ultratempEtiHybrid";
+  coolingEnabled: boolean;
+  freezeProtectionEnabled: boolean;
+}
+
+interface ControllerHeaterSettingsUpdateInput {
+  poolSetpoint: number;
+  spaSetpoint: number;
+  poolHeatMode: 0 | 1 | 2 | 3;
+  spaHeatMode: 0 | 1 | 2 | 3;
+  coolSetpoint: number;
+}
+
+const COMMAND_WAIT_TIMEOUT_MS = 8000;
 
 export class App {
   private readonly config: ApiConfig;
@@ -93,9 +118,10 @@ export class App {
   private readonly weatherForecast: WeatherForecastService;
   private readonly weatherLocationSettings: WeatherLocationSettingsService;
   private readonly poolChemistrySettings: PoolChemistrySettingsService;
-  private readonly postgresPool: Pool | null;
+  private readonly sqliteDatabase: SqliteDatabase | null;
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
+  private readonly commandWaiters = new Map<string, Array<(payload: Record<string, unknown>) => void>>();
 
   constructor(options: AppOptions = {}) {
     this.config = options.config ?? loadConfig();
@@ -129,18 +155,18 @@ export class App {
           this.events.publish("weather.updated", view as unknown as Record<string, unknown>);
         }
       });
-    this.postgresPool = this.config.postgres ? createPostgresPool(this.config.postgres) : null;
+    this.sqliteDatabase = this.config.sqlite ? createSqliteDatabase(this.config.sqlite) : null;
     this.weatherLocationSettings =
       options.weatherLocationSettings ??
       new WeatherLocationSettingsService(
         this.config.poolId,
-        this.postgresPool ? new PostgresWeatherLocationSettingsRepository(this.postgresPool) : null
+        this.sqliteDatabase ? new SqliteWeatherLocationSettingsRepository(this.sqliteDatabase) : null
       );
     this.poolChemistrySettings =
       options.poolChemistrySettings ??
       new PoolChemistrySettingsService(
         this.config.poolId,
-        this.postgresPool ? new PostgresPoolChemistrySettingsRepository(this.postgresPool) : null
+        this.sqliteDatabase ? new SqlitePoolChemistrySettingsRepository(this.sqliteDatabase) : null
       );
     this.platformHealthMonitor = new PlatformHealthMonitor({
       registry: this.buildServiceRegistry(),
@@ -174,6 +200,18 @@ export class App {
 
   getControllerSchedules(): Record<string, unknown> {
     return this.projection.getControllerSchedulesView() as unknown as Record<string, unknown>;
+  }
+
+  getControllerClock(): Record<string, unknown> {
+    return this.projection.getControllerClockView() as unknown as Record<string, unknown>;
+  }
+
+  getControllerPumpConfigurations(): Record<string, unknown> {
+    return this.projection.getControllerPumpConfigurationsView() as unknown as Record<string, unknown>;
+  }
+
+  getControllerHeater(): Record<string, unknown> {
+    return this.projection.getControllerHeaterView() as unknown as Record<string, unknown>;
   }
 
   async getTemperatureTelemetryLatest(): Promise<Record<string, unknown>> {
@@ -580,6 +618,293 @@ export class App {
     return { commandId };
   }
 
+  async updateControllerSchedule(
+    input: ControllerScheduleUpdateInput,
+    session: MessagingSession
+  ): Promise<{ commandId: string; schedule: Record<string, unknown> }> {
+    const commandId = randomUUID();
+    await session.publish("protocol.command.intent", {
+      pool_id: this.config.poolId,
+      command_id: commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "set_controller_schedule",
+      arguments: {
+        schedule_id: input.scheduleId,
+        mode: input.mode,
+        circuit_id: input.circuitId,
+        start_time_minutes: input.startTimeMinutes,
+        end_time_minutes: input.endTimeMinutes,
+        days_mask: input.daysMask,
+        runtime_minutes: input.runtimeMinutes
+      },
+      requested_by: "automation_schedule_editor",
+      dry_run: false
+    });
+
+    const result = await this.waitForCommandResult(commandId);
+    if (result.status !== "completed") {
+      throw new Error(typeof result.detail === "string" ? result.detail : "Controller schedule update did not complete.");
+    }
+
+    const refreshedSchedule = this.findControllerScheduleById(input.scheduleId);
+    if (!refreshedSchedule) {
+      throw new Error("Controller schedule write completed but the refreshed schedule record was not found.");
+    }
+
+    return {
+      commandId,
+      schedule: refreshedSchedule
+    };
+  }
+
+  async updateControllerHeaterConfiguration(
+    input: ControllerHeaterConfigurationUpdateInput,
+    session: MessagingSession
+  ): Promise<{ commandId: string; heater: Record<string, unknown> }> {
+    const commandId = randomUUID();
+    await session.publish("protocol.command.intent", {
+      pool_id: this.config.poolId,
+      command_id: commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "set_heater_configuration",
+      arguments: {
+        heater_type: input.heaterType,
+        cooling_enabled: input.coolingEnabled,
+        freeze_protection_enabled: input.freezeProtectionEnabled
+      },
+      requested_by: "system_hardware_easytouch8",
+      dry_run: false
+    });
+
+    const result = await this.waitForCommandResult(commandId);
+    if (result.status !== "completed") {
+      throw new Error(typeof result.detail === "string" ? result.detail : "Controller heater configuration update did not complete.");
+    }
+
+    return {
+      commandId,
+      heater: this.getControllerHeater()
+    };
+  }
+
+  async updateControllerHeaterSettings(
+    input: ControllerHeaterSettingsUpdateInput,
+    session: MessagingSession
+  ): Promise<{ commandId: string; heater: Record<string, unknown> }> {
+    const commandId = randomUUID();
+    await session.publish("protocol.command.intent", {
+      pool_id: this.config.poolId,
+      command_id: commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "set_heater_settings",
+      arguments: {
+        pool_setpoint: input.poolSetpoint,
+        spa_setpoint: input.spaSetpoint,
+        pool_heat_mode: input.poolHeatMode,
+        spa_heat_mode: input.spaHeatMode,
+        cool_setpoint: input.coolSetpoint
+      },
+      requested_by: "system_hardware_easytouch8",
+      dry_run: false
+    });
+
+    const result = await this.waitForCommandResult(commandId);
+    if (result.status !== "completed") {
+      throw new Error(typeof result.detail === "string" ? result.detail : "Controller heater settings update did not complete.");
+    }
+
+    this.projection.cacheControllerHeaterSettings({
+      poolSetpoint: input.poolSetpoint,
+      spaSetpoint: input.spaSetpoint,
+      coolSetpoint: input.coolSetpoint,
+      poolHeatMode: mapHeatModeLabel(input.poolHeatMode),
+      spaHeatMode: mapHeatModeLabel(input.spaHeatMode),
+      heatSettingByte: ((input.spaHeatMode & 0x03) << 2) | (input.poolHeatMode & 0x03),
+      updatedAt: new Date().toISOString()
+    });
+
+    return {
+      commandId,
+      heater: this.getControllerHeater()
+    };
+  }
+
+  async updateControllerClock(
+    input: {
+      month: number;
+      day: number;
+      year: number;
+      dayOfWeek: number;
+      hour24: number;
+      minute: number;
+      daylightSavingsAuto: boolean | null;
+      clockAdvance: number | null;
+    },
+    session: MessagingSession
+  ): Promise<{ commandId: string; clock: Record<string, unknown> }> {
+    const currentClock = this.getControllerClock();
+    const summary =
+      currentClock.summary && typeof currentClock.summary === "object" && !Array.isArray(currentClock.summary)
+        ? (currentClock.summary as Record<string, unknown>)
+        : {};
+    const currentDst = typeof summary.daylight_savings_auto === "boolean" ? summary.daylight_savings_auto : null;
+    const currentClockAdvance = typeof summary.clock_advance === "number" ? summary.clock_advance : null;
+
+    if (input.daylightSavingsAuto !== currentDst) {
+      throw new Error("DST mode editing is not yet supported until the EasyTouch clock payload is live-validated.");
+    }
+    if (input.clockAdvance !== currentClockAdvance) {
+      throw new Error("Clock advance editing is not yet supported until the EasyTouch clock payload is live-validated.");
+    }
+
+    const commandId = randomUUID();
+    await session.publish("protocol.command.intent", {
+      pool_id: this.config.poolId,
+      command_id: commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "sync_controller_datetime",
+      arguments: {
+        month: input.month,
+        day: input.day,
+        year: input.year,
+        day_of_week: input.dayOfWeek,
+        hour_24: input.hour24,
+        minute: input.minute
+      },
+      requested_by: "system_hardware_easytouch8",
+      dry_run: false
+    });
+
+    const result = await this.waitForCommandResult(commandId);
+    if (result.status !== "completed") {
+      throw new Error(typeof result.detail === "string" ? result.detail : "Controller clock update did not complete.");
+    }
+
+    this.projection.cacheControllerClock({
+      month: input.month,
+      day: input.day,
+      year: input.year,
+      dayOfWeek: input.dayOfWeek,
+      hour24: input.hour24,
+      minute: input.minute,
+      daylightSavingsAuto: currentDst,
+      clockAdvance: currentClockAdvance,
+      updatedAt: new Date().toISOString()
+    });
+
+    return {
+      commandId,
+      clock: this.getControllerClock()
+    };
+  }
+
+  async updateControllerPumpConfiguration(
+    input: {
+      pumpId: number;
+      pumpType: number;
+      primingTime: number;
+      unknown3: number;
+      unknown4: number;
+      slots: Array<{ circuit_assignment: number; rpm: number }>;
+      primingSpeed: number;
+      trailingBytes: number[];
+    },
+    session: MessagingSession
+  ): Promise<{ commandId: string; pumpConfiguration: Record<string, unknown> }> {
+    const existing = this.projection.getControllerPumpConfiguration(input.pumpId);
+    if (!existing) {
+      throw new Error(`Pump ${input.pumpId} is not currently reported as installed by live controller state.`);
+    }
+
+    const commandId = randomUUID();
+    await session.publish("protocol.command.intent", {
+      pool_id: this.config.poolId,
+      command_id: commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "write_pump_config",
+      arguments: {
+        pump_id: input.pumpId,
+        pump_type: input.pumpType,
+        priming_time: input.primingTime,
+        unknown_3: input.unknown3,
+        unknown_4: input.unknown4,
+        slots: input.slots,
+        priming_speed: input.primingSpeed,
+        trailing_bytes: input.trailingBytes
+      },
+      requested_by: "system_hardware_easytouch8",
+      dry_run: false
+    });
+
+    const result = await this.waitForCommandResult(commandId);
+    if (result.status !== "completed") {
+      throw new Error(typeof result.detail === "string" ? result.detail : "Pump configuration update did not complete.");
+    }
+
+    const refreshCommandId = randomUUID();
+    await session.publish("protocol.command.intent", {
+      pool_id: this.config.poolId,
+      command_id: refreshCommandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "controller",
+        bus_address: "0x10"
+      },
+      command_type: "request_pump_info",
+      arguments: {
+        pump_slot: input.pumpId
+      },
+      requested_by: "system_hardware_easytouch8",
+      dry_run: false
+    });
+    await this.waitForCommandResult(refreshCommandId);
+
+    const refreshed = await this.waitForControllerPumpConfiguration(input.pumpId, (value) => {
+      const slots = Array.isArray(value.slots) ? value.slots : [];
+      return (
+        value.pump_type === input.pumpType &&
+        value.priming_time === input.primingTime &&
+        value.priming_speed === input.primingSpeed &&
+        slots.length === input.slots.length &&
+        input.slots.every((slot, index) => {
+          const current = slots[index];
+          return current && typeof current === "object" && current.circuit_assignment === slot.circuit_assignment && current.rpm === slot.rpm;
+        })
+      );
+    });
+
+    return {
+      commandId,
+      pumpConfiguration: refreshed
+    };
+  }
+
   async publishCircuitConfigRequest(
     input: { startIndex: number; endIndex: number },
     session: MessagingSession
@@ -740,6 +1065,41 @@ export class App {
         getEquipment: () => this.getEquipment(),
         getHealth: () => this.getHealth(),
         getControllerSchedules: () => this.getControllerSchedules(),
+        getControllerClock: () => this.getControllerClock(),
+        updateControllerClock: async (input) => {
+          const session = this.currentSession;
+          if (!session) {
+            throw new Error("NATS session unavailable.");
+          }
+          return this.updateControllerClock(input as {
+            month: number;
+            day: number;
+            year: number;
+            dayOfWeek: number;
+            hour24: number;
+            minute: number;
+            daylightSavingsAuto: boolean | null;
+            clockAdvance: number | null;
+          }, session);
+        },
+        getControllerPumpConfigurations: () => this.getControllerPumpConfigurations(),
+        updateControllerPumpConfiguration: async (input) => {
+          const session = this.currentSession;
+          if (!session) {
+            throw new Error("NATS session unavailable.");
+          }
+          return this.updateControllerPumpConfiguration(input as {
+            pumpId: number;
+            pumpType: number;
+            primingTime: number;
+            unknown3: number;
+            unknown4: number;
+            slots: Array<{ circuit_assignment: number; rpm: number }>;
+            primingSpeed: number;
+            trailingBytes: number[];
+          }, session);
+        },
+        getControllerHeater: () => this.getControllerHeater(),
         getTemperatureTelemetryLatest: async () => this.getTemperatureTelemetryLatest(),
         getTemperatureTelemetryHistory: async (query) => this.getTemperatureTelemetryHistory(query),
         getPumpTelemetryLatest: async (query) => this.getPumpTelemetryLatest(query),
@@ -787,6 +1147,27 @@ export class App {
             throw new Error("NATS session unavailable.");
           }
           return this.publishControllerScheduleRequest({ scheduleId }, session);
+        },
+        updateControllerSchedule: async (input) => {
+          const session = this.currentSession;
+          if (!session) {
+            throw new Error("NATS session unavailable.");
+          }
+          return this.updateControllerSchedule(input as ControllerScheduleUpdateInput, session);
+        },
+        updateControllerHeaterConfiguration: async (input) => {
+          const session = this.currentSession;
+          if (!session) {
+            throw new Error("NATS session unavailable.");
+          }
+          return this.updateControllerHeaterConfiguration(input as ControllerHeaterConfigurationUpdateInput, session);
+        },
+        updateControllerHeaterSettings: async (input) => {
+          const session = this.currentSession;
+          if (!session) {
+            throw new Error("NATS session unavailable.");
+          }
+          return this.updateControllerHeaterSettings(input as ControllerHeaterSettingsUpdateInput, session);
         },
         publishCircuitConfigRequest: async ({ startIndex, endIndex }) => {
           const session = this.currentSession;
@@ -855,7 +1236,7 @@ export class App {
 
     await httpServer.start(signal);
     signal.addEventListener("abort", () => {
-      void this.postgresPool?.end();
+      this.sqliteDatabase?.close();
     });
     void this.natsVarzMonitor.start(signal);
     void this.platformHealthMonitor.start(signal);
@@ -865,17 +1246,12 @@ export class App {
   }
 
   private async runDatabaseMigrationsIfConfigured(): Promise<void> {
-    if (!this.postgresPool || !this.config.postgres) {
+    if (!this.sqliteDatabase || !this.config.sqlite) {
       return;
     }
 
-    const client = await this.postgresPool.connect();
-    try {
-      const migrator = new DatabaseMigrator(client, this.config.postgres.migrationsDir);
-      await migrator.migrate();
-    } finally {
-      client.release();
-    }
+    const migrator = new DatabaseMigrator(this.sqliteDatabase, this.config.sqlite.migrationsDir);
+    await migrator.migrate();
   }
 
   private currentSession: MessagingSession | null = null;
@@ -915,6 +1291,13 @@ export class App {
       const commandId = typeof payload.command_id === "string" ? payload.command_id : null;
       if (commandId) {
         this.projection.updateCommandResult(commandId, payload);
+        const waiters = this.commandWaiters.get(commandId);
+        if (waiters) {
+          this.commandWaiters.delete(commandId);
+          for (const resolve of waiters) {
+            resolve(payload);
+          }
+        }
       }
       this.events.publish("command.result", payload);
     });
@@ -978,6 +1361,31 @@ export class App {
           this.projection.updateControllerScheduleObservation({
             ...(fields as Record<string, unknown>),
             occurred_at: typeof payload.decoded_at === "string" ? payload.decoded_at : null
+          });
+        }
+      }
+      if (payload.message_type === "controller_solar_heat_pump_status") {
+        const fields = payload.fields;
+        if (fields && typeof fields === "object" && !Array.isArray(fields)) {
+          const heaterConfiguration = this.projection.updateControllerHeaterConfiguration({
+            ...(fields as Record<string, unknown>),
+            occurred_at: typeof payload.decoded_at === "string" ? payload.decoded_at : null
+          });
+          this.events.publish("equipment.state", {
+            heater_configuration: heaterConfiguration.configuration,
+            heater_settings: heaterConfiguration.settings
+          });
+        }
+      }
+      if (payload.message_type === "pump_info") {
+        const fields = payload.fields;
+        if (fields && typeof fields === "object" && !Array.isArray(fields)) {
+          const pumpConfigurations = this.projection.updateControllerPumpConfiguration({
+            ...(fields as Record<string, unknown>),
+            occurred_at: typeof payload.decoded_at === "string" ? payload.decoded_at : null
+          });
+          this.events.publish("equipment.state", {
+            pump_configurations: pumpConfigurations.pumps
           });
         }
       }
@@ -1118,6 +1526,15 @@ export class App {
         url: this.config.influx.url
       });
     }
+    if (this.config.sqlite) {
+      registry.push({
+        name: "sqlite",
+        kind: "local",
+        type: "third-party",
+        criticality: "important",
+        check: async () => this.buildSqliteServiceRecord()
+      });
+    }
     registry.push({
       name: "weather-provider",
       kind: "local",
@@ -1127,6 +1544,65 @@ export class App {
     });
 
     return registry;
+  }
+
+  private waitForCommandResult(commandId: string): Promise<Record<string, unknown>> {
+    return new Promise((resolve, reject) => {
+      const onResult = (payload: Record<string, unknown>) => {
+        clearTimeout(timeoutId);
+        resolve(payload);
+      };
+      const timeoutId = setTimeout(() => {
+        const waiters = this.commandWaiters.get(commandId) ?? [];
+        const remaining = waiters.filter((handler) => handler !== onResult);
+        if (remaining.length > 0) {
+          this.commandWaiters.set(commandId, remaining);
+        } else {
+          this.commandWaiters.delete(commandId);
+        }
+        reject(new Error("Timed out waiting for controller command result."));
+      }, COMMAND_WAIT_TIMEOUT_MS);
+
+      const waiters = this.commandWaiters.get(commandId) ?? [];
+      this.commandWaiters.set(commandId, [...waiters, onResult]);
+    });
+  }
+
+  private findControllerScheduleById(scheduleId: number): Record<string, unknown> | null {
+    const schedules = this.getControllerSchedules().schedules;
+    if (!Array.isArray(schedules)) {
+      return null;
+    }
+    const matched = schedules.find((value) => value && typeof value === "object" && (value as Record<string, unknown>).schedule_id === scheduleId);
+    return matched && typeof matched === "object" ? matched as Record<string, unknown> : null;
+  }
+
+  private waitForControllerPumpConfiguration(
+    pumpId: number,
+    matches: (value: Record<string, unknown>) => boolean
+  ): Promise<Record<string, unknown>> {
+    return new Promise((resolve, reject) => {
+      const startedAt = Date.now();
+      const poll = () => {
+        const current = this.getControllerPumpConfigurations().pumps;
+        if (Array.isArray(current)) {
+          const matched = current.find((value) => value && typeof value === "object" && (value as Record<string, unknown>).pump_id === pumpId);
+          if (matched && typeof matched === "object" && matches(matched as Record<string, unknown>)) {
+            resolve(matched as Record<string, unknown>);
+            return;
+          }
+        }
+
+        if (Date.now() - startedAt >= COMMAND_WAIT_TIMEOUT_MS) {
+          reject(new Error("Timed out waiting for refreshed controller pump configuration."));
+          return;
+        }
+
+        setTimeout(poll, 100);
+      };
+
+      poll();
+    });
   }
 
   private async buildWeatherProviderServiceRecord(): Promise<Omit<PlatformServiceRecord, "name" | "type" | "criticality">> {
@@ -1139,6 +1615,55 @@ export class App {
       checks: normalizeChecks(health.checks),
       raw: null
     };
+  }
+
+  private async buildSqliteServiceRecord(): Promise<Omit<PlatformServiceRecord, "name" | "type" | "criticality">> {
+    if (!this.sqliteDatabase) {
+      return {
+        status: "unknown",
+        message: "SQLite is not configured",
+        lastChecked: new Date().toISOString(),
+        responseTimeMs: 0,
+        checks: {
+          configuration: {
+            status: "unknown",
+            message: "SQLite is not configured"
+          }
+        },
+        raw: null
+      };
+    }
+
+    try {
+      this.sqliteDatabase.get("SELECT 1 AS ok");
+      return {
+        status: "healthy",
+        message: "SQLite query succeeded",
+        lastChecked: new Date().toISOString(),
+        responseTimeMs: 0,
+        checks: {
+          process: {
+            status: "healthy",
+            message: "SQLite database is reachable and accepting application queries"
+          }
+        },
+        raw: null
+      };
+    } catch (error) {
+      return {
+        status: "unhealthy",
+        message: error instanceof Error ? error.message : "SQLite query failed",
+        lastChecked: new Date().toISOString(),
+        responseTimeMs: 0,
+        checks: {
+          process: {
+            status: "unhealthy",
+            message: error instanceof Error ? error.message : "SQLite query failed"
+          }
+        },
+        raw: null
+      };
+    }
   }
 
   private buildLocalApiServiceRecord(): Omit<PlatformServiceRecord, "name" | "type" | "criticality"> {
@@ -1156,6 +1681,7 @@ export class App {
       message: this.platformHealthMonitor.isStale() ? "Platform health snapshot is stale or not yet collected" : "Platform health snapshot is current"
     };
     const influxService = this.platformHealthMonitor.getSnapshot().services.find((service) => service.name === "influxdb");
+    const sqliteService = this.platformHealthMonitor.getSnapshot().services.find((service) => service.name === "sqlite");
     const checks: Record<string, ServiceCheckResult> = {
       process: processStatus,
       nats: natsCheck,
@@ -1167,6 +1693,12 @@ export class App {
         message: influxService?.message ?? "InfluxDB telemetry status is not yet available"
       };
     }
+    if (this.config.sqlite) {
+      checks.settings_storage = {
+        status: sqliteService?.status ?? "unknown",
+        message: sqliteService?.message ?? "SQLite settings storage status is not yet available"
+      };
+    }
 
     const status: CanonicalServiceStatus =
       natsState.status === "ok"
@@ -1175,6 +1707,8 @@ export class App {
               ? "degraded"
               : this.config.influx && influxService && influxService.status !== "healthy"
                 ? "degraded"
+                : this.config.sqlite && sqliteService && sqliteService.status !== "healthy"
+                  ? "degraded"
                 : "healthy"
           )
         : "unhealthy";
@@ -1188,6 +1722,8 @@ export class App {
             ? (
                 this.config.influx && influxService && influxService.status !== "healthy"
                   ? "Splash API is reachable but telemetry storage is impaired"
+                  : this.config.sqlite && sqliteService && sqliteService.status !== "healthy"
+                    ? "Splash API is reachable but SQLite settings storage is impaired"
                   : "Splash API is reachable but platform health data is still warming up"
               )
             : "Splash API is reachable but cannot fully perform its primary role",
@@ -1270,6 +1806,19 @@ export class App {
         watts: typeof payload.watts === "number" ? payload.watts : null
       }
     };
+  }
+}
+
+function mapHeatModeLabel(value: 0 | 1 | 2 | 3): string {
+  switch (value) {
+    case 0:
+      return "off";
+    case 1:
+      return "heater";
+    case 2:
+      return "solar_preferred";
+    case 3:
+      return "solar";
   }
 }
 

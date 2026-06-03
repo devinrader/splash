@@ -1,5 +1,5 @@
 ALTER TABLE pool_settings
-ADD COLUMN IF NOT EXISTS chemistry_bounds JSONB NOT NULL DEFAULT '{
+ADD COLUMN chemistry_bounds TEXT NOT NULL DEFAULT '{
   "free_chlorine": {
     "chemicalKey": "free_chlorine",
     "displayName": "Free Chlorine",
@@ -100,7 +100,7 @@ ADD COLUMN IF NOT EXISTS chemistry_bounds JSONB NOT NULL DEFAULT '{
     "enabled": false,
     "sortOrder": 100
   }
-}'::jsonb;
+}';
 
 UPDATE pool_settings
 SET chemistry_bounds = '{
@@ -204,6 +204,6 @@ SET chemistry_bounds = '{
     "enabled": false,
     "sortOrder": 100
   }
-}'::jsonb,
-updated_at = NOW()
-WHERE chemistry_bounds IS NULL OR chemistry_bounds = '{}'::jsonb;
+}',
+updated_at = CURRENT_TIMESTAMP
+WHERE chemistry_bounds IS NULL OR chemistry_bounds = '{}';

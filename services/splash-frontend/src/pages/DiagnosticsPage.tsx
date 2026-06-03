@@ -55,7 +55,7 @@ export function DiagnosticsPage(props: DiagnosticsPageProps) {
 }
 
 function ProtocolExplorerTab(props: DiagnosticsPageProps) {
-  const { bundleLabel, setBundleLabel, handleBundleSave, remoteLayoutPageIndex, setRemoteLayoutPageIndex, handleRemoteLayoutRequest, rawFrameHex, setRawFrameHex, handleRawFrameSend, activeRequests, isStreamPaused, setIsStreamPaused, autoScrollEnabled, setAutoScrollEnabled, deviceFilter, setDeviceFilter, messageTypeFilter, setMessageTypeFilter, messageLogLimit, setMessageLogLimit, availableDevices, availableMessageTypes, messageLogTableRef, visibleFrames, setRecentFrames, messagesPerSecond, bundles, selectedBundleId, setSelectedBundleId, baselineBundleId, setBaselineBundleId, comparisonBundleId, setComparisonBundleId, handleBundleCompare, bundleComparison, annotationFrameIndex, setAnnotationFrameIndex, annotationFieldName, setAnnotationFieldName, annotationByteStart, setAnnotationByteStart, annotationByteEnd, setAnnotationByteEnd, annotationConfidence, setAnnotationConfidence, annotationLabel, setAnnotationLabel, annotationNotes, setAnnotationNotes, handleAnnotationSubmit, annotations, promptFrameIndex, setPromptFrameIndex, promptFieldName, setPromptFieldName, promptQuestion, setPromptQuestion, promptWhy, setPromptWhy, promptInputType, setPromptInputType, handlePromptSubmit, prompts } = props;
+  const { bundleLabel, setBundleLabel, handleBundleSave, circuitConfigRequestIndex, setCircuitConfigRequestIndex, handleCircuitConfigLookupRequest, isCircuitConfigLookupPending, circuitConfigLookupMessage, circuitConfigLookupResult, remoteLayoutPageIndex, setRemoteLayoutPageIndex, handleRemoteLayoutRequest, rawFrameHex, setRawFrameHex, handleRawFrameSend, activeRequests, isStreamPaused, setIsStreamPaused, autoScrollEnabled, setAutoScrollEnabled, deviceFilter, setDeviceFilter, messageTypeFilter, setMessageTypeFilter, messageLogLimit, setMessageLogLimit, availableDevices, availableMessageTypes, messageLogTableRef, visibleFrames, setRecentFrames, messagesPerSecond, bundles, selectedBundleId, setSelectedBundleId, baselineBundleId, setBaselineBundleId, comparisonBundleId, setComparisonBundleId, handleBundleCompare, bundleComparison, annotationFrameIndex, setAnnotationFrameIndex, annotationFieldName, setAnnotationFieldName, annotationByteStart, setAnnotationByteStart, annotationByteEnd, setAnnotationByteEnd, annotationConfidence, setAnnotationConfidence, annotationLabel, setAnnotationLabel, annotationNotes, setAnnotationNotes, handleAnnotationSubmit, annotations, promptFrameIndex, setPromptFrameIndex, promptFieldName, setPromptFieldName, promptQuestion, setPromptQuestion, promptWhy, setPromptWhy, promptInputType, setPromptInputType, handlePromptSubmit, prompts } = props;
 
   return (
     <section className="explorer-shell">
@@ -70,6 +70,11 @@ function ProtocolExplorerTab(props: DiagnosticsPageProps) {
             <label htmlFor="bundle-label">Bundle label</label>
             <input id="bundle-label" value={bundleLabel} onChange={(event) => setBundleLabel(event.target.value)} placeholder="pool-high-before-change" />
             <button type="submit">Save frame bundle</button>
+          </form>
+          <form className="inline-form" onSubmit={(event) => void handleCircuitConfigLookupRequest(event)}>
+            <label htmlFor="circuit-config-request-index">Circuit config index</label>
+            <input id="circuit-config-request-index" inputMode="numeric" pattern="[0-9]*" value={circuitConfigRequestIndex} onChange={(event) => setCircuitConfigRequestIndex(event.target.value)} />
+            <button type="submit" disabled={isCircuitConfigLookupPending}>{isCircuitConfigLookupPending ? "Waiting..." : "Request circuit config"}</button>
           </form>
           <form className="inline-form" onSubmit={(event) => void handleRemoteLayoutRequest(event)}>
             <label htmlFor="remote-layout-page-index">Remote Layout page</label>
@@ -97,6 +102,17 @@ function ProtocolExplorerTab(props: DiagnosticsPageProps) {
                 <span>Started {formatRequestTimestamp(request.requestedAt)}</span>
               </div>
             ))}
+          </div>
+          <div className="record-list" aria-label="circuit config lookup result">
+            {circuitConfigLookupMessage ? <p className="card-copy">{circuitConfigLookupMessage}</p> : null}
+            {circuitConfigLookupResult ? (
+              <div className="record-card">
+                <strong>Circuit {circuitConfigLookupResult.circuitId} configuration</strong>
+                <span>Function {circuitConfigLookupResult.functionId} · {circuitConfigLookupResult.baseFunctionLabel ?? "Unavailable"}</span>
+                <span>Name {circuitConfigLookupResult.nameId} · {circuitConfigLookupResult.nameLabel ?? "Unavailable"}</span>
+                <span>Freeze {String(circuitConfigLookupResult.freezeFlag)} · High {String(circuitConfigLookupResult.highFlag)}</span>
+              </div>
+            ) : null}
           </div>
         </article>
         <article className="explorer-card message-log-card">
@@ -229,6 +245,20 @@ function ProtocolExplorerTab(props: DiagnosticsPageProps) {
 export interface DiagnosticsPageProps {
   bundleLabel: string;
   setBundleLabel: React.Dispatch<React.SetStateAction<string>>;
+  circuitConfigRequestIndex: string;
+  setCircuitConfigRequestIndex: React.Dispatch<React.SetStateAction<string>>;
+  isCircuitConfigLookupPending: boolean;
+  circuitConfigLookupMessage: string | null;
+  circuitConfigLookupResult: {
+    circuitId: number | null;
+    functionId: number | null;
+    baseFunctionId: number | null;
+    baseFunctionLabel: string | null;
+    nameId: number | null;
+    nameLabel: string | null;
+    freezeFlag: boolean | null;
+    highFlag: boolean | null;
+  } | null;
   remoteLayoutPageIndex: string;
   setRemoteLayoutPageIndex: React.Dispatch<React.SetStateAction<string>>;
   rawFrameHex: string;
@@ -286,6 +316,7 @@ export interface DiagnosticsPageProps {
   setPromptInputType: React.Dispatch<React.SetStateAction<ProtocolPromptInputType>>;
   messageLogTableRef: React.RefObject<HTMLDivElement | null>;
   handleBundleSave: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
+  handleCircuitConfigLookupRequest: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   handleRemoteLayoutRequest: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   handleRawFrameSend: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   handleBundleCompare: () => Promise<void>;

@@ -25,6 +25,8 @@ export async function runCircuitConfigCapture(options) {
   });
 
   const records = [];
+  let initialObserved = null;
+  let previousObserved = null;
   let stopSubscription = null;
 
   try {
@@ -44,6 +46,19 @@ export async function runCircuitConfigCapture(options) {
     stopSubscription = () => subscription.close();
     await subscription.ready;
 
+    console.log(`Requesting initial circuit configuration baseline for ${circuitLabel}...`);
+    initialObserved = await requestAndCaptureCircuitConfiguration({
+      apiBase,
+      circuitIndex,
+      circuitLabel,
+      mode,
+      subscription,
+      timeoutMs
+    });
+    previousObserved = initialObserved.observed;
+    console.log(`Initial configuration: ${formatObservedSummary(mode, previousObserved)}`);
+    console.log("");
+
     while (true) {
       const requestedLabel = (await rl.question(
         `${mode === "function" ? "Function" : "Name"} switched to for ${circuitLabel} (blank to finish): `
@@ -53,45 +68,31 @@ export async function runCircuitConfigCapture(options) {
         break;
       }
 
-      const requestedAt = new Date().toISOString();
-      const requestResponse = await sendCircuitConfigRequest(apiBase, circuitIndex);
-      console.log(
-        `Requested circuit configuration for ${circuitLabel}. Command ${requestResponse.commandId}. Waiting for circuit_configuration reply...`
-      );
-
-      const frame = await subscription.waitForMatch(
-        (payload) => isMatchingCircuitConfiguration(payload, circuitIndex, requestedAt),
+      const captured = await requestAndCaptureCircuitConfiguration({
+        apiBase,
+        circuitIndex,
+        circuitLabel,
+        mode,
+        subscription,
         timeoutMs
-      );
-
-      const fields = normalizeFields(frame.fields);
+      });
+      const changed = !observedMatches(mode, previousObserved, captured.observed);
       const record = {
         issue,
         mode,
         circuit_label: circuitLabel,
         circuit_index: circuitIndex,
         requested_label: requestedLabel,
-        requested_at: requestedAt,
-        command_id: requestResponse.commandId,
-        observed_at: typeof frame.decoded_at === "string" ? frame.decoded_at : null,
-        frame_id: typeof frame.frame_id === "string" ? frame.frame_id : null,
-        action_code: frame.action_code ?? null,
-        message_type: frame.message_type ?? null,
-        observed: mode === "function"
-          ? {
-              function_id: numberOrNull(fields.function_id),
-              base_function_id: numberOrNull(fields.base_function_id),
-              base_function_label: stringOrNull(fields.base_function_label),
-              freeze_flag: booleanOrNull(fields.freeze_flag),
-              high_flag: booleanOrNull(fields.high_flag)
-            }
-          : {
-              name_id: numberOrNull(fields.name_id),
-              name_label: stringOrNull(fields.name_label),
-              freeze_flag: booleanOrNull(fields.freeze_flag),
-              high_flag: booleanOrNull(fields.high_flag)
-            },
-        full_fields: fields
+        requested_at: captured.requestedAt,
+        command_id: captured.commandId,
+        observed_at: captured.observedAt,
+        frame_id: captured.frameId,
+        action_code: captured.actionCode,
+        message_type: captured.messageType,
+        previous_observed: previousObserved,
+        observed: captured.observed,
+        changed,
+        full_fields: captured.fields
       };
 
       records.push(record);
@@ -100,21 +101,19 @@ export async function runCircuitConfigCapture(options) {
         mode,
         circuit_label: circuitLabel,
         circuit_index: circuitIndex,
+        initial_observed: initialObserved.observed,
         generated_at: new Date().toISOString(),
         records
       });
 
-      if (mode === "function") {
-        console.log(
-          `Observed functionId=${record.observed.function_id} base=${record.observed.base_function_id} (${record.observed.base_function_label ?? "Unavailable"}) freeze=${formatMaybeBoolean(record.observed.freeze_flag)} high=${formatMaybeBoolean(record.observed.high_flag)}`
-        );
+      if (changed) {
+        console.log(`Observed change: ${formatObservedTransition(mode, previousObserved, record.observed)}`);
       } else {
-        console.log(
-          `Observed nameId=${record.observed.name_id} label=${record.observed.name_label ?? "Unavailable"} freeze=${formatMaybeBoolean(record.observed.freeze_flag)} high=${formatMaybeBoolean(record.observed.high_flag)}`
-        );
+        console.log(`No configuration change observed. Current config: ${formatObservedSummary(mode, record.observed)}`);
       }
       console.log(`Saved ${records.length} record(s) to ${outputPath}`);
       console.log("");
+      previousObserved = record.observed;
     }
 
     if (records.length === 0) {
@@ -209,6 +208,88 @@ async function sendCircuitConfigRequest(apiBase, circuitIndex) {
   return { commandId };
 }
 
+async function requestAndCaptureCircuitConfiguration({
+  apiBase,
+  circuitIndex,
+  circuitLabel,
+  mode,
+  subscription,
+  timeoutMs
+}) {
+  const requestedAt = new Date().toISOString();
+  const requestResponse = await sendCircuitConfigRequest(apiBase, circuitIndex);
+  console.log(
+    `Requested circuit configuration for ${circuitLabel}. Command ${requestResponse.commandId}. Waiting for circuit_configuration reply...`
+  );
+
+  const frame = await subscription.waitForMatch(
+    (payload) => isMatchingCircuitConfiguration(payload, circuitIndex, requestedAt),
+    timeoutMs
+  );
+
+  const fields = normalizeFields(frame.fields);
+  return {
+    requestedAt,
+    commandId: requestResponse.commandId,
+    observedAt: typeof frame.decoded_at === "string" ? frame.decoded_at : null,
+    frameId: typeof frame.frame_id === "string" ? frame.frame_id : null,
+    actionCode: frame.action_code ?? null,
+    messageType: frame.message_type ?? null,
+    fields,
+    observed: extractObserved(mode, fields)
+  };
+}
+
+function extractObserved(mode, fields) {
+  if (mode === "function") {
+    return {
+      function_id: numberOrNull(fields.function_id),
+      base_function_id: numberOrNull(fields.base_function_id),
+      base_function_label: stringOrNull(fields.base_function_label),
+      freeze_flag: booleanOrNull(fields.freeze_flag),
+      high_flag: booleanOrNull(fields.high_flag)
+    };
+  }
+
+  return {
+    name_id: numberOrNull(fields.name_id),
+    name_label: stringOrNull(fields.name_label),
+    freeze_flag: booleanOrNull(fields.freeze_flag),
+    high_flag: booleanOrNull(fields.high_flag)
+  };
+}
+
+function formatObservedSummary(mode, observed) {
+  if (mode === "function") {
+    return `functionId=${observed.function_id} base=${observed.base_function_id} (${observed.base_function_label ?? "Unavailable"}) freeze=${formatMaybeBoolean(observed.freeze_flag)} high=${formatMaybeBoolean(observed.high_flag)}`;
+  }
+
+  return `nameId=${observed.name_id} label=${observed.name_label ?? "Unavailable"} freeze=${formatMaybeBoolean(observed.freeze_flag)} high=${formatMaybeBoolean(observed.high_flag)}`;
+}
+
+function formatObservedTransition(mode, previousObserved, nextObserved) {
+  return `${formatObservedSummary(mode, previousObserved)} -> ${formatObservedSummary(mode, nextObserved)}`;
+}
+
+function observedMatches(mode, left, right) {
+  if (left == null || right == null) {
+    return false;
+  }
+
+  if (mode === "function") {
+    return left.function_id === right.function_id
+      && left.base_function_id === right.base_function_id
+      && left.base_function_label === right.base_function_label
+      && left.freeze_flag === right.freeze_flag
+      && left.high_flag === right.high_flag;
+  }
+
+  return left.name_id === right.name_id
+    && left.name_label === right.name_label
+    && left.freeze_flag === right.freeze_flag
+    && left.high_flag === right.high_flag;
+}
+
 function isMatchingCircuitConfiguration(payload, circuitIndex, requestedAt) {
   if (payload == null || typeof payload !== "object" || Array.isArray(payload)) {
     return false;
@@ -235,7 +316,7 @@ function createProtocolFrameSubscription(url) {
   let aborted = false;
   const controller = new AbortController();
 
-  const ready = (async () => {
+  const connection = (async () => {
     const response = await fetch(url, {
       headers: {
         accept: "text/event-stream"
@@ -246,6 +327,14 @@ function createProtocolFrameSubscription(url) {
     if (!response.ok || response.body == null) {
       throw new Error(`Unable to subscribe to ${url}. HTTP ${response.status}`);
     }
+
+    return response;
+  })();
+
+  const ready = connection.then(() => undefined);
+
+  const reader = (async () => {
+    const response = await connection;
 
     let buffer = "";
     for await (const chunk of response.body) {
@@ -281,6 +370,7 @@ function createProtocolFrameSubscription(url) {
         pendingResolver = null;
         resolve();
       }
+      void reader.catch(() => {});
     },
     async waitForMatch(predicate, timeoutMs) {
       const deadline = Date.now() + timeoutMs;

@@ -53,7 +53,7 @@ export function SettingsPage() {
   const [weatherFieldErrors, setWeatherFieldErrors] = useState<Record<string, string>>({});
 
   const [chemistryForm, setChemistryForm] = useState<ChemistryFormEntry[]>([]);
-  const [chemistrySource, setChemistrySource] = useState<"postgres" | "defaults">("defaults");
+  const [chemistrySource, setChemistrySource] = useState<"sqlite" | "defaults">("defaults");
   const [chemistryLoading, setChemistryLoading] = useState(true);
   const [chemistrySaving, setChemistrySaving] = useState(false);
   const [chemistryErrorMessage, setChemistryErrorMessage] = useState<string | null>(null);
@@ -134,7 +134,7 @@ export function SettingsPage() {
     setWeatherFieldErrors({});
   }
 
-  function applyLoadedChemistrySettings(settings: PoolChemistrySetting[], source: "postgres" | "defaults") {
+  function applyLoadedChemistrySettings(settings: PoolChemistrySetting[], source: "sqlite" | "defaults") {
     setChemistryForm(
       [...settings]
         .sort((left, right) => left.sortOrder - right.sortOrder || left.displayName.localeCompare(right.displayName))
@@ -346,16 +346,16 @@ export function SettingsPage() {
         </Card>
       </div>
 
-      <Card title="Pool Chemistry" status={chemistrySource === "postgres" ? "Customized bounds" : "Default bounds"} className="settings-card-chemistry">
+      <Card title="Pool Chemistry" status={chemistrySource === "sqlite" ? "Customized bounds" : "Default bounds"} className="settings-card-chemistry">
         <p className="panel-copy">
-          Configure the chemistry targets Splash should use for swimmability and future maintenance recommendations. These values are durable PostgreSQL-backed settings and not time-series telemetry.
+          Configure the chemistry targets Splash should use for swimmability and future maintenance recommendations. These values are durable SQLite-backed settings and not time-series telemetry.
         </p>
         {chemistryLoading ? <p className="chart-empty-state">Loading pool chemistry settings…</p> : null}
         {!chemistryLoading ? (
           <form className="settings-form" onSubmit={handleChemistrySubmit}>
             <div className="settings-chemistry-source">
               <strong>Current source</strong>
-              <span>{chemistrySource === "postgres" ? "Customized settings from PostgreSQL" : "Default seeded settings"}</span>
+              <span>{chemistrySource === "sqlite" ? "Customized settings from SQLite" : "Default seeded settings"}</span>
             </div>
             <div className="settings-chemistry-table-shell">
               <table className="system-data-table" aria-label="pool chemistry settings">

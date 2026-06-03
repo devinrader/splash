@@ -1,0 +1,8 @@
+---
+- name: Configure splash-core SQLite storage
+  hosts: splash_core
+  become: true
+  vars_files:
+    - ../group_vars/splash_core/main.yml
+  roles:
+    - role: splash_core_sqlite

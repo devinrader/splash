@@ -73,6 +73,11 @@ if [[ -z "${API_HTTP_BIND:-}" ]]; then
   exit 1
 fi
 
+if [[ -n "${SQLITE_PATH:-}" && "${SQLITE_PATH}" != ":memory:" && "${SQLITE_PATH}" != file:* ]]; then
+  SQLITE_PARENT_DIR=$(dirname "${SQLITE_PATH}")
+  mkdir -p "$SQLITE_PARENT_DIR"
+fi
+
 API_HOST="${API_HTTP_BIND%:*}"
 API_PORT="${API_HTTP_BIND##*:}"
 NATS_TARGET="${NATS_URL#nats://}"

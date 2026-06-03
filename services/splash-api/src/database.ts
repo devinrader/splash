@@ -1,10 +1,17 @@
-import { promises as fs } from "node:fs";
+import { mkdirSync, promises as fs } from "node:fs";
 import path from "node:path";
-import { Pool, type PoolClient, type PoolConfig, type QueryResult, type QueryResultRow } from "pg";
-import type { PostgresConfig } from "./config.js";
+import { DatabaseSync } from "node:sqlite";
+import type { SqliteConfig } from "./config.js";
 
-export interface Queryable {
-  query<Row extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<Row>>;
+export type SqliteParams = readonly unknown[];
+
+export interface SqliteDatabase {
+  get<Row extends Record<string, unknown> = Record<string, unknown>>(sql: string, params?: SqliteParams): Row | undefined;
+  all<Row extends Record<string, unknown> = Record<string, unknown>>(sql: string, params?: SqliteParams): Row[];
+  run(sql: string, params?: SqliteParams): void;
+  exec(sql: string): void;
+  transaction<T>(callback: () => T): T;
+  close(): void;
 }
 
 export interface MigrationRecord {
@@ -12,32 +19,64 @@ export interface MigrationRecord {
   appliedAt: string;
 }
 
-export function createPostgresPool(config: PostgresConfig): Pool {
-  return new Pool(toPoolConfig(config));
-}
+class NodeSqliteDatabase implements SqliteDatabase {
+  constructor(private readonly database: DatabaseSync) {}
 
-export function toPoolConfig(config: PostgresConfig): PoolConfig {
-  if (config.connectionString) {
-    return {
-      connectionString: config.connectionString
-    };
+  get<Row extends Record<string, unknown> = Record<string, unknown>>(sql: string, params: SqliteParams = []): Row | undefined {
+    return this.database.prepare(sql).get(...(params as any[])) as Row | undefined;
   }
 
-  return {
-    host: config.host ?? undefined,
-    port: config.port,
-    database: config.database ?? undefined,
-    user: config.user ?? undefined,
-    password: config.password ?? undefined
-  };
+  all<Row extends Record<string, unknown> = Record<string, unknown>>(sql: string, params: SqliteParams = []): Row[] {
+    return this.database.prepare(sql).all(...(params as any[])) as Row[];
+  }
+
+  run(sql: string, params: SqliteParams = []): void {
+    this.database.prepare(sql).run(...(params as any[]));
+  }
+
+  exec(sql: string): void {
+    this.database.exec(sql);
+  }
+
+  transaction<T>(callback: () => T): T {
+    this.database.exec("BEGIN");
+    try {
+      const result = callback();
+      this.database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  close(): void {
+    this.database.close();
+  }
+}
+
+export function createSqliteDatabase(config: SqliteConfig): SqliteDatabase {
+  const resolvedPath = resolveDatabasePath(config.path);
+  if (shouldEnsureParentDirectory(resolvedPath)) {
+    mkdirSync(path.dirname(resolvedPath), { recursive: true });
+  }
+
+  const database = new DatabaseSync(resolvedPath);
+  database.exec("PRAGMA foreign_keys = ON");
+  database.exec(`PRAGMA busy_timeout = ${Math.max(0, config.busyTimeoutMs)}`);
+  if (resolvedPath !== ":memory:") {
+    database.exec(`PRAGMA journal_mode = ${config.journalMode}`);
+  }
+
+  return new NodeSqliteDatabase(database);
 }
 
 export class DatabaseMigrator {
-  constructor(private readonly queryable: Queryable, private readonly migrationsDir: string) {}
+  constructor(private readonly database: SqliteDatabase, private readonly migrationsDir: string) {}
 
   async migrate(): Promise<MigrationRecord[]> {
-    await this.ensureMigrationsTable();
-    const applied = await this.readAppliedMigrationIds();
+    this.ensureMigrationsTable();
+    const applied = this.readAppliedMigrationIds();
     const files = await this.readMigrationFiles();
     const executed: MigrationRecord[] = [];
 
@@ -45,7 +84,7 @@ export class DatabaseMigrator {
       if (applied.has(file.id)) {
         continue;
       }
-      await this.applyMigration(file);
+      this.applyMigration(file);
       executed.push({
         id: file.id,
         appliedAt: new Date().toISOString()
@@ -55,18 +94,18 @@ export class DatabaseMigrator {
     return executed;
   }
 
-  private async ensureMigrationsTable(): Promise<void> {
-    await this.queryable.query(`
+  private ensureMigrationsTable(): void {
+    this.database.exec(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         id TEXT PRIMARY KEY,
-        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
   }
 
-  private async readAppliedMigrationIds(): Promise<Set<string>> {
-    const result = await this.queryable.query<{ id: string }>("SELECT id FROM schema_migrations ORDER BY id ASC");
-    return new Set(result.rows.map((row) => row.id));
+  private readAppliedMigrationIds(): Set<string> {
+    const rows = this.database.all<{ id: string }>("SELECT id FROM schema_migrations ORDER BY id ASC");
+    return new Set(rows.map((row) => row.id));
   }
 
   private async readMigrationFiles(): Promise<Array<{ id: string; sql: string }>> {
@@ -88,26 +127,21 @@ export class DatabaseMigrator {
     return migrations;
   }
 
-  private async applyMigration(migration: { id: string; sql: string }): Promise<void> {
-    if (isTransactional(this.queryable)) {
-      const client = this.queryable;
-      await client.query("BEGIN");
-      try {
-        await client.query(migration.sql);
-        await client.query("INSERT INTO schema_migrations (id) VALUES ($1)", [migration.id]);
-        await client.query("COMMIT");
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      }
-      return;
-    }
-
-    await this.queryable.query(migration.sql);
-    await this.queryable.query("INSERT INTO schema_migrations (id) VALUES ($1)", [migration.id]);
+  private applyMigration(migration: { id: string; sql: string }): void {
+    this.database.transaction(() => {
+      this.database.exec(migration.sql);
+      this.database.run("INSERT INTO schema_migrations (id) VALUES (?)", [migration.id]);
+    });
   }
 }
 
-function isTransactional(queryable: Queryable): queryable is PoolClient {
-  return typeof (queryable as PoolClient).release === "function";
+function resolveDatabasePath(inputPath: string): string {
+  if (inputPath === ":memory:" || inputPath.startsWith("file:")) {
+    return inputPath;
+  }
+  return path.resolve(process.cwd(), inputPath);
+}
+
+function shouldEnsureParentDirectory(resolvedPath: string): boolean {
+  return resolvedPath !== ":memory:" && !resolvedPath.startsWith("file:");
 }
