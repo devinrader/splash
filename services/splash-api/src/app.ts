@@ -59,6 +59,14 @@ import {
   type PoolChemistryRecommendationBounds,
   type PoolChemistrySettingsView
 } from "./pool-chemistry-settings.js";
+import {
+  ChemistryReadingsService,
+  SqliteChemistryReadingsRepository,
+  type ChemistryHistoryQueryInput,
+  type ChemistryHistoryView,
+  type ChemistryReadingCreateResult,
+  type ChemistryReadingRecord
+} from "./chemistry-readings.js";
 
 export interface AppOptions {
   config?: ApiConfig;
@@ -71,6 +79,7 @@ export interface AppOptions {
   weatherForecast?: WeatherForecastService;
   weatherLocationSettings?: WeatherLocationSettingsService;
   poolChemistrySettings?: PoolChemistrySettingsService;
+  chemistryReadings?: ChemistryReadingsService;
 }
 
 interface ControllerScheduleUpdateInput {
@@ -118,6 +127,7 @@ export class App {
   private readonly weatherForecast: WeatherForecastService;
   private readonly weatherLocationSettings: WeatherLocationSettingsService;
   private readonly poolChemistrySettings: PoolChemistrySettingsService;
+  private readonly chemistryReadings: ChemistryReadingsService;
   private readonly sqliteDatabase: SqliteDatabase | null;
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
@@ -167,6 +177,12 @@ export class App {
       new PoolChemistrySettingsService(
         this.config.poolId,
         this.sqliteDatabase ? new SqlitePoolChemistrySettingsRepository(this.sqliteDatabase) : null
+      );
+    this.chemistryReadings =
+      options.chemistryReadings ??
+      new ChemistryReadingsService(
+        this.config.poolId,
+        this.sqliteDatabase ? new SqliteChemistryReadingsRepository(this.sqliteDatabase) : null
       );
     this.platformHealthMonitor = new PlatformHealthMonitor({
       registry: this.buildServiceRegistry(),
@@ -292,6 +308,20 @@ export class App {
 
   async updatePoolChemistrySettings(input: unknown): Promise<PoolChemistrySettingsView> {
     return this.poolChemistrySettings.updatePoolChemistrySettings(input);
+  }
+
+  async getLatestChemistryReading(): Promise<ChemistryReadingRecord | null> {
+    return this.chemistryReadings.getLatestChemistryReading();
+  }
+
+  async getChemistryHistory(input: ChemistryHistoryQueryInput): Promise<ChemistryHistoryView> {
+    return this.chemistryReadings.getChemistryHistory(input);
+  }
+
+  async createChemistryReading(input: unknown): Promise<ChemistryReadingCreateResult> {
+    const result = await this.chemistryReadings.createChemistryReading(input);
+    this.events.publish("chemistry.reading", result.reading as unknown as Record<string, unknown>);
+    return result;
   }
 
   async getChemistryBoundsForRecommendations(): Promise<PoolChemistryRecommendationBounds> {
@@ -1111,6 +1141,9 @@ export class App {
         upsertWeatherLocationSettings: async (input) => this.upsertWeatherLocationSettings(input) as unknown as Record<string, unknown>,
         getPoolChemistrySettings: async () => this.getPoolChemistrySettings() as unknown as Record<string, unknown>,
         updatePoolChemistrySettings: async (input) => this.updatePoolChemistrySettings(input) as unknown as Record<string, unknown>,
+        getLatestChemistryReading: async () => this.getLatestChemistryReading(),
+        getChemistryHistory: async (query) => this.getChemistryHistory(query),
+        createChemistryReading: async (input) => this.createChemistryReading(input),
         getPlatformStatus: () => this.getPlatformStatus(),
         getMetrics: () => this.getMetrics(),
         getEventBroker: () => this.events,

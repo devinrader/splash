@@ -492,6 +492,77 @@ export interface PoolChemistrySettingsSaveInput {
   }>;
 }
 
+export type ChemistryHistoryMetric =
+  | "ph"
+  | "free_chlorine"
+  | "total_alkalinity"
+  | "calcium_hardness"
+  | "cyanuric_acid"
+  | "salt_level"
+  | "rainfall_inches";
+
+export interface ChemistryReadingRecord {
+  id: string;
+  pool_id: string;
+  ph: number | null;
+  free_chlorine: number | null;
+  total_alkalinity: number | null;
+  calcium_hardness: number | null;
+  cyanuric_acid: number | null;
+  salt_level: number | null;
+  rainfall_inches: number | null;
+  source: "manual" | "sensor";
+  recorded_at: string;
+  created_at: string;
+}
+
+export interface ChemistryHistoryPoint {
+  recorded_at: string;
+  value: number;
+}
+
+export interface ChemistryHistorySeries {
+  metric: ChemistryHistoryMetric;
+  points: ChemistryHistoryPoint[];
+}
+
+export interface ChemistryHistoryData {
+  start: string;
+  end: string;
+  interval: "raw" | "1d";
+  readings: ChemistryReadingRecord[];
+  series: ChemistryHistorySeries[];
+}
+
+export interface ChemistryLatestResponse {
+  data: ChemistryReadingRecord | null;
+  error: unknown;
+}
+
+export interface ChemistryHistoryResponse {
+  data: ChemistryHistoryData;
+  error: unknown;
+}
+
+export interface ChemistryReadingCreateInput {
+  ph?: number | null;
+  freeChlorine?: number | null;
+  totalAlkalinity?: number | null;
+  calciumHardness?: number | null;
+  cyanuricAcid?: number | null;
+  saltLevel?: number | null;
+  rainfallInches?: number | null;
+  recordedAt?: string | null;
+}
+
+export interface ChemistryReadingCreateResponse {
+  data: {
+    reading: ChemistryReadingRecord;
+    warnings: string[];
+  };
+  error: unknown;
+}
+
 export type WeatherHistoryMetric =
   | "temperature_f"
   | "cloud_cover"

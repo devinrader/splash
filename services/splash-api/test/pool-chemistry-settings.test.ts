@@ -294,6 +294,31 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       settings: [],
       source: "defaults"
     }),
+    getLatestChemistryReading: async () => null,
+    getChemistryHistory: async () => ({
+      start: "2026-01-01T00:00:00.000Z",
+      end: "2026-01-02T00:00:00.000Z",
+      interval: "raw",
+      readings: [],
+      series: []
+    }),
+    createChemistryReading: async () => ({
+      reading: {
+        id: "reading-1",
+        pool_id: "pool-1",
+        ph: 7.5,
+        free_chlorine: 5.8,
+        total_alkalinity: null,
+        calcium_hardness: null,
+        cyanuric_acid: null,
+        salt_level: null,
+        rainfall_inches: null,
+        source: "manual",
+        recorded_at: "2026-01-01T00:00:00.000Z",
+        created_at: "2026-01-01T00:00:00.000Z"
+      },
+      warnings: []
+    }),
     getPlatformStatus: async () => ({}),
     getMetrics: () => "",
     getEventBroker: () => eventBroker,

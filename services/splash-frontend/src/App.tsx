@@ -30,6 +30,7 @@ import { HomePage } from "./pages/HomePage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SystemPage } from "./pages/SystemPage";
+import { WaterTestLogPage } from "./pages/WaterTestLogPage";
 import { useFrontendStore } from "./store";
 import type {
   ConnectivityHistorySample,
@@ -784,7 +785,7 @@ function AppLayout({
           <Route path="/routines" element={<PlaceholderPage kicker="Routines" title="Maintenance Workflows" description="Checklist-driven maintenance, reminders, and routine tracking will arrive here in a later milestone." />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/alerts" element={<PlaceholderPage kicker="Alerts" title="Messages & Warnings" description="Operator alerts, reminders, and equipment attention items will appear here once the notification model reaches the frontend shell." />} />
-          <Route path="/water-test-log" element={<PlaceholderPage kicker="Water Test Log" title="Chemistry Entries" description="Manual chemistry readings and later chart context will be shown here as the water-testing workflows are implemented." />} />
+          <Route path="/water-test-log" element={<WaterTestLogPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/system/overview" replace />} />
         </Routes>

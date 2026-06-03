@@ -15,6 +15,13 @@ import {
   WeatherLocationSettingsValidationError
 } from "./weather-location-settings.js";
 import {
+  ChemistryReadingsUnavailableError,
+  ChemistryReadingsValidationError,
+  type ChemistryHistoryView,
+  type ChemistryReadingCreateResult,
+  type ChemistryReadingRecord
+} from "./chemistry-readings.js";
+import {
   PoolChemistrySettingsUnavailableError,
   PoolChemistrySettingsValidationError
 } from "./pool-chemistry-settings.js";
@@ -70,6 +77,13 @@ export interface HttpHandlers {
   upsertWeatherLocationSettings(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   getPoolChemistrySettings(): Promise<Record<string, unknown>>;
   updatePoolChemistrySettings(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  getLatestChemistryReading(): Promise<ChemistryReadingRecord | null>;
+  getChemistryHistory(input: {
+    start: string | null;
+    end: string | null;
+    interval: string | null;
+  }): Promise<ChemistryHistoryView>;
+  createChemistryReading(input: Record<string, unknown>): Promise<ChemistryReadingCreateResult>;
   getPlatformStatus(): Promise<Record<string, unknown>>;
   getMetrics(): string;
   getEventBroker(): EventBroker;
@@ -309,6 +323,27 @@ export class LocalHttpServer implements HttpServer {
       if (req.method === "PUT" && req.url === "/api/settings/pool-chemistry") {
         const body = await readJsonBody(req);
         return json(req, res, 200, { data: await this.handlers.updatePoolChemistrySettings(body), error: null });
+      }
+
+      if (req.method === "GET" && req.url === "/chemistry/latest") {
+        return json(req, res, 200, { data: await this.handlers.getLatestChemistryReading(), error: null });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/chemistry/history")) {
+        const url = new URL(req.url, "http://localhost");
+        return json(req, res, 200, {
+          data: await this.handlers.getChemistryHistory({
+            start: url.searchParams.get("start"),
+            end: url.searchParams.get("end"),
+            interval: url.searchParams.get("interval")
+          }),
+          error: null
+        });
+      }
+
+      if (req.method === "POST" && req.url === "/chemistry") {
+        const body = await readJsonBody(req);
+        return json(req, res, 201, { data: await this.handlers.createChemistryReading(body), error: null });
       }
 
       const controllerScheduleUpdateMatch = req.url?.match(/^\/controller\/schedules\/([^/]+)$/);
@@ -692,6 +727,27 @@ export class LocalHttpServer implements HttpServer {
       }
 
       if (error instanceof PoolChemistrySettingsUnavailableError) {
+        return json(req, res, 503, {
+          data: null,
+          error: {
+            code: "service_unavailable",
+            message: error.message
+          }
+        });
+      }
+
+      if (error instanceof ChemistryReadingsValidationError) {
+        return json(req, res, 400, {
+          data: null,
+          error: {
+            code: "validation_error",
+            message: error.message,
+            details: error.details
+          }
+        });
+      }
+
+      if (error instanceof ChemistryReadingsUnavailableError) {
         return json(req, res, 503, {
           data: null,
           error: {

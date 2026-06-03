@@ -48,7 +48,7 @@ export const NAV_ITEMS: Array<{
   { id: "automation", label: "Automation", description: "Schedules & rules", icon: "missing-icon", path: "/automation" },
   { id: "alerts", label: "Alerts", description: "Messages & warnings", icon: "missing-icon", path: "/alerts" },
   { id: "diagnostics", label: "Diagnostics", description: "Protocol explorer", icon: "missing-icon", path: "/diagnostics/protocol-explorer" },
-  { id: "water-test-log", label: "Water Test Log", description: "Test history & results", icon: "missing-icon", path: "/water-test-log" },
+  { id: "water-test-log", label: "Water Test Log", description: "Test history & results", icon: "water-test-log", path: "/water-test-log" },
   { id: "settings", label: "Settings", description: "System & preferences", icon: "missing-icon", path: "/settings" }
 ];
 

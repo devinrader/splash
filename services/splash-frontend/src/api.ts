@@ -1,4 +1,8 @@
 import type {
+  ChemistryHistoryResponse,
+  ChemistryLatestResponse,
+  ChemistryReadingCreateInput,
+  ChemistryReadingCreateResponse,
   CommandAcceptedResponse,
   ControllerClockData,
   ControllerClockUpdateInput,
@@ -282,6 +286,57 @@ export async function fetchPumpTelemetryHistory(input: {
     throw new Error(`Pump history request failed with HTTP ${response.status}.`);
   }
   return (await response.json()) as PumpTelemetryHistoryResponse;
+}
+
+export async function fetchChemistryLatest(): Promise<ChemistryLatestResponse> {
+  const response = await fetch(buildApiUrl("/chemistry/latest"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Chemistry latest request failed.");
+  }
+  return (await response.json()) as ChemistryLatestResponse;
+}
+
+export async function fetchChemistryHistory(input: {
+  start: string;
+  end: string;
+  interval?: "raw" | "1d";
+}): Promise<ChemistryHistoryResponse> {
+  const params = new URLSearchParams({
+    start: input.start,
+    end: input.end
+  });
+  if (input.interval) {
+    params.set("interval", input.interval);
+  }
+  const response = await fetch(buildApiUrl(`/chemistry/history?${params.toString()}`));
+  if (!response.ok) {
+    throw await buildApiError(response, "Chemistry history request failed.");
+  }
+  return (await response.json()) as ChemistryHistoryResponse;
+}
+
+export async function createChemistryReading(input: ChemistryReadingCreateInput): Promise<ChemistryReadingCreateResponse> {
+  const response = await fetch(buildApiUrl("/chemistry"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      ph: input.ph,
+      free_chlorine: input.freeChlorine,
+      total_alkalinity: input.totalAlkalinity,
+      calcium_hardness: input.calciumHardness,
+      cyanuric_acid: input.cyanuricAcid,
+      salt_level: input.saltLevel,
+      rainfall_inches: input.rainfallInches,
+      source: "manual",
+      recorded_at: input.recordedAt ?? undefined
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Chemistry reading save failed.");
+  }
+  return (await response.json()) as ChemistryReadingCreateResponse;
 }
 
 export async function fetchWeatherForecast(): Promise<WeatherForecastResponse> {
