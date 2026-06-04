@@ -603,6 +603,34 @@ export interface PoolCoverEventCreateResponse {
   error: unknown;
 }
 
+export type SwimmabilityStatus = "good" | "caution" | "poor" | "unknown";
+export type SwimmabilityDriverSeverity = "good" | "neutral" | "caution" | "poor" | "unknown";
+
+export interface SwimmabilityDriver {
+  key: string;
+  severity: SwimmabilityDriverSeverity;
+  message: string;
+}
+
+export interface SwimmabilityData {
+  status: SwimmabilityStatus;
+  score: number;
+  summary: string;
+  updated_at: string;
+  drivers: SwimmabilityDriver[];
+  inputs: {
+    chemistry_latest_at: string | null;
+    cover_latest_at: string | null;
+    forecast_fetched_at: string | null;
+    telemetry_latest_at: string | null;
+  };
+}
+
+export interface SwimmabilityResponse {
+  data: SwimmabilityData;
+  error: unknown;
+}
+
 export type WeatherHistoryMetric =
   | "temperature_f"
   | "cloud_cover"

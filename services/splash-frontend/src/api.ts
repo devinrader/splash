@@ -32,6 +32,7 @@ import type {
   PlatformStatusResponse,
   PoolChemistrySettingsResponse,
   PoolChemistrySettingsSaveInput,
+  SwimmabilityResponse,
   ProtocolAnnotationConfidence,
   ProtocolAnnotationResponse,
   ProtocolBundleComparisonResponse,
@@ -388,6 +389,14 @@ export async function createPoolCoverEvent(input: PoolCoverEventCreateInput): Pr
     throw await buildApiError(response, "Pool cover save failed.");
   }
   return (await response.json()) as PoolCoverEventCreateResponse;
+}
+
+export async function fetchSwimmability(): Promise<SwimmabilityResponse> {
+  const response = await fetch(buildApiUrl("/swimmability"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Swimmability request failed.");
+  }
+  return (await response.json()) as SwimmabilityResponse;
 }
 
 export async function fetchWeatherForecast(): Promise<WeatherForecastResponse> {

@@ -32,6 +32,7 @@ import {
   PoolChemistrySettingsUnavailableError,
   PoolChemistrySettingsValidationError
 } from "./pool-chemistry-settings.js";
+import type { SwimmabilityView } from "./swimmability.js";
 
 export interface HttpServer {
   start(signal: AbortSignal): Promise<void>;
@@ -98,6 +99,7 @@ export interface HttpHandlers {
     limit: string | null;
   }): Promise<PoolCoverHistoryView>;
   createPoolCoverEvent(input: Record<string, unknown>): Promise<PoolCoverEventRecord>;
+  getSwimmability(): Promise<SwimmabilityView>;
   getPlatformStatus(): Promise<Record<string, unknown>>;
   getMetrics(): string;
   getEventBroker(): EventBroker;
@@ -379,6 +381,10 @@ export class LocalHttpServer implements HttpServer {
       if (req.method === "POST" && req.url === "/pool/cover") {
         const body = await readJsonBody(req);
         return json(req, res, 201, { data: await this.handlers.createPoolCoverEvent(body), error: null });
+      }
+
+      if (req.method === "GET" && req.url === "/swimmability") {
+        return json(req, res, 200, { data: await this.handlers.getSwimmability(), error: null });
       }
 
       const controllerScheduleUpdateMatch = req.url?.match(/^\/controller\/schedules\/([^/]+)$/);

@@ -1,0 +1,465 @@
+import type { ChemistryReadingRecord } from "./chemistry-readings.js";
+import type { PoolChemistryRecommendationBounds } from "./pool-chemistry-settings.js";
+import type { PoolCoverCurrentView } from "./pool-cover-events.js";
+import type { TemperatureLatestView } from "./temperature-telemetry.js";
+import type { WeatherForecastView } from "./weather-forecast.js";
+
+export type SwimmabilityStatus = "good" | "caution" | "poor" | "unknown";
+export type SwimmabilityDriverSeverity = "good" | "neutral" | "caution" | "poor" | "unknown";
+
+export interface SwimmabilityDriver {
+  key: string;
+  severity: SwimmabilityDriverSeverity;
+  message: string;
+}
+
+export interface SwimmabilityView {
+  status: SwimmabilityStatus;
+  score: number;
+  summary: string;
+  updated_at: string;
+  drivers: SwimmabilityDriver[];
+  inputs: {
+    chemistry_latest_at: string | null;
+    cover_latest_at: string | null;
+    forecast_fetched_at: string | null;
+    telemetry_latest_at: string | null;
+  };
+}
+
+export interface SwimmabilityInput {
+  chemistry: ChemistryReadingRecord | null;
+  chemistryBounds: PoolChemistryRecommendationBounds;
+  cover: PoolCoverCurrentView;
+  forecast: WeatherForecastView;
+  latestTemperatures: TemperatureLatestView;
+  rainfallSinceChemistryInches: number | null;
+  now?: string;
+}
+
+const HARD_BLOCK_PH_LOW = 7.0;
+const HARD_BLOCK_PH_HIGH = 8.2;
+const HARD_BLOCK_FC_LOW = 0.5;
+const HARD_BLOCK_CYA_HIGH = 100;
+const STALE_CAUTION_HOURS = 7 * 24;
+const STALE_UNKNOWN_HOURS = 14 * 24;
+const LIGHT_RAIN_INCHES = 0.25;
+const HEAVY_RAIN_INCHES = 1.0;
+
+export function buildSwimmabilityView(input: SwimmabilityInput): SwimmabilityView {
+  const updatedAt = input.now ?? new Date().toISOString();
+  const drivers: SwimmabilityDriver[] = [];
+
+  if (!input.chemistry) {
+    return {
+      status: "unknown",
+      score: 0,
+      summary: "Swimmability is unknown because no chemistry reading has been logged yet.",
+      updated_at: updatedAt,
+      drivers: [
+        {
+          key: "chemistry_missing",
+          severity: "unknown",
+          message: "No chemistry reading is available yet."
+        }
+      ],
+      inputs: {
+        chemistry_latest_at: null,
+        cover_latest_at: input.cover.current?.recorded_at ?? null,
+        forecast_fetched_at: input.forecast.fetched_at,
+        telemetry_latest_at: input.latestTemperatures.last_updated
+      }
+    };
+  }
+
+  let score = 100;
+  let status: SwimmabilityStatus = "good";
+
+  const hardBlock = assessHardBlock(input.chemistry);
+  if (hardBlock) {
+    drivers.push(hardBlock);
+    score = Math.min(score, 20);
+    status = "poor";
+  }
+
+  const chemistryDrivers = assessChemistryBounds(input.chemistry, input.chemistryBounds);
+  for (const driver of chemistryDrivers) {
+    drivers.push(driver);
+    if (driver.severity === "caution") {
+      score -= 12;
+      if (status === "good") {
+        status = "caution";
+      }
+    }
+  }
+
+  const context = deriveContext(input);
+  const recency = assessChemistryRecency(input.chemistry.recorded_at, context);
+  drivers.push(recency.driver);
+  if (recency.status === "unknown" && status !== "poor") {
+    status = "unknown";
+    score = Math.min(score, 35);
+  } else if (recency.status === "caution" && status === "good") {
+    status = "caution";
+    score -= 10;
+  }
+
+  const coverDriver = describeCoverState(input.cover.current?.state ?? null, input.cover.current?.cover_type ?? null);
+  if (coverDriver) {
+    drivers.push(coverDriver);
+    if (coverDriver.severity === "neutral") {
+      score -= 3;
+    }
+  }
+
+  const weatherDriver = describeWeatherContext(context);
+  if (weatherDriver) {
+    drivers.push(weatherDriver);
+    if (weatherDriver.severity === "caution" && status === "good") {
+      status = "caution";
+      score -= 8;
+    }
+  }
+
+  const temperatureDriver = describeWaterTemperatureComfort(context.waterTemperatureF);
+  if (temperatureDriver) {
+    drivers.push(temperatureDriver);
+    if (temperatureDriver.severity === "caution" && status === "good") {
+      status = "caution";
+      score -= 6;
+    }
+  }
+
+  score = clamp(Math.round(score), 0, 100);
+  const summary = summarize(status, drivers);
+
+  return {
+    status,
+    score,
+    summary,
+    updated_at: updatedAt,
+    drivers,
+    inputs: {
+      chemistry_latest_at: input.chemistry.recorded_at,
+      cover_latest_at: input.cover.current?.recorded_at ?? null,
+      forecast_fetched_at: input.forecast.fetched_at,
+      telemetry_latest_at: input.latestTemperatures.last_updated
+    }
+  };
+}
+
+function assessHardBlock(reading: ChemistryReadingRecord): SwimmabilityDriver | null {
+  if (reading.ph != null && (reading.ph < HARD_BLOCK_PH_LOW || reading.ph > HARD_BLOCK_PH_HIGH)) {
+    return {
+      key: "ph",
+      severity: "poor",
+      message: "pH is outside the documented do-not-swim range."
+    };
+  }
+  if (reading.free_chlorine != null && reading.free_chlorine < HARD_BLOCK_FC_LOW) {
+    return {
+      key: "free_chlorine",
+      severity: "poor",
+      message: "Free chlorine is below the documented do-not-swim minimum."
+    };
+  }
+  if (reading.cyanuric_acid != null && reading.cyanuric_acid > HARD_BLOCK_CYA_HIGH) {
+    return {
+      key: "cyanuric_acid",
+      severity: "poor",
+      message: "Cyanuric acid is above the documented do-not-swim threshold."
+    };
+  }
+  return null;
+}
+
+function assessChemistryBounds(
+  reading: ChemistryReadingRecord,
+  bounds: PoolChemistryRecommendationBounds
+): SwimmabilityDriver[] {
+  const drivers: SwimmabilityDriver[] = [];
+  maybePushBoundDriver(drivers, "free_chlorine", "Free chlorine", reading.free_chlorine, bounds.freeChlorine?.min, bounds.freeChlorine?.max);
+  maybePushBoundDriver(drivers, "ph", "pH", reading.ph, bounds.ph?.min, bounds.ph?.max);
+  maybePushBoundDriver(
+    drivers,
+    "total_alkalinity",
+    "Total alkalinity",
+    reading.total_alkalinity,
+    bounds.totalAlkalinity?.min,
+    bounds.totalAlkalinity?.max
+  );
+  maybePushBoundDriver(
+    drivers,
+    "calcium_hardness",
+    "Calcium hardness",
+    reading.calcium_hardness,
+    bounds.calciumHardness?.min,
+    bounds.calciumHardness?.max
+  );
+  maybePushBoundDriver(
+    drivers,
+    "cyanuric_acid",
+    "Cyanuric acid",
+    reading.cyanuric_acid,
+    bounds.cyanuricAcid?.min,
+    bounds.cyanuricAcid?.max
+  );
+
+  if (reading.total_chlorine != null && reading.free_chlorine != null) {
+    const combined = Number((reading.total_chlorine - reading.free_chlorine).toFixed(2));
+    if (combined > 0.5) {
+      drivers.push({
+        key: "combined_chlorine",
+        severity: "caution",
+        message: `Combined chlorine is elevated at ${combined.toFixed(1)} ppm.`
+      });
+    } else {
+      drivers.push({
+        key: "combined_chlorine",
+        severity: "good",
+        message: "Combined chlorine is within the preferred range."
+      });
+    }
+  }
+
+  return drivers;
+}
+
+function maybePushBoundDriver(
+  drivers: SwimmabilityDriver[],
+  key: string,
+  label: string,
+  value: number | null,
+  min: number | null | undefined,
+  max: number | null | undefined
+): void {
+  if (value == null || (min == null && max == null)) {
+    return;
+  }
+  if (min != null && value < min) {
+    drivers.push({
+      key,
+      severity: "caution",
+      message: `${label} is below the configured minimum range.`
+    });
+    return;
+  }
+  if (max != null && value > max) {
+    drivers.push({
+      key,
+      severity: "caution",
+      message: `${label} is above the configured maximum range.`
+    });
+    return;
+  }
+  drivers.push({
+    key,
+    severity: "good",
+    message: `${label} is within the configured target range.`
+  });
+}
+
+function assessChemistryRecency(
+  recordedAt: string,
+  context: ReturnType<typeof deriveContext>
+): { status: "good" | "caution" | "unknown"; driver: SwimmabilityDriver } {
+  const ageHours = positiveHoursBetween(recordedAt, context.nowIso);
+  const adjustedAgeHours = ageHours * context.stalenessFactor;
+  if (adjustedAgeHours >= STALE_UNKNOWN_HOURS) {
+    return {
+      status: "unknown",
+      driver: {
+        key: "chemistry_recency",
+        severity: "unknown",
+        message: `Chemistry confidence is too old to trust${context.reasonSuffix}.`
+      }
+    };
+  }
+  if (adjustedAgeHours >= STALE_CAUTION_HOURS) {
+    return {
+      status: "caution",
+      driver: {
+        key: "chemistry_recency",
+        severity: "caution",
+        message: `Chemistry confidence is aging${context.reasonSuffix}.`
+      }
+    };
+  }
+  return {
+    status: "good",
+    driver: {
+      key: "chemistry_recency",
+      severity: "good",
+      message: context.coverState === "on"
+        ? "Chemistry reading is still reasonably fresh, helped by current cover protection."
+        : "Chemistry reading is still reasonably fresh."
+    }
+  };
+}
+
+function deriveContext(input: SwimmabilityInput) {
+  const coverState = input.cover.current?.state ?? null;
+  const uv = input.forecast.hourly[0]?.uv_index ?? input.forecast.daily[0]?.uv_index_max ?? null;
+  const airTemperatureF =
+    input.latestTemperatures.readings.air?.normalized_f
+    ?? input.forecast.hourly[0]?.temperature_f
+    ?? input.forecast.daily[0]?.high_temp_f
+    ?? null;
+  const waterTemperatureF = input.latestTemperatures.readings.pool_water?.normalized_f ?? null;
+  const rainfallSinceChemistryInches = input.rainfallSinceChemistryInches;
+  let stalenessFactor = 1;
+  const reasons: string[] = [];
+
+  if (coverState === "off") {
+    stalenessFactor += 0.3;
+    reasons.push("the pool is uncovered");
+  } else if (coverState === "on") {
+    stalenessFactor -= 0.15;
+    reasons.push("the pool is covered");
+  }
+  if (uv != null && uv >= 8) {
+    stalenessFactor += 0.35;
+    reasons.push("UV is high");
+  } else if (uv != null && uv >= 5) {
+    stalenessFactor += 0.2;
+    reasons.push("UV is elevated");
+  }
+  if (airTemperatureF != null && airTemperatureF >= 90) {
+    stalenessFactor += 0.25;
+    reasons.push("air temperature is hot");
+  } else if (airTemperatureF != null && airTemperatureF >= 82) {
+    stalenessFactor += 0.1;
+    reasons.push("air temperature is warm");
+  }
+  if (waterTemperatureF != null && waterTemperatureF >= 88) {
+    stalenessFactor += 0.2;
+    reasons.push("water temperature is warm");
+  } else if (waterTemperatureF != null && waterTemperatureF >= 82) {
+    stalenessFactor += 0.1;
+    reasons.push("water temperature is elevated");
+  }
+  if (rainfallSinceChemistryInches != null && rainfallSinceChemistryInches >= HEAVY_RAIN_INCHES) {
+    stalenessFactor += 0.5;
+    reasons.push("heavy rain has fallen since the last test");
+  } else if (rainfallSinceChemistryInches != null && rainfallSinceChemistryInches >= LIGHT_RAIN_INCHES) {
+    stalenessFactor += 0.2;
+    reasons.push("rain has fallen since the last test");
+  }
+
+  return {
+    nowIso: input.now ?? new Date().toISOString(),
+    coverState,
+    uv,
+    airTemperatureF,
+    waterTemperatureF,
+    rainfallSinceChemistryInches,
+    stalenessFactor: Math.max(0.5, stalenessFactor),
+    reasonSuffix: reasons.length > 0 ? ` because ${joinReasons(reasons)}.` : "."
+  };
+}
+
+function describeCoverState(
+  state: "on" | "off" | null,
+  coverType: string | null
+): SwimmabilityDriver | null {
+  if (!state) {
+    return null;
+  }
+  if (state === "on") {
+    return {
+      key: "cover_state",
+      severity: "good",
+      message: `The ${coverType ?? "pool"} cover is currently on.`
+    };
+  }
+  return {
+    key: "cover_state",
+    severity: "neutral",
+    message: "The pool is currently uncovered."
+  };
+}
+
+function describeWeatherContext(context: ReturnType<typeof deriveContext>): SwimmabilityDriver | null {
+  const notes: string[] = [];
+  if (context.uv != null && context.uv >= 5) {
+    notes.push(`UV is ${context.uv >= 8 ? "high" : "elevated"}`);
+  }
+  if (context.airTemperatureF != null && context.airTemperatureF >= 82) {
+    notes.push(`air temperature is ${Math.round(context.airTemperatureF)}°F`);
+  }
+  if (context.rainfallSinceChemistryInches != null && context.rainfallSinceChemistryInches >= LIGHT_RAIN_INCHES) {
+    notes.push(`${context.rainfallSinceChemistryInches.toFixed(2)}" rain has fallen since the last test`);
+  }
+  if (notes.length === 0) {
+    return null;
+  }
+  return {
+    key: "weather_context",
+    severity: "caution",
+    message: `${capitalize(notes.join(", "))}.`
+  };
+}
+
+function describeWaterTemperatureComfort(value: number | null): SwimmabilityDriver | null {
+  if (value == null) {
+    return null;
+  }
+  if (value < 70) {
+    return {
+      key: "water_temperature",
+      severity: "caution",
+      message: `Pool water is cool at ${Math.round(value)}°F.`
+    };
+  }
+  if (value > 92) {
+    return {
+      key: "water_temperature",
+      severity: "caution",
+      message: `Pool water is very warm at ${Math.round(value)}°F.`
+    };
+  }
+  return {
+    key: "water_temperature",
+    severity: "good",
+    message: "Pool water is within the preferred swim range."
+  };
+}
+
+function summarize(status: SwimmabilityStatus, drivers: SwimmabilityDriver[]): string {
+  if (status === "poor") {
+    const primary = drivers.find((driver) => driver.severity === "poor");
+    return primary ? primary.message : "Water is currently not suitable for swimming.";
+  }
+  if (status === "unknown") {
+    return "Swimmability is uncertain because the supporting chemistry context is not trustworthy enough.";
+  }
+  if (status === "caution") {
+    const primary = drivers.find((driver) => driver.severity === "caution");
+    return primary ? primary.message : "Swimmability requires caution.";
+  }
+  return "Water is currently suitable for swimming.";
+}
+
+function positiveHoursBetween(startIso: string, endIso: string): number {
+  const start = Date.parse(startIso);
+  const end = Date.parse(endIso);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return STALE_UNKNOWN_HOURS;
+  }
+  return Math.max(0, (end - start) / (60 * 60 * 1000));
+}
+
+function joinReasons(reasons: string[]): string {
+  if (reasons.length === 1) {
+    return reasons[0];
+  }
+  return `${reasons.slice(0, -1).join(", ")} and ${reasons[reasons.length - 1]}`;
+}
+
+function capitalize(value: string): string {
+  return value.length > 0 ? value[0].toUpperCase() + value.slice(1) : value;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}

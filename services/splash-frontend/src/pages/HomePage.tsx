@@ -4,6 +4,7 @@ import {
   createPoolCoverEvent,
   fetchCurrentPoolCover,
   fetchPoolCoverHistory,
+  fetchSwimmability,
   fetchTemperatureTelemetryHistory,
   fetchTemperatureTelemetryLatest,
   fetchWeatherForecast
@@ -13,6 +14,7 @@ import type {
   PoolCoverCurrentData,
   PoolCoverEventRecord,
   PoolCoverType,
+  SwimmabilityData,
   TemperatureTelemetryHistoryData,
   TemperatureTelemetryHistorySeries,
   TemperatureTelemetryLatestData,
@@ -34,6 +36,8 @@ export function HomePage() {
   const [coverPending, setCoverPending] = useState(false);
   const [coverMessage, setCoverMessage] = useState<string | null>(null);
   const [coverError, setCoverError] = useState<string | null>(null);
+  const [swimmability, setSwimmability] = useState<SwimmabilityData | null>(null);
+  const [swimmabilityError, setSwimmabilityError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +60,21 @@ export function HomePage() {
       } catch (nextError) {
         if (!cancelled) {
           setError(nextError instanceof Error ? nextError.message : String(nextError));
+        }
+      }
+    })();
+
+    void (async () => {
+      try {
+        const swimmabilityResponse = await fetchSwimmability();
+        if (!cancelled) {
+          setSwimmability(swimmabilityResponse.data);
+          setSwimmabilityError(null);
+        }
+      } catch (nextError) {
+        if (!cancelled) {
+          setSwimmability(null);
+          setSwimmabilityError(nextError instanceof Error ? nextError.message : String(nextError));
         }
       }
     })();
@@ -121,6 +140,31 @@ export function HomePage() {
           <p className="panel-copy">
             The Home dashboard now shows persisted EasyTouch temperature telemetry captured from controller status broadcasts together with a cached site-level weather forecast for future maintenance and swimmability analysis.
           </p>
+        </Card>
+        <Card title="Swimmability">
+          {swimmability ? (
+            <>
+              <div className="mock-summary-grid">
+                <div><strong>{swimmability.score}</strong><span>Score</span></div>
+                <div><strong>{formatSwimmabilityStatus(swimmability.status)}</strong><span>Status</span></div>
+              </div>
+              <p className="panel-copy" style={{ marginTop: "1rem" }}>{swimmability.summary}</p>
+              <div className="automation-record-list" style={{ marginTop: "1rem" }}>
+                {swimmability.drivers.slice(0, 4).map((driver) => (
+                  <div className="automation-record-row" key={driver.key}>
+                    <strong>{formatDriverLabel(driver.key)}</strong>
+                    <span>{driver.message}</span>
+                  </div>
+                ))}
+                <div className="automation-record-row">
+                  <strong>Updated</strong>
+                  <span>{formatTelemetryTimestamp(swimmability.updated_at)}</span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="chart-empty-state">{swimmabilityError ?? "Swimmability is currently unknown."}</p>
+          )}
         </Card>
         <Card title="Last Updated">
           <div className="automation-record-list">
@@ -455,6 +499,46 @@ function formatCoverType(value: PoolCoverType): string {
       return "Automatic";
     default:
       return "Unknown";
+  }
+}
+
+function formatSwimmabilityStatus(value: SwimmabilityData["status"]): string {
+  switch (value) {
+    case "good":
+      return "Good";
+    case "caution":
+      return "Caution";
+    case "poor":
+      return "Poor";
+    default:
+      return "Unknown";
+  }
+}
+
+function formatDriverLabel(value: string): string {
+  switch (value) {
+    case "free_chlorine":
+      return "Free Chlorine";
+    case "chemistry_recency":
+      return "Chemistry Age";
+    case "weather_context":
+      return "Weather";
+    case "cover_state":
+      return "Cover";
+    case "water_temperature":
+      return "Water Temp";
+    case "ph":
+      return "pH";
+    case "cyanuric_acid":
+      return "CYA";
+    case "combined_chlorine":
+      return "Combined Chlorine";
+    case "total_alkalinity":
+      return "Alkalinity";
+    case "calcium_hardness":
+      return "Hardness";
+    default:
+      return value.replaceAll("_", " ");
   }
 }
 

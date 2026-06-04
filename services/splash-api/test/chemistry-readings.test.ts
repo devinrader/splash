@@ -282,6 +282,19 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       recorded_at: "2026-01-01T00:00:00.000Z",
       created_at: "2026-01-01T00:00:00.000Z"
     }),
+    getSwimmability: async () => ({
+      status: "unknown",
+      score: 0,
+      summary: "Unavailable",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      drivers: [],
+      inputs: {
+        chemistry_latest_at: null,
+        cover_latest_at: null,
+        forecast_fetched_at: null,
+        telemetry_latest_at: null
+      }
+    }),
     getPlatformStatus: async () => ({}),
     getMetrics: () => "",
     getEventBroker: () => eventBroker,

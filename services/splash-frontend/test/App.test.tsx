@@ -1960,6 +1960,31 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
         });
       }
 
+      if (input.endsWith("/swimmability")) {
+        return response({
+          data: {
+            status: "good",
+            score: 82,
+            summary: "Water is currently suitable for swimming.",
+            updated_at: "2026-05-12T12:00:00.000Z",
+            drivers: [
+              {
+                key: "free_chlorine",
+                severity: "good",
+                message: "Free chlorine is within the configured target range."
+              }
+            ],
+            inputs: {
+              chemistry_latest_at: "2026-05-12T10:30:00.000Z",
+              cover_latest_at: "2026-05-12T11:45:00.000Z",
+              forecast_fetched_at: "2026-05-12T12:00:00.000Z",
+              telemetry_latest_at: "2026-05-12T11:30:00.000Z"
+            }
+          },
+          error: null
+        });
+      }
+
       return platformStatusResponse();
     })
   );
@@ -1978,6 +2003,8 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
     assert.ok(screen.getByText("Weather Forecast"));
     assert.ok(screen.getByText("Provider"));
     assert.ok(screen.getByText("Pool Cover"));
+    assert.ok(screen.getByText("Swimmability"));
+    assert.ok(screen.getByText("Water is currently suitable for swimming."));
     assert.ok(screen.getByRole("button", { name: "Cover On" }));
     assert.ok(screen.getByLabelText("Cover Type"));
   });
@@ -2074,6 +2101,25 @@ test("renders the Home temperature telemetry empty state when no history exists"
             end: null,
             limit: 5,
             events: []
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/swimmability")) {
+        return response({
+          data: {
+            status: "unknown",
+            score: 0,
+            summary: "Swimmability is unknown because no chemistry reading has been logged yet.",
+            updated_at: "2026-05-12T12:00:00.000Z",
+            drivers: [],
+            inputs: {
+              chemistry_latest_at: null,
+              cover_latest_at: null,
+              forecast_fetched_at: null,
+              telemetry_latest_at: null
+            }
           },
           error: null
         });
@@ -2195,6 +2241,31 @@ test("records a pool cover event from the Home page", async () => {
                   }
                 ]
               : []
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/swimmability")) {
+        return response({
+          data: {
+            status: "caution",
+            score: 68,
+            summary: "Chemistry confidence is aging because the pool is uncovered and UV is elevated.",
+            updated_at: "2026-05-12T12:00:00.000Z",
+            drivers: [
+              {
+                key: "chemistry_recency",
+                severity: "caution",
+                message: "Chemistry confidence is aging because the pool is uncovered and UV is elevated."
+              }
+            ],
+            inputs: {
+              chemistry_latest_at: "2026-05-10T12:00:00.000Z",
+              cover_latest_at: null,
+              forecast_fetched_at: null,
+              telemetry_latest_at: "2026-05-12T11:00:00.000Z"
+            }
           },
           error: null
         });

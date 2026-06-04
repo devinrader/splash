@@ -46,6 +46,7 @@ import {
 } from "./pump-telemetry.js";
 import {
   WeatherForecastService,
+  type WeatherHistoryView,
   type WeatherHistoryMetric
 } from "./weather-forecast.js";
 import {
@@ -75,6 +76,7 @@ import {
   type PoolCoverHistoryQueryInput,
   type PoolCoverHistoryView
 } from "./pool-cover-events.js";
+import { buildSwimmabilityView, type SwimmabilityView } from "./swimmability.js";
 
 export interface AppOptions {
   config?: ApiConfig;
@@ -352,6 +354,36 @@ export class App {
     const event = await this.poolCoverEvents.createPoolCoverEvent(input);
     this.events.publish("pool.cover.event", event as unknown as Record<string, unknown>);
     return event;
+  }
+
+  async getSwimmability(): Promise<SwimmabilityView> {
+    const [chemistry, chemistryBounds, cover, forecast, latestTemperatures] = await Promise.all([
+      this.chemistryReadings.getLatestChemistryReading(),
+      this.poolChemistrySettings.getChemistryBoundsForRecommendations(),
+      this.poolCoverEvents.getCurrentPoolCover(),
+      this.weatherForecast.getLatest(),
+      this.temperatureTelemetry.getLatest()
+    ]);
+
+    let rainfallSinceChemistryInches: number | null = null;
+    if (chemistry) {
+      const rainfallHistory = await this.weatherForecast.getHistory({
+        metric: "precipitation_amount",
+        start: chemistry.recorded_at,
+        end: new Date().toISOString(),
+        interval: null
+      });
+      rainfallSinceChemistryInches = sumWeatherHistoryPoints(rainfallHistory) / 25.4;
+    }
+
+    return buildSwimmabilityView({
+      chemistry,
+      chemistryBounds,
+      cover,
+      forecast,
+      latestTemperatures,
+      rainfallSinceChemistryInches
+    });
   }
 
   async getChemistryBoundsForRecommendations(): Promise<PoolChemistryRecommendationBounds> {
@@ -1177,6 +1209,7 @@ export class App {
         getCurrentPoolCover: async () => this.getCurrentPoolCover(),
         getPoolCoverHistory: async (query) => this.getPoolCoverHistory(query),
         createPoolCoverEvent: async (input) => this.createPoolCoverEvent(input),
+        getSwimmability: async () => this.getSwimmability(),
         getPlatformStatus: () => this.getPlatformStatus(),
         getMetrics: () => this.getMetrics(),
         getEventBroker: () => this.events,
@@ -1947,6 +1980,22 @@ function isWeatherHistoryMetric(value: string | null): value is WeatherHistoryMe
     || value === "uv_index"
     || value === "precipitation_probability"
     || value === "precipitation_amount";
+}
+
+function sumWeatherHistoryPoints(view: WeatherHistoryView): number {
+  const series = Array.isArray(view.series) ? view.series : [];
+  let total = 0;
+  for (const entry of series) {
+    const points = Array.isArray((entry as { points?: unknown[] }).points) ? (entry as { points: unknown[] }).points : [];
+    for (const point of points) {
+      const rawValue = (point as { value?: unknown }).value;
+      const value = typeof rawValue === "number" ? rawValue : Number(rawValue);
+      if (Number.isFinite(value)) {
+        total += value;
+      }
+    }
+  }
+  return total;
 }
 
 async function waitForAbort(signal: AbortSignal): Promise<void> {
