@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Line } from "@nivo/line";
-import { fetchChemistryHistory, fetchPumpTelemetryHistory, fetchTemperatureTelemetryHistory, fetchWeatherHistory } from "../api";
+import { fetchChemistryHistory, fetchPoolCoverHistory, fetchPumpTelemetryHistory, fetchTemperatureTelemetryHistory, fetchWeatherHistory } from "../api";
 import { Card } from "../components/mockUi";
 import type {
   ChemistryHistoryData,
   ChemistryHistoryMetric,
+  PoolCoverEventRecord,
   PumpTelemetryHistoryData,
   PumpTelemetryHistorySeries,
   TemperatureTelemetryHistoryData,
@@ -79,6 +80,8 @@ export function HistoryPage() {
   const [weatherErrorByRange, setWeatherErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
   const [chemistryHistoryByRange, setChemistryHistoryByRange] = useState<Partial<Record<HistoryRangeId, ChemistryHistoryData>>>({});
   const [chemistryErrorByRange, setChemistryErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
+  const [coverHistoryByRange, setCoverHistoryByRange] = useState<Partial<Record<HistoryRangeId, PoolCoverEventRecord[]>>>({});
+  const [coverErrorByRange, setCoverErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -159,21 +162,32 @@ export function HistoryPage() {
 
       if (activeTab === "chemistry") {
         const chemistryInterval = selectedRange.interval === "5m" ? "raw" : "1d";
-        const result = await fetchChemistryHistory({ start, end, interval: chemistryInterval })
-          .then((value) => ({ status: "fulfilled" as const, value }))
-          .catch((reason) => ({ status: "rejected" as const, reason }));
+        const [chemistryResult, coverResult] = await Promise.allSettled([
+          fetchChemistryHistory({ start, end, interval: chemistryInterval }),
+          fetchPoolCoverHistory({ start, end, limit: 100 })
+        ]);
 
         if (cancelled) {
           return;
         }
 
-        if (result.status === "fulfilled") {
-          setChemistryHistoryByRange((current) => ({ ...current, [selectedRangeId]: result.value.data }));
+        if (chemistryResult.status === "fulfilled") {
+          setChemistryHistoryByRange((current) => ({ ...current, [selectedRangeId]: chemistryResult.value.data }));
           setChemistryErrorByRange((current) => ({ ...current, [selectedRangeId]: null }));
         } else {
           setChemistryErrorByRange((current) => ({
             ...current,
-            [selectedRangeId]: result.reason instanceof Error ? result.reason.message : String(result.reason)
+            [selectedRangeId]: chemistryResult.reason instanceof Error ? chemistryResult.reason.message : String(chemistryResult.reason)
+          }));
+        }
+
+        if (coverResult.status === "fulfilled") {
+          setCoverHistoryByRange((current) => ({ ...current, [selectedRangeId]: coverResult.value.data.events }));
+          setCoverErrorByRange((current) => ({ ...current, [selectedRangeId]: null }));
+        } else {
+          setCoverErrorByRange((current) => ({
+            ...current,
+            [selectedRangeId]: coverResult.reason instanceof Error ? coverResult.reason.message : String(coverResult.reason)
           }));
         }
       }
@@ -195,10 +209,12 @@ export function HistoryPage() {
   const pumpHistory = pumpHistoryByRange[selectedRangeId] ?? null;
   const weatherHistory = weatherHistoryByRange[selectedRangeId] ?? ({} as Record<WeatherHistoryMetric, WeatherHistoryData>);
   const chemistryHistory = chemistryHistoryByRange[selectedRangeId] ?? null;
+  const coverHistory = coverHistoryByRange[selectedRangeId] ?? [];
   const temperatureError = temperatureErrorByRange[selectedRangeId] ?? null;
   const pumpError = pumpErrorByRange[selectedRangeId] ?? null;
   const weatherError = weatherErrorByRange[selectedRangeId] ?? null;
   const chemistryError = chemistryErrorByRange[selectedRangeId] ?? null;
+  const coverError = coverErrorByRange[selectedRangeId] ?? null;
   const currentError =
     activeTab === "temperature"
       ? temperatureError
@@ -206,7 +222,7 @@ export function HistoryPage() {
         ? pumpError
         : activeTab === "weather"
           ? weatherError
-          : chemistryError;
+          : (chemistryError ?? coverError);
   const selectedRange = resolveHistoryRange(selectedRangeId);
   const currentLoadKey = `${activeTab}:${selectedRangeId}`;
 
@@ -357,6 +373,18 @@ export function HistoryPage() {
 
         {activeTab === "chemistry" ? (
           <div className="automation-grid automation-grid-two-column">
+            <Card title="Cover Overlay Legend" className="automation-card-table">
+              <div className="history-cover-legend" aria-label="Cover overlay legend">
+                <span className="history-cover-legend-item">
+                  <span className="history-cover-marker-dot history-cover-marker-dot-on" aria-hidden="true" />
+                  Cover On marker
+                </span>
+                <span className="history-cover-legend-item">
+                  <span className="history-cover-marker-dot history-cover-marker-dot-off" aria-hidden="true" />
+                  Cover Off marker
+                </span>
+              </div>
+            </Card>
             {CHEMISTRY_METRICS.map((entry) => {
               const chartSeries = buildChemistryChartSeries(chemistryHistory, entry.metric, entry.title, entry.color);
               return (
@@ -367,6 +395,7 @@ export function HistoryPage() {
                       yLegend={entry.axis}
                       series={chartSeries}
                       xTickValues={buildEveryNthTickValues(chartSeries, HISTORY_X_AXIS_LABEL_STEP)}
+                      overlayEvents={coverHistory}
                     />
                   ) : (
                     <p className="chart-empty-state">No chemistry history has been captured yet.</p>
@@ -385,12 +414,14 @@ function HistoryTrendChart({
   ariaLabel,
   yLegend,
   series,
-  xTickValues
+  xTickValues,
+  overlayEvents
 }: {
   ariaLabel: string;
   yLegend: string;
-  series: Array<{ id: string; color: string; data: Array<{ x: string; y: number }> }>;
+  series: HistoryChartSeries[];
   xTickValues?: string[];
+  overlayEvents?: PoolCoverEventRecord[];
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [chartWidth, setChartWidth] = useState(DEFAULT_CHART_WIDTH);
@@ -420,9 +451,26 @@ function HistoryTrendChart({
     return <p className="chart-empty-state">No chart data is available yet.</p>;
   }
 
+  const overlayMarkers = buildCoverOverlayMarkers(series, overlayEvents ?? []);
+
   return (
     <div ref={containerRef} className="metric-trend-chart-shell">
       <div className="metric-trend-chart-frame" role="img" aria-label={ariaLabel}>
+        {overlayMarkers.length ? (
+          <div className="history-cover-overlay" aria-hidden="true">
+            {overlayMarkers.map((marker) => (
+              <div
+                key={marker.id}
+                className={`history-cover-overlay-marker history-cover-overlay-marker-${marker.state}`}
+                style={{ left: `${marker.positionPercent}%` }}
+                title={marker.title}
+              >
+                <span className={`history-cover-overlay-line history-cover-overlay-line-${marker.state}`} />
+                <span className={`history-cover-overlay-label history-cover-overlay-label-${marker.state}`}>{marker.label}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <Line
           width={chartWidth}
           height={CHART_HEIGHT}
@@ -501,11 +549,12 @@ function buildChemistryChartSeries(
   metric: ChemistryHistoryMetric,
   title: string,
   color: string
-) {
+): HistoryChartSeries[] {
   const series = history?.series.find((entry) => entry.metric === metric);
   const data = (series?.points ?? []).map((point) => ({
     x: formatSampleTime(point.recorded_at),
-    y: point.value
+    y: point.value,
+    timestamp: point.recorded_at
   }));
   return data.length ? [{ id: title, color, data }] : [];
 }
@@ -529,7 +578,7 @@ function buildPumpMetricChartSeries(
 }
 
 function buildEveryNthTickValues(
-  series: Array<{ id: string; color: string; data: Array<{ x: string; y: number }> }>,
+  series: HistoryChartSeries[],
   step: number
 ): string[] | undefined {
   const values = series[0]?.data.map((point) => point.x) ?? [];
@@ -539,6 +588,80 @@ function buildEveryNthTickValues(
 
   const effectiveStep = Math.max(step, Math.ceil(values.length / HISTORY_MAX_X_AXIS_LABELS));
   return values.filter((_, index) => index % effectiveStep === 0);
+}
+
+interface HistoryChartPoint {
+  x: string;
+  y: number;
+  timestamp?: string;
+}
+
+interface HistoryChartSeries {
+  id: string;
+  color: string;
+  data: HistoryChartPoint[];
+}
+
+interface CoverOverlayMarker {
+  id: string;
+  state: "on" | "off";
+  label: string;
+  title: string;
+  positionPercent: number;
+}
+
+function buildCoverOverlayMarkers(series: HistoryChartSeries[], events: PoolCoverEventRecord[]): CoverOverlayMarker[] {
+  const timestamps = series.flatMap((entry) =>
+    entry.data
+      .map((point) => point.timestamp)
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => Date.parse(value))
+      .filter((value) => Number.isFinite(value))
+  );
+
+  if (timestamps.length === 0) {
+    return [];
+  }
+
+  const minTimestamp = Math.min(...timestamps);
+  const maxTimestamp = Math.max(...timestamps);
+
+  return events
+    .map((event) => {
+      const parsed = Date.parse(event.recorded_at);
+      if (!Number.isFinite(parsed) || parsed < minTimestamp || parsed > maxTimestamp) {
+        return null;
+      }
+
+      const positionPercent =
+        minTimestamp === maxTimestamp
+          ? 50
+          : ((parsed - minTimestamp) / (maxTimestamp - minTimestamp)) * 100;
+
+      return {
+        id: event.id,
+        state: event.state,
+        label: `${event.state === "on" ? "On" : "Off"} · ${formatCoverTypeLabel(event.cover_type)}`,
+        title: `${event.state === "on" ? "Cover On" : "Cover Off"} · ${formatCoverTypeLabel(event.cover_type)} · ${formatSampleTime(event.recorded_at)}`,
+        positionPercent
+      } satisfies CoverOverlayMarker;
+    })
+    .filter((value): value is CoverOverlayMarker => value !== null);
+}
+
+function formatCoverTypeLabel(value: PoolCoverEventRecord["cover_type"]): string {
+  switch (value) {
+    case "solar":
+      return "Solar";
+    case "winter":
+      return "Winter";
+    case "safety":
+      return "Safety";
+    case "automatic":
+      return "Automatic";
+    default:
+      return "Unknown";
+  }
 }
 
 function formatTemperatureSeriesLabel(value: string): string {

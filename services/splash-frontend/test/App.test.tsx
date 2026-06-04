@@ -948,6 +948,28 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
         });
       }
 
+      if (input.includes("/pool/cover/history")) {
+        return response({
+          data: {
+            start: "2026-05-11T00:00:00.000Z",
+            end: "2026-05-12T12:00:00.000Z",
+            limit: 100,
+            events: [
+              {
+                id: "cover-1",
+                pool_id: "pool-1",
+                state: "on",
+                cover_type: "solar",
+                source: "manual",
+                recorded_at: "2026-05-11T12:00:00.000Z",
+                created_at: "2026-05-11T12:00:03.000Z"
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
       return platformStatusResponse();
     })
   );
@@ -1055,12 +1077,18 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
     assert.ok(screen.getByRole("img", { name: "pH history chart" }));
     assert.ok(screen.getByRole("img", { name: "Free Chlorine history chart" }));
     assert.ok(screen.getByRole("img", { name: "Total Chlorine history chart" }));
+    assert.ok(screen.getByText("Cover On marker"));
+    assert.ok(screen.getByLabelText("Cover overlay legend"));
   });
 
   const chemistryHistoryRequest = requests.find((entry) => entry.includes("/chemistry/history"));
   assert.ok(chemistryHistoryRequest);
   const chemistryHistoryUrl = new URL(chemistryHistoryRequest as string, "http://127.0.0.1:8080");
   assert.equal(chemistryHistoryUrl.searchParams.get("interval"), "1d");
+  const coverHistoryRequest = requests.find((entry) => entry.includes("/pool/cover/history"));
+  assert.ok(coverHistoryRequest);
+  const coverHistoryUrl = new URL(coverHistoryRequest as string, "http://127.0.0.1:8080");
+  assert.equal(coverHistoryUrl.searchParams.get("limit"), "100");
 });
 
 test("renders Pool on from the bitmask state even when mode disagrees", async () => {
