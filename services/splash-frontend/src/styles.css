@@ -605,6 +605,7 @@ textarea:focus-visible {
 
 .water-test-log-grid {
   grid-template-columns: minmax(0, 2fr) minmax(18rem, 1fr);
+  align-items: start;
 }
 
 .automation-grid-schedules {

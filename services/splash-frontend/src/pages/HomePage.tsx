@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Line } from "@nivo/line";
-import { fetchTemperatureTelemetryHistory, fetchTemperatureTelemetryLatest, fetchWeatherForecast } from "../api";
+import {
+  createPoolCoverEvent,
+  fetchCurrentPoolCover,
+  fetchPoolCoverHistory,
+  fetchTemperatureTelemetryHistory,
+  fetchTemperatureTelemetryLatest,
+  fetchWeatherForecast
+} from "../api";
 import { Card } from "../components/mockUi";
 import type {
+  PoolCoverCurrentData,
+  PoolCoverEventRecord,
+  PoolCoverType,
   TemperatureTelemetryHistoryData,
   TemperatureTelemetryHistorySeries,
   TemperatureTelemetryLatestData,
@@ -18,6 +28,12 @@ export function HomePage() {
   const [history, setHistory] = useState<TemperatureTelemetryHistoryData | null>(null);
   const [forecast, setForecast] = useState<WeatherForecastData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [coverCurrent, setCoverCurrent] = useState<PoolCoverCurrentData | null>(null);
+  const [coverHistory, setCoverHistory] = useState<PoolCoverEventRecord[]>([]);
+  const [coverTypeDraft, setCoverTypeDraft] = useState<PoolCoverType>("solar");
+  const [coverPending, setCoverPending] = useState(false);
+  const [coverMessage, setCoverMessage] = useState<string | null>(null);
+  const [coverError, setCoverError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +60,24 @@ export function HomePage() {
       }
     })();
 
+    void (async () => {
+      try {
+        const [coverCurrentResponse, coverHistoryResponse] = await Promise.all([
+          fetchCurrentPoolCover(),
+          fetchPoolCoverHistory({ limit: 5 })
+        ]);
+        if (!cancelled) {
+          setCoverCurrent(coverCurrentResponse.data);
+          setCoverHistory(coverHistoryResponse.data.events);
+          setCoverError(null);
+        }
+      } catch (nextError) {
+        if (!cancelled) {
+          setCoverError(nextError instanceof Error ? nextError.message : String(nextError));
+        }
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
@@ -52,6 +86,33 @@ export function HomePage() {
   const latestReadings = latest?.readings ?? {};
   const hasLatestReadings = Object.keys(latestReadings).length > 0;
   const hasForecast = forecast?.status === "available" && (forecast.daily.length > 0 || forecast.hourly.length > 0);
+
+  async function refreshCoverData(): Promise<void> {
+    const [currentResponse, historyResponse] = await Promise.all([
+      fetchCurrentPoolCover(),
+      fetchPoolCoverHistory({ limit: 5 })
+    ]);
+    setCoverCurrent(currentResponse.data);
+    setCoverHistory(historyResponse.data.events);
+  }
+
+  async function handleCoverSave(state: "on" | "off"): Promise<void> {
+    setCoverPending(true);
+    setCoverMessage(null);
+    setCoverError(null);
+    try {
+      await createPoolCoverEvent({
+        state,
+        coverType: state === "on" ? coverTypeDraft : undefined
+      });
+      await refreshCoverData();
+      setCoverMessage(state === "on" ? "Cover marked on." : "Cover marked off.");
+    } catch (nextError) {
+      setCoverError(nextError instanceof Error ? nextError.message : String(nextError));
+    } finally {
+      setCoverPending(false);
+    }
+  }
 
   return (
     <section className="automation-shell">
@@ -87,6 +148,72 @@ export function HomePage() {
             <p className="chart-empty-state">{forecast?.message ?? "No weather forecast has been captured yet."}</p>
           )}
         </Card>
+        <Card title="Pool Cover">
+          {coverCurrent?.current ? (
+            <div className="automation-record-list">
+              <div className="automation-record-row">
+                <strong>Current State</strong>
+                <span>{coverCurrent.current.state === "on" ? "Cover On" : "Cover Off"}</span>
+              </div>
+              <div className="automation-record-row">
+                <strong>Cover Type</strong>
+                <span>{formatCoverType(coverCurrent.current.cover_type)}</span>
+              </div>
+              <div className="automation-record-row">
+                <strong>Last Updated</strong>
+                <span>{formatTelemetryTimestamp(coverCurrent.current.recorded_at)}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="chart-empty-state">No cover event has been recorded yet.</p>
+          )}
+
+          <div className="settings-form-grid" style={{ marginTop: "1rem" }}>
+            <label htmlFor="home-cover-type">
+              <span>Cover Type</span>
+              <select
+                id="home-cover-type"
+                value={coverTypeDraft}
+                onChange={(event) => setCoverTypeDraft(event.target.value as PoolCoverType)}
+                disabled={coverPending}
+              >
+                <option value="solar">Solar</option>
+                <option value="winter">Winter</option>
+                <option value="safety">Safety</option>
+                <option value="automatic">Automatic</option>
+                <option value="unknown">Unknown</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="form-action-row">
+            <button type="button" onClick={() => void handleCoverSave("on")} disabled={coverPending}>
+              {coverPending ? "Saving..." : "Cover On"}
+            </button>
+            <button type="button" className="secondary-button" onClick={() => void handleCoverSave("off")} disabled={coverPending}>
+              {coverPending ? "Saving..." : "Cover Off"}
+            </button>
+          </div>
+
+          {coverMessage ? <p className="form-caption">{coverMessage}</p> : null}
+          {coverError ? <p className="form-error">{coverError}</p> : null}
+
+          <div className="automation-record-list" style={{ marginTop: "1rem" }}>
+            <div className="automation-record-row">
+              <strong>Recent Events</strong>
+              <span>{coverHistory.length === 0 ? "No cover history yet." : ""}</span>
+            </div>
+            {coverHistory.map((event) => (
+              <div className="automation-record-row" key={event.id}>
+                <strong>{event.state === "on" ? "Cover On" : "Cover Off"}</strong>
+                <span>{formatCoverType(event.cover_type)} · {formatTelemetryTimestamp(event.recorded_at)}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <div className="automation-grid automation-grid-two-column">
         <Card title="Weather Detail">
           {hasForecast ? (
             <WeatherForecastDetail forecast={forecast as WeatherForecastData} />
@@ -314,6 +441,21 @@ function buildChartData(series: TemperatureTelemetryHistorySeries[]) {
 
 function formatReading(value: number | undefined): string {
   return typeof value === "number" ? `${Math.round(value * 10) / 10} °F` : "Unavailable";
+}
+
+function formatCoverType(value: PoolCoverType): string {
+  switch (value) {
+    case "solar":
+      return "Solar";
+    case "winter":
+      return "Winter";
+    case "safety":
+      return "Safety";
+    case "automatic":
+      return "Automatic";
+    default:
+      return "Unknown";
+  }
 }
 
 function formatRange(high: number | null | undefined, low: number | null | undefined): string {

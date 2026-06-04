@@ -3,27 +3,23 @@ import assert from "node:assert/strict";
 import { EventBroker } from "../src/events.js";
 import { LocalHttpServer, type HttpHandlers } from "../src/http.js";
 import {
-  ChemistryReadingsService,
-  ChemistryReadingsUnavailableError,
-  ChemistryReadingsValidationError,
-  SqliteChemistryReadingsRepository
-} from "../src/chemistry-readings.js";
+  PoolCoverEventsService,
+  PoolCoverEventsUnavailableError,
+  PoolCoverEventsValidationError,
+  SqlitePoolCoverEventsRepository
+} from "../src/pool-cover-events.js";
 
-test("repository maps latest chemistry reading rows", async () => {
-  const repository = new SqliteChemistryReadingsRepository({
+test("repository maps latest pool cover event rows", async () => {
+  const repository = new SqlitePoolCoverEventsRepository({
     get() {
       return {
-        id: "reading-1",
+        id: "cover-1",
         pool_id: "pool-1",
-        ph: 7.5,
-        free_chlorine: 5.8,
-        total_chlorine: 6.1,
-        total_alkalinity: 90,
-        calcium_hardness: 260,
-        cyanuric_acid: 70,
+        state: "on",
+        cover_type: "solar",
         source: "manual",
-        recorded_at: "2026-03-26T19:30:00.000Z",
-        created_at: "2026-03-26T19:30:03.000Z"
+        recorded_at: "2026-06-04T19:30:00.000Z",
+        created_at: "2026-06-04T19:30:03.000Z"
       };
     },
     all() {
@@ -40,147 +36,105 @@ test("repository maps latest chemistry reading rows", async () => {
   const result = await repository.getLatest("pool-1");
 
   assert.ok(result);
-  assert.equal(result?.total_chlorine, 6.1);
+  assert.equal(result?.cover_type, "solar");
 });
 
-test("service warns when pH and free chlorine are both omitted", async () => {
-  const service = new ChemistryReadingsService("pool-1", {
-    async getLatest() {
-      return null;
-    },
-    async create(record) {
-      return {
-        id: "reading-1",
-        pool_id: record.poolId,
-        ph: record.ph,
-        free_chlorine: record.freeChlorine,
-        total_chlorine: record.totalChlorine,
-        total_alkalinity: record.totalAlkalinity,
-        calcium_hardness: record.calciumHardness,
-        cyanuric_acid: record.cyanuricAcid,
-        source: record.source,
-        recorded_at: record.recordedAt,
-        created_at: "2026-03-26T19:30:03.000Z"
-      };
-    },
-    async listRaw() {
-      return [];
-    },
-    async listDailyAverage() {
-      return [];
-    }
-  });
-
-  const result = await service.createChemistryReading({
-    total_alkalinity: 90
-  });
-
-  assert.equal(result.warnings.length, 1);
-  assert.equal(result.warnings[0], "Manual reading omitted both pH and Free Chlorine.");
-  assert.equal(result.reading.total_alkalinity, 90);
-});
-
-test("service rejects empty chemistry reading writes", async () => {
-  const service = new ChemistryReadingsService("pool-1", {
+test("service requires cover type when recording cover on", async () => {
+  const service = new PoolCoverEventsService("pool-1", {
     async getLatest() {
       return null;
     },
     async create() {
       throw new Error("should not be called");
     },
-    async listRaw() {
-      return [];
-    },
-    async listDailyAverage() {
+    async list() {
       return [];
     }
   });
 
   await assert.rejects(
-    () => service.createChemistryReading({}),
+    () => service.createPoolCoverEvent({ state: "on" }),
     (error: unknown) => {
-      assert.ok(error instanceof ChemistryReadingsValidationError);
-      assert.equal(error.details.reading, "At least one manual chemistry field must be provided.");
+      assert.ok(error instanceof PoolCoverEventsValidationError);
+      assert.equal(error.details.cover_type, "Cover type is required when recording Cover On.");
       return true;
     }
   );
 });
 
-test("service throws unavailable when chemistry repository is missing", async () => {
-  const service = new ChemistryReadingsService("pool-1", null);
+test("service throws unavailable when pool cover repository is missing", async () => {
+  const service = new PoolCoverEventsService("pool-1", null);
 
   await assert.rejects(
-    () => service.getChemistryHistory({ start: null, end: null, interval: "raw" }),
+    () => service.getCurrentPoolCover(),
     (error: unknown) => {
-      assert.ok(error instanceof ChemistryReadingsUnavailableError);
+      assert.ok(error instanceof PoolCoverEventsUnavailableError);
       return true;
     }
   );
 });
 
-test("chemistry API latest, history, and create routes work", async () => {
+test("pool cover API current, history, and create routes work", async () => {
   const server = new LocalHttpServer("127.0.0.1:8080", createHttpHandlers({
-    async getLatestChemistryReading() {
+    async getCurrentPoolCover() {
       return {
-        id: "reading-1",
-        pool_id: "pool-1",
-        ph: 7.5,
-        free_chlorine: 5.8,
-        total_chlorine: 6,
-        total_alkalinity: null,
-        calcium_hardness: null,
-        cyanuric_acid: null,
-        source: "manual",
-        recorded_at: "2026-03-26T19:30:00.000Z",
-        created_at: "2026-03-26T19:30:03.000Z"
-      };
-    },
-    async getChemistryHistory(input) {
-      assert.equal(input.interval, "raw");
-      return {
-        start: input.start ?? "2026-03-01T00:00:00.000Z",
-        end: input.end ?? "2026-03-31T00:00:00.000Z",
-        interval: "raw",
-        readings: [],
-        series: []
-      };
-    },
-    async createChemistryReading(input) {
-      assert.equal(input.ph, 7.5);
-      return {
-        reading: {
-          id: "reading-2",
+        current: {
+          id: "cover-1",
           pool_id: "pool-1",
-          ph: 7.5,
-          free_chlorine: 5.6,
-          total_chlorine: 5.9,
-          total_alkalinity: null,
-          calcium_hardness: null,
-          cyanuric_acid: null,
+          state: "on",
+          cover_type: "solar",
           source: "manual",
-          recorded_at: "2026-03-27T19:30:00.000Z",
-          created_at: "2026-03-27T19:30:03.000Z"
-        },
-        warnings: []
+          recorded_at: "2026-06-04T19:30:00.000Z",
+          created_at: "2026-06-04T19:30:03.000Z"
+        }
+      };
+    },
+    async getPoolCoverHistory(input) {
+      assert.equal(input.limit, "5");
+      return {
+        start: null,
+        end: null,
+        limit: 5,
+        events: [
+          {
+            id: "cover-1",
+            pool_id: "pool-1",
+            state: "on",
+            cover_type: "solar",
+            source: "manual",
+            recorded_at: "2026-06-04T19:30:00.000Z",
+            created_at: "2026-06-04T19:30:03.000Z"
+          }
+        ]
+      };
+    },
+    async createPoolCoverEvent(input) {
+      assert.equal(input.state, "off");
+      return {
+        id: "cover-2",
+        pool_id: "pool-1",
+        state: "off",
+        cover_type: "unknown",
+        source: "manual",
+        recorded_at: "2026-06-04T20:00:00.000Z",
+        created_at: "2026-06-04T20:00:03.000Z"
       };
     }
   }));
 
-  const latestResponse = await invokeRoute(server, "GET", "/chemistry/latest");
-  assert.equal(latestResponse.statusCode, 200);
-  assert.equal(latestResponse.body.data.total_chlorine, 6);
+  const currentResponse = await invokeRoute(server, "GET", "/pool/cover");
+  assert.equal(currentResponse.statusCode, 200);
+  assert.equal(currentResponse.body.data.current.cover_type, "solar");
 
-  const historyResponse = await invokeRoute(server, "GET", "/chemistry/history?interval=raw&start=2026-03-01T00:00:00.000Z&end=2026-03-31T00:00:00.000Z");
+  const historyResponse = await invokeRoute(server, "GET", "/pool/cover/history?limit=5");
   assert.equal(historyResponse.statusCode, 200);
-  assert.equal(historyResponse.body.data.interval, "raw");
+  assert.equal(historyResponse.body.data.limit, 5);
 
-  const createResponse = await invokeRoute(server, "POST", "/chemistry", {
-    ph: 7.5,
-    free_chlorine: 5.6,
-    total_chlorine: 5.9
+  const createResponse = await invokeRoute(server, "POST", "/pool/cover", {
+    state: "off"
   });
   assert.equal(createResponse.statusCode, 201);
-  assert.equal(createResponse.body.data.reading.id, "reading-2");
+  assert.equal(createResponse.body.data.id, "cover-2");
 });
 
 function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
@@ -203,50 +157,10 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
     getWeatherForecast: async () => ({}),
     getWeatherHistory: async () => ({}),
     refreshWeatherForecast: async () => ({}),
-    getWeatherLocationSettings: async () => ({
-      poolId: "pool-1",
-      locationMode: "address",
-      addressLine1: null,
-      addressLine2: null,
-      city: null,
-      stateRegion: null,
-      postalCode: null,
-      country: null,
-      latitude: null,
-      longitude: null,
-      timezone: null,
-      geocodedLatitude: null,
-      geocodedLongitude: null,
-      geocodeProvider: null,
-      geocodedAt: null,
-      locationStatus: "requires_geocoding"
-    }),
-    upsertWeatherLocationSettings: async () => ({
-      poolId: "pool-1",
-      locationMode: "address",
-      addressLine1: null,
-      addressLine2: null,
-      city: null,
-      stateRegion: null,
-      postalCode: null,
-      country: null,
-      latitude: null,
-      longitude: null,
-      timezone: null,
-      geocodedLatitude: null,
-      geocodedLongitude: null,
-      geocodeProvider: null,
-      geocodedAt: null,
-      locationStatus: "requires_geocoding"
-    }),
-    getPoolChemistrySettings: async () => ({
-      settings: [],
-      source: "defaults"
-    }),
-    updatePoolChemistrySettings: async () => ({
-      settings: [],
-      source: "defaults"
-    }),
+    getWeatherLocationSettings: async () => ({}),
+    upsertWeatherLocationSettings: async () => ({}),
+    getPoolChemistrySettings: async () => ({ settings: [], source: "defaults" }),
+    updatePoolChemistrySettings: async () => ({ settings: [], source: "defaults" }),
     getLatestChemistryReading: async () => null,
     getChemistryHistory: async () => ({
       start: "2026-01-01T00:00:00.000Z",

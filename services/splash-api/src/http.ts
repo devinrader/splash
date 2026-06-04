@@ -22,6 +22,13 @@ import {
   type ChemistryReadingRecord
 } from "./chemistry-readings.js";
 import {
+  PoolCoverEventsUnavailableError,
+  PoolCoverEventsValidationError,
+  type PoolCoverCurrentView,
+  type PoolCoverEventRecord,
+  type PoolCoverHistoryView
+} from "./pool-cover-events.js";
+import {
   PoolChemistrySettingsUnavailableError,
   PoolChemistrySettingsValidationError
 } from "./pool-chemistry-settings.js";
@@ -84,6 +91,13 @@ export interface HttpHandlers {
     interval: string | null;
   }): Promise<ChemistryHistoryView>;
   createChemistryReading(input: Record<string, unknown>): Promise<ChemistryReadingCreateResult>;
+  getCurrentPoolCover(): Promise<PoolCoverCurrentView>;
+  getPoolCoverHistory(input: {
+    start: string | null;
+    end: string | null;
+    limit: string | null;
+  }): Promise<PoolCoverHistoryView>;
+  createPoolCoverEvent(input: Record<string, unknown>): Promise<PoolCoverEventRecord>;
   getPlatformStatus(): Promise<Record<string, unknown>>;
   getMetrics(): string;
   getEventBroker(): EventBroker;
@@ -344,6 +358,27 @@ export class LocalHttpServer implements HttpServer {
       if (req.method === "POST" && req.url === "/chemistry") {
         const body = await readJsonBody(req);
         return json(req, res, 201, { data: await this.handlers.createChemistryReading(body), error: null });
+      }
+
+      if (req.method === "GET" && req.url === "/pool/cover") {
+        return json(req, res, 200, { data: await this.handlers.getCurrentPoolCover(), error: null });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/pool/cover/history")) {
+        const url = new URL(req.url, "http://localhost");
+        return json(req, res, 200, {
+          data: await this.handlers.getPoolCoverHistory({
+            start: url.searchParams.get("start"),
+            end: url.searchParams.get("end"),
+            limit: url.searchParams.get("limit")
+          }),
+          error: null
+        });
+      }
+
+      if (req.method === "POST" && req.url === "/pool/cover") {
+        const body = await readJsonBody(req);
+        return json(req, res, 201, { data: await this.handlers.createPoolCoverEvent(body), error: null });
       }
 
       const controllerScheduleUpdateMatch = req.url?.match(/^\/controller\/schedules\/([^/]+)$/);
@@ -748,6 +783,27 @@ export class LocalHttpServer implements HttpServer {
       }
 
       if (error instanceof ChemistryReadingsUnavailableError) {
+        return json(req, res, 503, {
+          data: null,
+          error: {
+            code: "service_unavailable",
+            message: error.message
+          }
+        });
+      }
+
+      if (error instanceof PoolCoverEventsValidationError) {
+        return json(req, res, 400, {
+          data: null,
+          error: {
+            code: "validation_error",
+            message: error.message,
+            details: error.details
+          }
+        });
+      }
+
+      if (error instanceof PoolCoverEventsUnavailableError) {
         return json(req, res, 503, {
           data: null,
           error: {

@@ -559,6 +559,50 @@ export interface ChemistryReadingCreateResponse {
   error: unknown;
 }
 
+export type PoolCoverState = "on" | "off";
+export type PoolCoverType = "unknown" | "solar" | "winter" | "safety" | "automatic";
+
+export interface PoolCoverEventRecord {
+  id: string;
+  pool_id: string;
+  state: PoolCoverState;
+  cover_type: PoolCoverType;
+  source: "manual";
+  recorded_at: string;
+  created_at: string;
+}
+
+export interface PoolCoverCurrentData {
+  current: PoolCoverEventRecord | null;
+}
+
+export interface PoolCoverHistoryData {
+  start: string | null;
+  end: string | null;
+  limit: number;
+  events: PoolCoverEventRecord[];
+}
+
+export interface PoolCoverCurrentResponse {
+  data: PoolCoverCurrentData;
+  error: unknown;
+}
+
+export interface PoolCoverHistoryResponse {
+  data: PoolCoverHistoryData;
+  error: unknown;
+}
+
+export interface PoolCoverEventCreateInput {
+  state: PoolCoverState;
+  coverType?: PoolCoverType;
+}
+
+export interface PoolCoverEventCreateResponse {
+  data: PoolCoverEventRecord;
+  error: unknown;
+}
+
 export type WeatherHistoryMetric =
   | "temperature_f"
   | "cloud_cover"

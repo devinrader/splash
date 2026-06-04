@@ -318,6 +318,17 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       },
       warnings: []
     }),
+    getCurrentPoolCover: async () => ({ current: null }),
+    getPoolCoverHistory: async () => ({ start: null, end: null, limit: 100, events: [] }),
+    createPoolCoverEvent: async () => ({
+      id: "cover-1",
+      pool_id: "pool-1",
+      state: "off",
+      cover_type: "unknown",
+      source: "manual",
+      recorded_at: "2026-01-01T00:00:00.000Z",
+      created_at: "2026-01-01T00:00:00.000Z"
+    }),
     getPlatformStatus: async () => ({}),
     getMetrics: () => "",
     getEventBroker: () => eventBroker,

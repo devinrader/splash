@@ -1893,6 +1893,45 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
         });
       }
 
+      if (input.endsWith("/pool/cover")) {
+        return response({
+          data: {
+            current: {
+              id: "cover-1",
+              pool_id: "pool-1",
+              state: "on",
+              cover_type: "solar",
+              source: "manual",
+              recorded_at: "2026-05-12T11:45:00.000Z",
+              created_at: "2026-05-12T11:45:03.000Z"
+            }
+          },
+          error: null
+        });
+      }
+
+      if (input.includes("/pool/cover/history")) {
+        return response({
+          data: {
+            start: null,
+            end: null,
+            limit: 5,
+            events: [
+              {
+                id: "cover-1",
+                pool_id: "pool-1",
+                state: "on",
+                cover_type: "solar",
+                source: "manual",
+                recorded_at: "2026-05-12T11:45:00.000Z",
+                created_at: "2026-05-12T11:45:03.000Z"
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
       return platformStatusResponse();
     })
   );
@@ -1910,6 +1949,9 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
     assert.ok(screen.getByRole("img", { name: "Temperature history chart" }));
     assert.ok(screen.getByText("Weather Forecast"));
     assert.ok(screen.getByText("Provider"));
+    assert.ok(screen.getByText("Pool Cover"));
+    assert.ok(screen.getByRole("button", { name: "Cover On" }));
+    assert.ok(screen.getByLabelText("Cover Type"));
   });
 
   fireEvent.click(screen.getByRole("link", { name: /Diagnostics/ }));
@@ -1988,6 +2030,27 @@ test("renders the Home temperature telemetry empty state when no history exists"
         });
       }
 
+      if (input.endsWith("/pool/cover")) {
+        return response({
+          data: {
+            current: null
+          },
+          error: null
+        });
+      }
+
+      if (input.includes("/pool/cover/history")) {
+        return response({
+          data: {
+            start: null,
+            end: null,
+            limit: 5,
+            events: []
+          },
+          error: null
+        });
+      }
+
       return platformStatusResponse();
     })
   );
@@ -1997,6 +2060,135 @@ test("renders the Home temperature telemetry empty state when no history exists"
   await waitFor(() => {
     assert.ok(screen.getByText("No EasyTouch temperature history has been captured yet."));
     assert.ok(screen.getByText("No weather forecast has been captured yet."));
+    assert.ok(screen.getByText("No cover event has been recorded yet."));
+  });
+});
+
+test("records a pool cover event from the Home page", async () => {
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      requests.push({ input, init });
+
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+      if (input.endsWith("/equipment")) {
+        return response({ data: [], error: null });
+      }
+      if (input.endsWith("/telemetry/temperatures/latest")) {
+        return response({
+          data: {
+            controller_id: "default",
+            status: "available",
+            message: "Temperature history is available.",
+            last_updated: "2026-05-12T11:00:00.000Z",
+            readings: {
+              air: { timestamp: "2026-05-12T11:00:00.000Z", value: 77, normalized_f: 77, normalized_c: 25 },
+              pool_water: { timestamp: "2026-05-12T11:00:00.000Z", value: 81, normalized_f: 81, normalized_c: 27.2 }
+            }
+          },
+          error: null
+        });
+      }
+      if (input.includes("/telemetry/temperatures/history")) {
+        return response({
+          data: {
+            controller_id: "default",
+            range: {
+              start: "2026-05-11T12:00:00.000Z",
+              end: "2026-05-12T12:00:00.000Z"
+            },
+            interval: "1h",
+            series: []
+          },
+          error: null
+        });
+      }
+      if (input.endsWith("/weather/forecast")) {
+        return response({
+          data: {
+            pool_id: "pool-1",
+            provider: "openmeteo",
+            status: "empty",
+            message: "No weather forecast has been captured yet.",
+            stale: false,
+            fetched_at: null,
+            location: null,
+            daily: [],
+            hourly: []
+          },
+          error: null
+        });
+      }
+      if (input.endsWith("/pool/cover") && (!init || !init.method)) {
+        return response({
+          data: {
+            current: null
+          },
+          error: null
+        });
+      }
+      if (input.endsWith("/pool/cover") && init?.method === "POST") {
+        const parsed = JSON.parse(init.body as string) as Record<string, unknown>;
+        assert.equal(parsed.state, "on");
+        assert.equal(parsed.cover_type, "safety");
+        return response({
+          data: {
+            id: "cover-2",
+            pool_id: "pool-1",
+            state: "on",
+            cover_type: "safety",
+            source: "manual",
+            recorded_at: "2026-05-12T12:15:00.000Z",
+            created_at: "2026-05-12T12:15:03.000Z"
+          },
+          error: null
+        }, 201);
+      }
+      if (input.includes("/pool/cover/history")) {
+        const posted = requests.some((entry) => entry.input.endsWith("/pool/cover") && entry.init?.method === "POST");
+        return response({
+          data: {
+            start: null,
+            end: null,
+            limit: 5,
+            events: posted
+              ? [
+                  {
+                    id: "cover-2",
+                    pool_id: "pool-1",
+                    state: "on",
+                    cover_type: "safety",
+                    source: "manual",
+                    recorded_at: "2026-05-12T12:15:00.000Z",
+                    created_at: "2026-05-12T12:15:03.000Z"
+                  }
+                ]
+              : []
+          },
+          error: null
+        });
+      }
+
+      return platformStatusResponse();
+    })
+  );
+
+  renderApp(["/"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Pool Cover"));
+    assert.ok(screen.getByText("No cover event has been recorded yet."));
+  });
+
+  fireEvent.change(screen.getByLabelText("Cover Type"), { target: { value: "safety" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cover On" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Cover marked on."));
+    assert.ok(screen.getByText("Safety"));
   });
 });
 

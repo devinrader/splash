@@ -67,6 +67,14 @@ import {
   type ChemistryReadingCreateResult,
   type ChemistryReadingRecord
 } from "./chemistry-readings.js";
+import {
+  PoolCoverEventsService,
+  SqlitePoolCoverEventsRepository,
+  type PoolCoverCurrentView,
+  type PoolCoverEventRecord,
+  type PoolCoverHistoryQueryInput,
+  type PoolCoverHistoryView
+} from "./pool-cover-events.js";
 
 export interface AppOptions {
   config?: ApiConfig;
@@ -80,6 +88,7 @@ export interface AppOptions {
   weatherLocationSettings?: WeatherLocationSettingsService;
   poolChemistrySettings?: PoolChemistrySettingsService;
   chemistryReadings?: ChemistryReadingsService;
+  poolCoverEvents?: PoolCoverEventsService;
 }
 
 interface ControllerScheduleUpdateInput {
@@ -128,6 +137,7 @@ export class App {
   private readonly weatherLocationSettings: WeatherLocationSettingsService;
   private readonly poolChemistrySettings: PoolChemistrySettingsService;
   private readonly chemistryReadings: ChemistryReadingsService;
+  private readonly poolCoverEvents: PoolCoverEventsService;
   private readonly sqliteDatabase: SqliteDatabase | null;
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
@@ -183,6 +193,12 @@ export class App {
       new ChemistryReadingsService(
         this.config.poolId,
         this.sqliteDatabase ? new SqliteChemistryReadingsRepository(this.sqliteDatabase) : null
+      );
+    this.poolCoverEvents =
+      options.poolCoverEvents ??
+      new PoolCoverEventsService(
+        this.config.poolId,
+        this.sqliteDatabase ? new SqlitePoolCoverEventsRepository(this.sqliteDatabase) : null
       );
     this.platformHealthMonitor = new PlatformHealthMonitor({
       registry: this.buildServiceRegistry(),
@@ -322,6 +338,20 @@ export class App {
     const result = await this.chemistryReadings.createChemistryReading(input);
     this.events.publish("chemistry.reading", result.reading as unknown as Record<string, unknown>);
     return result;
+  }
+
+  async getCurrentPoolCover(): Promise<PoolCoverCurrentView> {
+    return this.poolCoverEvents.getCurrentPoolCover();
+  }
+
+  async getPoolCoverHistory(input: PoolCoverHistoryQueryInput): Promise<PoolCoverHistoryView> {
+    return this.poolCoverEvents.getPoolCoverHistory(input);
+  }
+
+  async createPoolCoverEvent(input: unknown): Promise<PoolCoverEventRecord> {
+    const event = await this.poolCoverEvents.createPoolCoverEvent(input);
+    this.events.publish("pool.cover.event", event as unknown as Record<string, unknown>);
+    return event;
   }
 
   async getChemistryBoundsForRecommendations(): Promise<PoolChemistryRecommendationBounds> {
@@ -1144,6 +1174,9 @@ export class App {
         getLatestChemistryReading: async () => this.getLatestChemistryReading(),
         getChemistryHistory: async (query) => this.getChemistryHistory(query),
         createChemistryReading: async (input) => this.createChemistryReading(input),
+        getCurrentPoolCover: async () => this.getCurrentPoolCover(),
+        getPoolCoverHistory: async (query) => this.getPoolCoverHistory(query),
+        createPoolCoverEvent: async (input) => this.createPoolCoverEvent(input),
         getPlatformStatus: () => this.getPlatformStatus(),
         getMetrics: () => this.getMetrics(),
         getEventBroker: () => this.events,

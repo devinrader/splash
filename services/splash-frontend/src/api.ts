@@ -3,6 +3,10 @@ import type {
   ChemistryLatestResponse,
   ChemistryReadingCreateInput,
   ChemistryReadingCreateResponse,
+  PoolCoverCurrentResponse,
+  PoolCoverEventCreateInput,
+  PoolCoverEventCreateResponse,
+  PoolCoverHistoryResponse,
   CommandAcceptedResponse,
   ControllerClockData,
   ControllerClockUpdateInput,
@@ -335,6 +339,55 @@ export async function createChemistryReading(input: ChemistryReadingCreateInput)
     throw await buildApiError(response, "Chemistry reading save failed.");
   }
   return (await response.json()) as ChemistryReadingCreateResponse;
+}
+
+export async function fetchCurrentPoolCover(): Promise<PoolCoverCurrentResponse> {
+  const response = await fetch(buildApiUrl("/pool/cover"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Pool cover request failed.");
+  }
+  return (await response.json()) as PoolCoverCurrentResponse;
+}
+
+export async function fetchPoolCoverHistory(input: {
+  start?: string;
+  end?: string;
+  limit?: number;
+} = {}): Promise<PoolCoverHistoryResponse> {
+  const params = new URLSearchParams();
+  if (input.start) {
+    params.set("start", input.start);
+  }
+  if (input.end) {
+    params.set("end", input.end);
+  }
+  if (typeof input.limit === "number") {
+    params.set("limit", String(input.limit));
+  }
+
+  const suffix = params.toString();
+  const response = await fetch(buildApiUrl(suffix ? `/pool/cover/history?${suffix}` : "/pool/cover/history"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Pool cover history request failed.");
+  }
+  return (await response.json()) as PoolCoverHistoryResponse;
+}
+
+export async function createPoolCoverEvent(input: PoolCoverEventCreateInput): Promise<PoolCoverEventCreateResponse> {
+  const response = await fetch(buildApiUrl("/pool/cover"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      state: input.state,
+      cover_type: input.coverType
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Pool cover save failed.");
+  }
+  return (await response.json()) as PoolCoverEventCreateResponse;
 }
 
 export async function fetchWeatherForecast(): Promise<WeatherForecastResponse> {
