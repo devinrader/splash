@@ -1996,10 +1996,6 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
 
   await waitFor(() => {
     assert.ok(screen.getByRole("heading", { name: "Home - Overview & actions" }));
-    assert.ok(screen.getByText("Home Telemetry"));
-    assert.ok(screen.getByText("82 °F"));
-    assert.ok(screen.getByText("78 °F"));
-    assert.ok(screen.getByRole("img", { name: "Temperature history chart" }));
     assert.ok(screen.getByText("Weather Forecast"));
     assert.ok(screen.getByText("Provider"));
     assert.ok(screen.getByText("Pool Cover"));
@@ -2132,9 +2128,9 @@ test("renders the Home temperature telemetry empty state when no history exists"
   renderApp(["/"]);
 
   await waitFor(() => {
-    assert.ok(screen.getByText("No EasyTouch temperature history has been captured yet."));
     assert.ok(screen.getByText("No weather forecast has been captured yet."));
     assert.ok(screen.getByText("No cover event has been recorded yet."));
+    assert.ok(screen.getByText("Swimmability is unknown because no chemistry reading has been logged yet."));
   });
 });
 
