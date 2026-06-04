@@ -603,6 +603,10 @@ textarea:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.water-test-log-grid {
+  grid-template-columns: minmax(0, 2fr) minmax(18rem, 1fr);
+}
+
 .automation-grid-schedules {
   grid-template-columns: minmax(0, 1.6fr) minmax(20rem, 1fr);
   align-items: start;
@@ -2460,6 +2464,7 @@ textarea:focus-visible {
   .system-two-column-grid,
   .automation-grid-overview,
   .automation-grid-two-column,
+  .water-test-log-grid,
   .automation-grid-schedules,
   .automation-mode-toggle,
   .automation-schedule-summary-strip,

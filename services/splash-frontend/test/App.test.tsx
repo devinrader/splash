@@ -917,6 +917,37 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
         });
       }
 
+      if (input.includes("/chemistry/history")) {
+        return response({
+          data: {
+            start: "2026-05-01T00:00:00.000Z",
+            end: "2026-05-12T00:00:00.000Z",
+            interval: "1d",
+            readings: [
+              {
+                id: "reading-1",
+                pool_id: "pool-1",
+                ph: 7.5,
+                free_chlorine: 5.8,
+                total_chlorine: 6.2,
+                total_alkalinity: 90,
+                calcium_hardness: 260,
+                cyanuric_acid: 70,
+                source: "manual",
+                recorded_at: "2026-05-11T12:00:00.000Z",
+                created_at: "2026-05-11T12:00:03.000Z"
+              }
+            ],
+            series: [
+              { metric: "ph", points: [{ recorded_at: "2026-05-11T12:00:00.000Z", value: 7.5 }] },
+              { metric: "free_chlorine", points: [{ recorded_at: "2026-05-11T12:00:00.000Z", value: 5.8 }] },
+              { metric: "total_chlorine", points: [{ recorded_at: "2026-05-11T12:00:00.000Z", value: 6.2 }] }
+            ]
+          },
+          error: null
+        });
+      }
+
       return platformStatusResponse();
     })
   );
@@ -949,6 +980,7 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
   assert.equal(end - start, 36 * 60 * 60 * 1000);
   assert.equal(requests.some((entry) => entry.includes("/telemetry/pumps/history")), false);
   assert.equal(requests.some((entry) => entry.includes("/weather/history")), false);
+  assert.equal(requests.some((entry) => entry.includes("/chemistry/history")), false);
 
   fireEvent.change(screen.getByLabelText("Time range"), {
     target: { value: "12h" }
@@ -1015,6 +1047,20 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
     const url = new URL(request, "http://127.0.0.1:8080");
     assert.equal(url.searchParams.get("interval"), "4h");
   }
+
+  fireEvent.click(screen.getByRole("tab", { name: "Chemistry" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByRole("tab", { name: "Chemistry", selected: true }));
+    assert.ok(screen.getByRole("img", { name: "pH history chart" }));
+    assert.ok(screen.getByRole("img", { name: "Free Chlorine history chart" }));
+    assert.ok(screen.getByRole("img", { name: "Total Chlorine history chart" }));
+  });
+
+  const chemistryHistoryRequest = requests.find((entry) => entry.includes("/chemistry/history"));
+  assert.ok(chemistryHistoryRequest);
+  const chemistryHistoryUrl = new URL(chemistryHistoryRequest as string, "http://127.0.0.1:8080");
+  assert.equal(chemistryHistoryUrl.searchParams.get("interval"), "1d");
 });
 
 test("renders Pool on from the bitmask state even when mode disagrees", async () => {

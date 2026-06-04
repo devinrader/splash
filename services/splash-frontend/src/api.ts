@@ -324,13 +324,11 @@ export async function createChemistryReading(input: ChemistryReadingCreateInput)
     body: JSON.stringify({
       ph: input.ph,
       free_chlorine: input.freeChlorine,
+      total_chlorine: input.totalChlorine,
       total_alkalinity: input.totalAlkalinity,
       calcium_hardness: input.calciumHardness,
       cyanuric_acid: input.cyanuricAcid,
-      salt_level: input.saltLevel,
-      rainfall_inches: input.rainfallInches,
-      source: "manual",
-      recorded_at: input.recordedAt ?? undefined
+      source: "manual"
     })
   });
   if (!response.ok) {

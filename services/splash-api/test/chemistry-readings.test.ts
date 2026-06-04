@@ -17,11 +17,10 @@ test("repository maps latest chemistry reading rows", async () => {
         pool_id: "pool-1",
         ph: 7.5,
         free_chlorine: 5.8,
+        total_chlorine: 6.1,
         total_alkalinity: 90,
         calcium_hardness: 260,
         cyanuric_acid: 70,
-        salt_level: 3100,
-        rainfall_inches: 0.25,
         source: "manual",
         recorded_at: "2026-03-26T19:30:00.000Z",
         created_at: "2026-03-26T19:30:03.000Z"
@@ -41,8 +40,7 @@ test("repository maps latest chemistry reading rows", async () => {
   const result = await repository.getLatest("pool-1");
 
   assert.ok(result);
-  assert.equal(result?.salt_level, 3100);
-  assert.equal(result?.rainfall_inches, 0.25);
+  assert.equal(result?.total_chlorine, 6.1);
 });
 
 test("service warns when pH and free chlorine are both omitted", async () => {
@@ -56,11 +54,10 @@ test("service warns when pH and free chlorine are both omitted", async () => {
         pool_id: record.poolId,
         ph: record.ph,
         free_chlorine: record.freeChlorine,
+        total_chlorine: record.totalChlorine,
         total_alkalinity: record.totalAlkalinity,
         calcium_hardness: record.calciumHardness,
         cyanuric_acid: record.cyanuricAcid,
-        salt_level: record.saltLevel,
-        rainfall_inches: record.rainfallInches,
         source: record.source,
         recorded_at: record.recordedAt,
         created_at: "2026-03-26T19:30:03.000Z"
@@ -103,7 +100,7 @@ test("service rejects empty chemistry reading writes", async () => {
     () => service.createChemistryReading({}),
     (error: unknown) => {
       assert.ok(error instanceof ChemistryReadingsValidationError);
-      assert.equal(error.details.reading, "At least one chemistry field or rainfall_inches must be provided.");
+      assert.equal(error.details.reading, "At least one manual chemistry field must be provided.");
       return true;
     }
   );
@@ -129,11 +126,10 @@ test("chemistry API latest, history, and create routes work", async () => {
         pool_id: "pool-1",
         ph: 7.5,
         free_chlorine: 5.8,
+        total_chlorine: 6,
         total_alkalinity: null,
         calcium_hardness: null,
         cyanuric_acid: null,
-        salt_level: 3200,
-        rainfall_inches: null,
         source: "manual",
         recorded_at: "2026-03-26T19:30:00.000Z",
         created_at: "2026-03-26T19:30:03.000Z"
@@ -157,11 +153,10 @@ test("chemistry API latest, history, and create routes work", async () => {
           pool_id: "pool-1",
           ph: 7.5,
           free_chlorine: 5.6,
+          total_chlorine: 5.9,
           total_alkalinity: null,
           calcium_hardness: null,
           cyanuric_acid: null,
-          salt_level: null,
-          rainfall_inches: 0.1,
           source: "manual",
           recorded_at: "2026-03-27T19:30:00.000Z",
           created_at: "2026-03-27T19:30:03.000Z"
@@ -173,7 +168,7 @@ test("chemistry API latest, history, and create routes work", async () => {
 
   const latestResponse = await invokeRoute(server, "GET", "/chemistry/latest");
   assert.equal(latestResponse.statusCode, 200);
-  assert.equal(latestResponse.body.data.salt_level, 3200);
+  assert.equal(latestResponse.body.data.total_chlorine, 6);
 
   const historyResponse = await invokeRoute(server, "GET", "/chemistry/history?interval=raw&start=2026-03-01T00:00:00.000Z&end=2026-03-31T00:00:00.000Z");
   assert.equal(historyResponse.statusCode, 200);
@@ -182,7 +177,7 @@ test("chemistry API latest, history, and create routes work", async () => {
   const createResponse = await invokeRoute(server, "POST", "/chemistry", {
     ph: 7.5,
     free_chlorine: 5.6,
-    rainfall_inches: 0.1
+    total_chlorine: 5.9
   });
   assert.equal(createResponse.statusCode, 201);
   assert.equal(createResponse.body.data.reading.id, "reading-2");
@@ -266,11 +261,10 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
         pool_id: "pool-1",
         ph: 7.5,
         free_chlorine: 5.8,
+        total_chlorine: null,
         total_alkalinity: null,
         calcium_hardness: null,
         cyanuric_acid: null,
-        salt_level: null,
-        rainfall_inches: null,
         source: "manual",
         recorded_at: "2026-01-01T00:00:00.000Z",
         created_at: "2026-01-01T00:00:00.000Z"

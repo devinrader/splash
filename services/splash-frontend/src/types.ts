@@ -495,22 +495,20 @@ export interface PoolChemistrySettingsSaveInput {
 export type ChemistryHistoryMetric =
   | "ph"
   | "free_chlorine"
+  | "total_chlorine"
   | "total_alkalinity"
   | "calcium_hardness"
-  | "cyanuric_acid"
-  | "salt_level"
-  | "rainfall_inches";
+  | "cyanuric_acid";
 
 export interface ChemistryReadingRecord {
   id: string;
   pool_id: string;
   ph: number | null;
   free_chlorine: number | null;
+  total_chlorine: number | null;
   total_alkalinity: number | null;
   calcium_hardness: number | null;
   cyanuric_acid: number | null;
-  salt_level: number | null;
-  rainfall_inches: number | null;
   source: "manual" | "sensor";
   recorded_at: string;
   created_at: string;
@@ -547,12 +545,10 @@ export interface ChemistryHistoryResponse {
 export interface ChemistryReadingCreateInput {
   ph?: number | null;
   freeChlorine?: number | null;
+  totalChlorine?: number | null;
   totalAlkalinity?: number | null;
   calciumHardness?: number | null;
   cyanuricAcid?: number | null;
-  saltLevel?: number | null;
-  rainfallInches?: number | null;
-  recordedAt?: string | null;
 }
 
 export interface ChemistryReadingCreateResponse {

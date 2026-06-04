@@ -42,25 +42,6 @@ test("water test log page loads latest/history and saves a chemistry reading", a
     if (input.endsWith("/platform/status")) {
       return response({ overall: "healthy", generatedAt: "2026-06-03T18:00:00.000Z", connectivity: {}, services: [] });
     }
-    if (input.endsWith("/chemistry/latest")) {
-      return response({
-        data: {
-          id: "reading-1",
-          pool_id: "pool-1",
-          ph: 7.5,
-          free_chlorine: 5.8,
-          total_alkalinity: 90,
-          calcium_hardness: 260,
-          cyanuric_acid: 70,
-          salt_level: 3100,
-          rainfall_inches: 0.25,
-          source: "manual",
-          recorded_at: "2026-06-02T19:30:00.000Z",
-          created_at: "2026-06-02T19:30:03.000Z"
-        },
-        error: null
-      });
-    }
     if (input.includes("/chemistry/history")) {
       return response({
         data: {
@@ -73,11 +54,10 @@ test("water test log page loads latest/history and saves a chemistry reading", a
               pool_id: "pool-1",
               ph: 7.5,
               free_chlorine: 5.8,
+              total_chlorine: 6.2,
               total_alkalinity: 90,
               calcium_hardness: 260,
               cyanuric_acid: 70,
-              salt_level: 3100,
-              rainfall_inches: 0.25,
               source: "manual",
               recorded_at: "2026-06-02T19:30:00.000Z",
               created_at: "2026-06-02T19:30:03.000Z"
@@ -86,7 +66,7 @@ test("water test log page loads latest/history and saves a chemistry reading", a
           series: [
             { metric: "ph", points: [{ recorded_at: "2026-06-02T19:30:00.000Z", value: 7.5 }] },
             { metric: "free_chlorine", points: [{ recorded_at: "2026-06-02T19:30:00.000Z", value: 5.8 }] },
-            { metric: "salt_level", points: [{ recorded_at: "2026-06-02T19:30:00.000Z", value: 3100 }] }
+            { metric: "total_chlorine", points: [{ recorded_at: "2026-06-02T19:30:00.000Z", value: 6.2 }] }
           ]
         },
         error: null
@@ -96,6 +76,10 @@ test("water test log page loads latest/history and saves a chemistry reading", a
       const parsed = JSON.parse(init.body as string) as Record<string, unknown>;
       assert.equal(parsed.ph, 7.4);
       assert.equal(parsed.free_chlorine, 5.4);
+      assert.equal(parsed.total_chlorine, 5.9);
+      assert.equal("recorded_at" in parsed, false);
+      assert.equal("salt_level" in parsed, false);
+      assert.equal("rainfall_inches" in parsed, false);
       return response({
         data: {
           reading: {
@@ -103,11 +87,10 @@ test("water test log page loads latest/history and saves a chemistry reading", a
             pool_id: "pool-1",
             ph: 7.4,
             free_chlorine: 5.4,
+            total_chlorine: 5.9,
             total_alkalinity: null,
             calcium_hardness: null,
             cyanuric_acid: null,
-            salt_level: null,
-            rainfall_inches: null,
             source: "manual",
             recorded_at: "2026-06-03T19:30:00.000Z",
             created_at: "2026-06-03T19:30:03.000Z"
@@ -129,25 +112,26 @@ test("water test log page loads latest/history and saves a chemistry reading", a
   );
 
   await waitFor(() => {
-    assert.ok(screen.getByText("Chemistry Entries"));
-    assert.ok(screen.getByText("5.8 ppm"));
-    assert.ok(screen.getByRole("img", { name: "pH history chart" }));
-    assert.ok(screen.getByRole("img", { name: "Free Chlorine history chart" }));
-    assert.ok(screen.getByRole("img", { name: "Salt history chart" }));
+    assert.ok(screen.getByText("Prior Logs"));
+    assert.ok(screen.getByText("Log Chemistry Reading"));
+    assert.ok(screen.getByText("Prior Logs"));
+    assert.equal(screen.queryByText("Latest Reading"), null);
+    assert.equal(screen.queryByRole("img", { name: "pH history chart" }), null);
   });
 
   fireEvent.change(screen.getByLabelText("pH"), { target: { value: "7.4" } });
   fireEvent.change(screen.getByLabelText("Free Chlorine (ppm)"), { target: { value: "5.4" } });
+  fireEvent.change(screen.getByLabelText("Total Chlorine (ppm)"), { target: { value: "5.9" } });
   fireEvent.click(screen.getByRole("button", { name: "Save chemistry reading" }));
 
   await waitFor(() => {
-    assert.ok(screen.getByText("Chemistry reading saved."));
+    const chemistryHistoryRequests = requests.filter((entry) => entry.includes("/chemistry/history"));
+    assert.ok(chemistryHistoryRequests.length >= 2);
   });
 
-  const chemistryLatestRequests = requests.filter((entry) => entry.endsWith("/chemistry/latest"));
   const chemistryHistoryRequests = requests.filter((entry) => entry.includes("/chemistry/history"));
-  assert.ok(chemistryLatestRequests.length >= 2);
   assert.ok(chemistryHistoryRequests.length >= 2);
+  assert.equal(requests.some((entry) => entry.endsWith("/chemistry/latest")), false);
 });
 
 function response(body: unknown, status = 200): Response {

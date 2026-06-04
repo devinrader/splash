@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Line } from "@nivo/line";
-import { fetchPumpTelemetryHistory, fetchTemperatureTelemetryHistory, fetchWeatherHistory } from "../api";
+import { fetchChemistryHistory, fetchPumpTelemetryHistory, fetchTemperatureTelemetryHistory, fetchWeatherHistory } from "../api";
 import { Card } from "../components/mockUi";
 import type {
+  ChemistryHistoryData,
+  ChemistryHistoryMetric,
   PumpTelemetryHistoryData,
   PumpTelemetryHistorySeries,
   TemperatureTelemetryHistoryData,
@@ -31,10 +33,16 @@ const WEATHER_METRICS: WeatherHistoryMetric[] = [
   "precipitation_probability",
   "precipitation_amount"
 ];
+const CHEMISTRY_METRICS: Array<{ metric: ChemistryHistoryMetric; title: string; axis: string; color: string }> = [
+  { metric: "ph", title: "pH", axis: "pH", color: "var(--color-sky-500, #2f6fed)" },
+  { metric: "free_chlorine", title: "Free Chlorine", axis: "Free Chlorine ppm", color: "var(--color-water-500, #1f9fb2)" },
+  { metric: "total_chlorine", title: "Total Chlorine", axis: "Total Chlorine ppm", color: "var(--color-sand-600, #b76a2a)" }
+];
 const HISTORY_TABS = [
   { id: "temperature", label: "Temperature" },
   { id: "pump", label: "Pump" },
-  { id: "weather", label: "Weather" }
+  { id: "weather", label: "Weather" },
+  { id: "chemistry", label: "Chemistry" }
 ] as const;
 const HISTORY_RANGE_OPTIONS = [
   { id: "1h", label: "Last hour", lookbackMs: 1 * 60 * 60 * 1000, interval: "5m" },
@@ -69,6 +77,8 @@ export function HistoryPage() {
   const [pumpErrorByRange, setPumpErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
   const [weatherHistoryByRange, setWeatherHistoryByRange] = useState<Partial<Record<HistoryRangeId, Record<WeatherHistoryMetric, WeatherHistoryData>>>>({});
   const [weatherErrorByRange, setWeatherErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
+  const [chemistryHistoryByRange, setChemistryHistoryByRange] = useState<Partial<Record<HistoryRangeId, ChemistryHistoryData>>>({});
+  const [chemistryErrorByRange, setChemistryErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -147,6 +157,27 @@ export function HistoryPage() {
         setWeatherErrorByRange((current) => ({ ...current, [selectedRangeId]: nextWeatherError }));
       }
 
+      if (activeTab === "chemistry") {
+        const chemistryInterval = selectedRange.interval === "5m" ? "raw" : "1d";
+        const result = await fetchChemistryHistory({ start, end, interval: chemistryInterval })
+          .then((value) => ({ status: "fulfilled" as const, value }))
+          .catch((reason) => ({ status: "rejected" as const, reason }));
+
+        if (cancelled) {
+          return;
+        }
+
+        if (result.status === "fulfilled") {
+          setChemistryHistoryByRange((current) => ({ ...current, [selectedRangeId]: result.value.data }));
+          setChemistryErrorByRange((current) => ({ ...current, [selectedRangeId]: null }));
+        } else {
+          setChemistryErrorByRange((current) => ({
+            ...current,
+            [selectedRangeId]: result.reason instanceof Error ? result.reason.message : String(result.reason)
+          }));
+        }
+      }
+
       if (cancelled) {
         return;
       }
@@ -163,10 +194,19 @@ export function HistoryPage() {
   const temperatureHistory = temperatureHistoryByRange[selectedRangeId] ?? null;
   const pumpHistory = pumpHistoryByRange[selectedRangeId] ?? null;
   const weatherHistory = weatherHistoryByRange[selectedRangeId] ?? ({} as Record<WeatherHistoryMetric, WeatherHistoryData>);
+  const chemistryHistory = chemistryHistoryByRange[selectedRangeId] ?? null;
   const temperatureError = temperatureErrorByRange[selectedRangeId] ?? null;
   const pumpError = pumpErrorByRange[selectedRangeId] ?? null;
   const weatherError = weatherErrorByRange[selectedRangeId] ?? null;
-  const currentError = activeTab === "temperature" ? temperatureError : activeTab === "pump" ? pumpError : weatherError;
+  const chemistryError = chemistryErrorByRange[selectedRangeId] ?? null;
+  const currentError =
+    activeTab === "temperature"
+      ? temperatureError
+      : activeTab === "pump"
+        ? pumpError
+        : activeTab === "weather"
+          ? weatherError
+          : chemistryError;
   const selectedRange = resolveHistoryRange(selectedRangeId);
   const currentLoadKey = `${activeTab}:${selectedRangeId}`;
 
@@ -196,6 +236,7 @@ export function HistoryPage() {
             <div className="automation-record-row"><strong>Temperature series</strong><span>{loadedKeys.includes(`temperature:${selectedRangeId}`) ? countAvailableTemperatureSeries(temperatureHistory?.series ?? []) : "On demand"}</span></div>
             <div className="automation-record-row"><strong>Pump charts</strong><span>{loadedKeys.includes(`pump:${selectedRangeId}`) ? countAvailablePumpCharts(pumpHistory) : "On demand"}</span></div>
             <div className="automation-record-row"><strong>Weather charts</strong><span>{loadedKeys.includes(`weather:${selectedRangeId}`) ? countAvailableWeatherCharts(weatherHistory) : "On demand"}</span></div>
+            <div className="automation-record-row"><strong>Chemistry charts</strong><span>{loadedKeys.includes(`chemistry:${selectedRangeId}`) ? countAvailableChemistryCharts(chemistryHistory) : "On demand"}</span></div>
             <div className="automation-record-row"><strong>Weather freshness</strong><span>{loadedKeys.includes(`weather:${selectedRangeId}`) ? summarizeWeatherFreshness(weatherHistory) : "On demand"}</span></div>
           </div>
         </Card>
@@ -307,6 +348,28 @@ export function HistoryPage() {
                     />
                   ) : (
                     <p className="chart-empty-state">{data?.message ?? "No weather history has been captured yet."}</p>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {activeTab === "chemistry" ? (
+          <div className="automation-grid automation-grid-two-column">
+            {CHEMISTRY_METRICS.map((entry) => {
+              const chartSeries = buildChemistryChartSeries(chemistryHistory, entry.metric, entry.title, entry.color);
+              return (
+                <Card key={entry.metric} title={entry.title} className="automation-card-table">
+                  {chartSeries.length ? (
+                    <HistoryTrendChart
+                      ariaLabel={`${entry.title} history chart`}
+                      yLegend={entry.axis}
+                      series={chartSeries}
+                      xTickValues={buildEveryNthTickValues(chartSeries, HISTORY_X_AXIS_LABEL_STEP)}
+                    />
+                  ) : (
+                    <p className="chart-empty-state">No chemistry history has been captured yet.</p>
                   )}
                 </Card>
               );
@@ -433,6 +496,20 @@ function buildWeatherChartSeries(series: WeatherHistorySeries[]) {
     .filter((entry) => entry.data.length > 0);
 }
 
+function buildChemistryChartSeries(
+  history: ChemistryHistoryData | null,
+  metric: ChemistryHistoryMetric,
+  title: string,
+  color: string
+) {
+  const series = history?.series.find((entry) => entry.metric === metric);
+  const data = (series?.points ?? []).map((point) => ({
+    x: formatSampleTime(point.recorded_at),
+    y: point.value
+  }));
+  return data.length ? [{ id: title, color, data }] : [];
+}
+
 function buildPumpMetricChartSeries(
   series: PumpTelemetryHistorySeries[],
   pumpId: string,
@@ -533,6 +610,13 @@ function countAvailablePumpCharts(history: PumpTelemetryHistoryData | null): str
 function countAvailableWeatherCharts(history: Partial<Record<WeatherHistoryMetric, WeatherHistoryData>>): string {
   const available = WEATHER_METRICS.filter((metric) => (history[metric]?.series ?? []).some((entry) => entry.points.length > 0)).length;
   return `${available} / ${WEATHER_METRICS.length}`;
+}
+
+function countAvailableChemistryCharts(history: ChemistryHistoryData | null): string {
+  const available = CHEMISTRY_METRICS.filter((entry) =>
+    (history?.series.find((series) => series.metric === entry.metric)?.points.length ?? 0) > 0
+  ).length;
+  return `${available} / ${CHEMISTRY_METRICS.length}`;
 }
 
 function summarizeWeatherFreshness(history: Partial<Record<WeatherHistoryMetric, WeatherHistoryData>>): string {

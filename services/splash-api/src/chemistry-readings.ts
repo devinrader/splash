@@ -6,22 +6,20 @@ export type ChemistryHistoryInterval = "raw" | "1d";
 export type ChemistryHistoryMetric =
   | "ph"
   | "free_chlorine"
+  | "total_chlorine"
   | "total_alkalinity"
   | "calcium_hardness"
-  | "cyanuric_acid"
-  | "salt_level"
-  | "rainfall_inches";
+  | "cyanuric_acid";
 
 export interface ChemistryReadingRecord {
   id: string;
   pool_id: string;
   ph: number | null;
   free_chlorine: number | null;
+  total_chlorine: number | null;
   total_alkalinity: number | null;
   calcium_hardness: number | null;
   cyanuric_acid: number | null;
-  salt_level: number | null;
-  rainfall_inches: number | null;
   source: ChemistryReadingSource;
   recorded_at: string;
   created_at: string;
@@ -53,13 +51,11 @@ export interface ChemistryReadingCreateResult {
 export interface ChemistryReadingCreateInput {
   ph?: number | null;
   free_chlorine?: number | null;
+  total_chlorine?: number | null;
   total_alkalinity?: number | null;
   calcium_hardness?: number | null;
   cyanuric_acid?: number | null;
-  salt_level?: number | null;
-  rainfall_inches?: number | null;
   source?: ChemistryReadingSource;
-  recorded_at?: string;
 }
 
 export interface ChemistryHistoryQueryInput {
@@ -71,11 +67,10 @@ export interface ChemistryHistoryQueryInput {
 interface ValidatedChemistryReadingCreateInput {
   ph: number | null;
   free_chlorine: number | null;
+  total_chlorine: number | null;
   total_alkalinity: number | null;
   calcium_hardness: number | null;
   cyanuric_acid: number | null;
-  salt_level: number | null;
-  rainfall_inches: number | null;
   source: ChemistryReadingSource;
   recorded_at: string;
 }
@@ -90,11 +85,10 @@ interface ChemistryReadingStoredRecord {
   poolId: string;
   ph: number | null;
   freeChlorine: number | null;
+  totalChlorine: number | null;
   totalAlkalinity: number | null;
   calciumHardness: number | null;
   cyanuricAcid: number | null;
-  saltLevel: number | null;
-  rainfallInches: number | null;
   source: ChemistryReadingSource;
   recordedAt: string;
 }
@@ -104,11 +98,10 @@ interface AggregatedChemistryRow {
   bucket_date: string;
   ph: number | null;
   free_chlorine: number | null;
+  total_chlorine: number | null;
   total_alkalinity: number | null;
   calcium_hardness: number | null;
   cyanuric_acid: number | null;
-  salt_level: number | null;
-  rainfall_inches: number | null;
 }
 
 export interface ChemistryReadingsRepository {
@@ -177,11 +170,10 @@ export class ChemistryReadingsService {
       poolId: this.poolId,
       ph: validated.ph,
       freeChlorine: validated.free_chlorine,
+      totalChlorine: validated.total_chlorine,
       totalAlkalinity: validated.total_alkalinity,
       calciumHardness: validated.calcium_hardness,
       cyanuricAcid: validated.cyanuric_acid,
-      saltLevel: validated.salt_level,
-      rainfallInches: validated.rainfall_inches,
       source: validated.source,
       recordedAt: validated.recorded_at
     });
@@ -216,11 +208,10 @@ export class SqliteChemistryReadingsRepository implements ChemistryReadingsRepos
           pool_id,
           ph,
           free_chlorine,
+          total_chlorine,
           total_alkalinity,
           calcium_hardness,
           cyanuric_acid,
-          salt_level,
-          rainfall_inches,
           source,
           recorded_at,
           created_at
@@ -245,26 +236,24 @@ export class SqliteChemistryReadingsRepository implements ChemistryReadingsRepos
           pool_id,
           ph,
           free_chlorine,
+          total_chlorine,
           total_alkalinity,
           calcium_hardness,
           cyanuric_acid,
-          salt_level,
-          rainfall_inches,
           source,
           recorded_at,
           created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         id,
         record.poolId,
         record.ph,
         record.freeChlorine,
+        record.totalChlorine,
         record.totalAlkalinity,
         record.calciumHardness,
         record.cyanuricAcid,
-        record.saltLevel,
-        record.rainfallInches,
         record.source,
         record.recordedAt,
         createdAt
@@ -276,11 +265,10 @@ export class SqliteChemistryReadingsRepository implements ChemistryReadingsRepos
       pool_id: record.poolId,
       ph: record.ph,
       free_chlorine: record.freeChlorine,
+      total_chlorine: record.totalChlorine,
       total_alkalinity: record.totalAlkalinity,
       calcium_hardness: record.calciumHardness,
       cyanuric_acid: record.cyanuricAcid,
-      salt_level: record.saltLevel,
-      rainfall_inches: record.rainfallInches,
       source: record.source,
       recorded_at: record.recordedAt,
       created_at: createdAt
@@ -295,11 +283,10 @@ export class SqliteChemistryReadingsRepository implements ChemistryReadingsRepos
           pool_id,
           ph,
           free_chlorine,
+          total_chlorine,
           total_alkalinity,
           calcium_hardness,
           cyanuric_acid,
-          salt_level,
-          rainfall_inches,
           source,
           recorded_at,
           created_at
@@ -320,11 +307,10 @@ export class SqliteChemistryReadingsRepository implements ChemistryReadingsRepos
           date(recorded_at) AS bucket_date,
           AVG(ph) AS ph,
           AVG(free_chlorine) AS free_chlorine,
+          AVG(total_chlorine) AS total_chlorine,
           AVG(total_alkalinity) AS total_alkalinity,
           AVG(calcium_hardness) AS calcium_hardness,
-          AVG(cyanuric_acid) AS cyanuric_acid,
-          AVG(salt_level) AS salt_level,
-          AVG(rainfall_inches) AS rainfall_inches
+          AVG(cyanuric_acid) AS cyanuric_acid
         FROM chemistry_readings
         WHERE pool_id = ?
           AND recorded_at >= ?
@@ -343,11 +329,10 @@ interface ChemistryReadingRow {
   pool_id: string;
   ph: number | null;
   free_chlorine: number | null;
+  total_chlorine: number | null;
   total_alkalinity: number | null;
   calcium_hardness: number | null;
   cyanuric_acid: number | null;
-  salt_level: number | null;
-  rainfall_inches: number | null;
   source: ChemistryReadingSource;
   recorded_at: string;
   created_at: string;
@@ -359,11 +344,10 @@ function mapChemistryReadingRow(row: ChemistryReadingRow): ChemistryReadingRecor
     pool_id: row.pool_id,
     ph: normalizeNullableNumber(row.ph),
     free_chlorine: normalizeNullableNumber(row.free_chlorine),
+    total_chlorine: normalizeNullableNumber(row.total_chlorine),
     total_alkalinity: normalizeNullableNumber(row.total_alkalinity),
     calcium_hardness: normalizeNullableNumber(row.calcium_hardness),
     cyanuric_acid: normalizeNullableNumber(row.cyanuric_acid),
-    salt_level: normalizeNullableNumber(row.salt_level),
-    rainfall_inches: normalizeNullableNumber(row.rainfall_inches),
     source: row.source,
     recorded_at: row.recorded_at,
     created_at: row.created_at
@@ -395,21 +379,19 @@ function buildSeriesFromAggregateRows(rows: AggregatedChemistryRow[]): Chemistry
 const HISTORY_METRICS: ChemistryHistoryMetric[] = [
   "ph",
   "free_chlorine",
+  "total_chlorine",
   "total_alkalinity",
   "calcium_hardness",
-  "cyanuric_acid",
-  "salt_level",
-  "rainfall_inches"
+  "cyanuric_acid"
 ];
 
 const READING_NUMERIC_FIELDS = [
   "ph",
   "free_chlorine",
+  "total_chlorine",
   "total_alkalinity",
   "calcium_hardness",
-  "cyanuric_acid",
-  "salt_level",
-  "rainfall_inches"
+  "cyanuric_acid"
 ] as const;
 
 function validateChemistryReadingCreateInput(input: unknown): ValidatedChemistryReadingCreateInput {
@@ -427,26 +409,12 @@ function validateChemistryReadingCreateInput(input: unknown): ValidatedChemistry
 
   const hasAnyValue = READING_NUMERIC_FIELDS.some((field) => values[field] !== null);
   if (!hasAnyValue) {
-    details.reading = "At least one chemistry field or rainfall_inches must be provided.";
+    details.reading = "At least one manual chemistry field must be provided.";
   }
 
   const source = record.source;
   if (source !== undefined && source !== "manual") {
     details.source = "Only manual chemistry readings are accepted in the first slice.";
-  }
-
-  let recordedAt = new Date().toISOString();
-  if (record.recorded_at !== undefined) {
-    if (typeof record.recorded_at !== "string") {
-      details.recorded_at = "recorded_at must be an ISO 8601 timestamp string.";
-    } else {
-      const parsed = Date.parse(record.recorded_at);
-      if (!Number.isFinite(parsed)) {
-        details.recorded_at = "recorded_at must be a valid ISO 8601 timestamp.";
-      } else {
-        recordedAt = new Date(parsed).toISOString();
-      }
-    }
   }
 
   if (Object.keys(details).length > 0) {
@@ -456,13 +424,12 @@ function validateChemistryReadingCreateInput(input: unknown): ValidatedChemistry
   return {
     ph: values.ph,
     free_chlorine: values.free_chlorine,
+    total_chlorine: values.total_chlorine,
     total_alkalinity: values.total_alkalinity,
     calcium_hardness: values.calcium_hardness,
     cyanuric_acid: values.cyanuric_acid,
-    salt_level: values.salt_level,
-    rainfall_inches: values.rainfall_inches,
     source: "manual",
-    recorded_at: recordedAt
+    recorded_at: new Date().toISOString()
   };
 }
 
@@ -518,10 +485,6 @@ function readOptionalNumber(
   }
   if (typeof value !== "number" || !Number.isFinite(value)) {
     details[field] = `${field} must be a finite number when provided.`;
-    return null;
-  }
-  if (field === "rainfall_inches" && value < 0) {
-    details[field] = "rainfall_inches must be greater than or equal to 0.";
     return null;
   }
   return value;
