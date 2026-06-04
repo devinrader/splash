@@ -1913,6 +1913,34 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
                 uv_index_max: 9.1,
                 sunrise: "2026-05-13T06:18:00-04:00",
                 sunset: "2026-05-13T20:16:00-04:00"
+              },
+              {
+                date: "2026-05-14",
+                weather_code: 61,
+                high_temp_f: 79,
+                high_temp_c: 26.1,
+                low_temp_f: 64,
+                low_temp_c: 17.8,
+                precipitation_probability_max: 70,
+                precipitation_amount: 2,
+                precipitation_unit: "mm",
+                uv_index_max: 4.2,
+                sunrise: "2026-05-14T06:17:00-04:00",
+                sunset: "2026-05-14T20:17:00-04:00"
+              },
+              {
+                date: "2026-05-15",
+                weather_code: 1,
+                high_temp_f: 76,
+                high_temp_c: 24.4,
+                low_temp_f: 60,
+                low_temp_c: 15.6,
+                precipitation_probability_max: 5,
+                precipitation_amount: 0,
+                precipitation_unit: "mm",
+                uv_index_max: 3.8,
+                sunrise: "2026-05-15T06:16:00-04:00",
+                sunset: "2026-05-15T20:18:00-04:00"
               }
             ],
             hourly: []
@@ -1996,8 +2024,10 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
 
   await waitFor(() => {
     assert.ok(screen.getByRole("heading", { name: "Home - Overview & actions" }));
-    assert.ok(screen.getByText("Weather Forecast"));
-    assert.ok(screen.getByText("Provider"));
+    assert.ok(screen.getByText("Weather Impact"));
+    assert.ok(screen.getByText("Elevated chlorine demand"));
+    assert.ok(screen.getByText("Rain"));
+    assert.ok(screen.getByText("Forecast current"));
     assert.ok(screen.getByText("Pool Cover"));
     assert.ok(screen.getByText("Swimmability"));
     assert.ok(screen.getByText("Water is currently suitable for swimming."));
@@ -2024,7 +2054,7 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
   });
 });
 
-test("renders the Home temperature telemetry empty state when no history exists", async () => {
+test("renders the Home weather impact empty state when no forecast exists", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string, init?: RequestInit) => {
@@ -2034,34 +2064,6 @@ test("renders the Home temperature telemetry empty state when no history exists"
 
       if (input.endsWith("/equipment")) {
         return response({ data: [], error: null });
-      }
-
-      if (input.endsWith("/telemetry/temperatures/latest")) {
-        return response({
-          data: {
-            controller_id: "default",
-            status: "empty",
-            message: "No EasyTouch temperature history has been captured yet.",
-            last_updated: null,
-            readings: {}
-          },
-          error: null
-        });
-      }
-
-      if (input.includes("/telemetry/temperatures/history")) {
-        return response({
-          data: {
-            controller_id: "default",
-            range: {
-              start: "2026-05-11T12:00:00.000Z",
-              end: "2026-05-12T12:00:00.000Z"
-            },
-            interval: "1h",
-            series: []
-          },
-          error: null
-        });
       }
 
       if (input.endsWith("/weather/forecast")) {
@@ -2146,35 +2148,6 @@ test("records a pool cover event from the Home page", async () => {
       }
       if (input.endsWith("/equipment")) {
         return response({ data: [], error: null });
-      }
-      if (input.endsWith("/telemetry/temperatures/latest")) {
-        return response({
-          data: {
-            controller_id: "default",
-            status: "available",
-            message: "Temperature history is available.",
-            last_updated: "2026-05-12T11:00:00.000Z",
-            readings: {
-              air: { timestamp: "2026-05-12T11:00:00.000Z", value: 77, normalized_f: 77, normalized_c: 25 },
-              pool_water: { timestamp: "2026-05-12T11:00:00.000Z", value: 81, normalized_f: 81, normalized_c: 27.2 }
-            }
-          },
-          error: null
-        });
-      }
-      if (input.includes("/telemetry/temperatures/history")) {
-        return response({
-          data: {
-            controller_id: "default",
-            range: {
-              start: "2026-05-11T12:00:00.000Z",
-              end: "2026-05-12T12:00:00.000Z"
-            },
-            interval: "1h",
-            series: []
-          },
-          error: null
-        });
       }
       if (input.endsWith("/weather/forecast")) {
         return response({

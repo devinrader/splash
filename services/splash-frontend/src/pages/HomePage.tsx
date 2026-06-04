@@ -136,9 +136,9 @@ export function HomePage() {
       </div>
 
       <div className="automation-grid automation-grid-two-column">
-        <Card title="Weather Forecast" className="automation-card-table">
+        <Card title="Weather Impact" className="automation-card-table">
           {hasForecast ? (
-            <WeatherForecastSummary forecast={forecast as WeatherForecastData} />
+            <WeatherImpactCard forecast={forecast as WeatherForecastData} />
           ) : (
             <p className="chart-empty-state">{forecast?.message ?? "No weather forecast has been captured yet."}</p>
           )}
@@ -207,53 +207,36 @@ export function HomePage() {
           </div>
         </Card>
       </div>
-
-      <div className="automation-grid automation-grid-two-column">
-        <Card title="Weather Detail">
-          {hasForecast ? (
-            <WeatherForecastDetail forecast={forecast as WeatherForecastData} />
-          ) : (
-            <p className="chart-empty-state">{forecast?.stale ? "Latest forecast is stale." : "Weather data unavailable."}</p>
-          )}
-        </Card>
-      </div>
     </section>
   );
 }
 
-function WeatherForecastSummary({ forecast }: { forecast: WeatherForecastData }) {
+function WeatherImpactCard({ forecast }: { forecast: WeatherForecastData }) {
   const today = forecast.daily[0];
-  const tomorrow = forecast.daily[1];
+  const upcoming = forecast.daily.slice(1, 4);
 
   return (
-    <div className="automation-record-list">
-      <div className="automation-record-row">
-        <strong>{today?.date ?? "Today"}</strong>
-        <span>{formatRange(today?.high_temp_f, today?.low_temp_f)} · UV {formatNullableNumber(today?.uv_index_max)} · Rain {formatPercent(today?.precipitation_probability_max)}</span>
-      </div>
-      {tomorrow ? (
-        <div className="automation-record-row">
-          <strong>{tomorrow.date}</strong>
-          <span>{formatRange(tomorrow.high_temp_f, tomorrow.low_temp_f)} · UV {formatNullableNumber(tomorrow.uv_index_max)} · Rain {formatPercent(tomorrow.precipitation_probability_max)}</span>
+    <div className="weather-impact-card">
+      <div className="weather-impact-grid">
+        <div className="weather-impact-today">
+          <div className="weather-impact-symbol">{weatherCodeIcon(today?.weather_code)}</div>
+          <div className="weather-impact-temperature">{formatTemperatureHeadline(today?.high_temp_f)}</div>
+          <div className="weather-impact-condition">{weatherCodeLabel(today?.weather_code)}</div>
+          <div className="weather-impact-label">{deriveWeatherImpact(today)}</div>
         </div>
-      ) : null}
-      <div className="automation-record-row">
-        <strong>Provider</strong>
-        <span>{forecast.provider}{forecast.stale ? " · stale" : ""}</span>
+        {upcoming.map((entry) => (
+          <div className="weather-impact-day" key={entry.date}>
+            <div className="weather-impact-day-label">{formatShortDay(entry.date)}</div>
+            <div className="weather-impact-day-range">{formatRange(entry.high_temp_f, entry.low_temp_f)}</div>
+            <div className="weather-impact-day-symbol">{weatherCodeIcon(entry.weather_code)}</div>
+            <div className="weather-impact-day-note">{formatDayImpact(entry)}</div>
+          </div>
+        ))}
       </div>
-    </div>
-  );
-}
-
-function WeatherForecastDetail({ forecast }: { forecast: WeatherForecastData }) {
-  return (
-    <div className="automation-record-list">
-      {forecast.daily.slice(0, 10).map((entry) => (
-        <div className="automation-record-row" key={entry.date}>
-          <strong>{entry.date}</strong>
-          <span>{formatRange(entry.high_temp_f, entry.low_temp_f)} · UV {formatNullableNumber(entry.uv_index_max)} · Rain {formatPercent(entry.precipitation_probability_max)}</span>
-        </div>
-      ))}
+      <div className="weather-impact-meta">
+        <strong>{forecast.provider}</strong>
+        <span>{forecast.stale ? "Stale forecast" : "Forecast current"}</span>
+      </div>
     </div>
   );
 }
@@ -284,6 +267,133 @@ function formatSwimmabilityStatus(value: SwimmabilityData["status"]): string {
     default:
       return "Unknown";
   }
+}
+
+function weatherCodeLabel(value: number | null | undefined): string {
+  switch (value) {
+    case 0:
+      return "Clear skies";
+    case 1:
+      return "Mostly clear";
+    case 2:
+      return "Partly cloudy";
+    case 3:
+      return "Cloudy";
+    case 45:
+    case 48:
+      return "Fog";
+    case 51:
+    case 53:
+    case 55:
+    case 61:
+    case 63:
+    case 65:
+    case 80:
+    case 81:
+    case 82:
+      return "Rain";
+    case 71:
+    case 73:
+    case 75:
+      return "Snow";
+    case 95:
+    case 96:
+    case 99:
+      return "Storms";
+    default:
+      return "Weather";
+  }
+}
+
+function weatherCodeIcon(value: number | null | undefined): string {
+  switch (value) {
+    case 0:
+      return "☀️";
+    case 1:
+      return "🌤️";
+    case 2:
+      return "⛅";
+    case 3:
+      return "☁️";
+    case 45:
+    case 48:
+      return "🌫️";
+    case 51:
+    case 53:
+    case 55:
+    case 61:
+    case 63:
+    case 65:
+    case 80:
+    case 81:
+    case 82:
+      return "🌦️";
+    case 71:
+    case 73:
+    case 75:
+      return "❄️";
+    case 95:
+    case 96:
+    case 99:
+      return "⛈️";
+    default:
+      return "🌤️";
+  }
+}
+
+function deriveWeatherImpact(
+  entry:
+    | WeatherForecastData["daily"][number]
+    | undefined
+): string {
+  if (!entry) {
+    return "Weather impact unavailable";
+  }
+  if ((entry.precipitation_probability_max ?? 0) >= 60) {
+    return "Rain may dilute chemistry";
+  }
+  if ((entry.uv_index_max ?? 0) >= 8 || (entry.high_temp_f ?? 0) >= 88) {
+    return "Elevated chlorine demand";
+  }
+  if ((entry.uv_index_max ?? 0) >= 5 || (entry.high_temp_f ?? 0) >= 80) {
+    return "Moderate chlorine demand";
+  }
+  return "Low chlorine demand";
+}
+
+function formatDayImpact(
+  entry:
+    | WeatherForecastData["daily"][number]
+    | undefined
+): string {
+  if (!entry) {
+    return "Unknown";
+  }
+  if ((entry.precipitation_probability_max ?? 0) >= 60) {
+    return "Rain";
+  }
+  if ((entry.uv_index_max ?? 0) >= 8) {
+    return "High";
+  }
+  if ((entry.uv_index_max ?? 0) >= 5) {
+    return "Moderate";
+  }
+  return "Stable";
+}
+
+function formatTemperatureHeadline(value: number | null | undefined): string {
+  if (typeof value !== "number") {
+    return "n/a";
+  }
+  return `${Math.round(value)}°F`;
+}
+
+function formatShortDay(value: string): string {
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(date);
 }
 
 function formatDriverLabel(value: string): string {
@@ -317,15 +427,7 @@ function formatRange(high: number | null | undefined, low: number | null | undef
   if (typeof high !== "number" || typeof low !== "number") {
     return "Unavailable";
   }
-  return `${Math.round(high)} °F / ${Math.round(low)} °F`;
-}
-
-function formatPercent(value: number | null | undefined): string {
-  return typeof value === "number" ? `${Math.round(value)}%` : "n/a";
-}
-
-function formatNullableNumber(value: number | null | undefined): string {
-  return typeof value === "number" ? String(Math.round(value * 10) / 10) : "n/a";
+  return `${Math.round(high)}° / ${Math.round(low)}°`;
 }
 
 function formatTelemetryTimestamp(value: string | null | undefined): string {
