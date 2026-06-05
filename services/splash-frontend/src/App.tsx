@@ -24,6 +24,7 @@ import { AppShell } from "./components/AppShell";
 import { SplashIcon } from "./components/icons/SplashIcon";
 import { NAV_ITEMS, PAGE_SUMMARIES, getActiveNavItem } from "./navigation";
 import { AutomationPage } from "./pages/AutomationPage";
+import { AlertsPage } from "./pages/AlertsPage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { HomePage } from "./pages/HomePage";
@@ -784,7 +785,7 @@ function AppLayout({
           <Route path="/diagnostics/*" element={<DiagnosticsPage {...diagnosticsPageProps} />} />
           <Route path="/routines" element={<PlaceholderPage kicker="Routines" title="Maintenance Workflows" description="Checklist-driven maintenance, reminders, and routine tracking will arrive here in a later milestone." />} />
           <Route path="/history" element={<HistoryPage />} />
-          <Route path="/alerts" element={<PlaceholderPage kicker="Alerts" title="Messages & Warnings" description="Operator alerts, reminders, and equipment attention items will appear here once the notification model reaches the frontend shell." />} />
+          <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/water-test-log" element={<WaterTestLogPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/system/overview" replace />} />

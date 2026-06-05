@@ -29,6 +29,13 @@ import {
   type PoolCoverHistoryView
 } from "./pool-cover-events.js";
 import {
+  NotificationsUnavailableError,
+  NotificationsValidationError,
+  type NotificationRecord,
+  type NotificationsReadAllResult,
+  type NotificationsView
+} from "./notifications.js";
+import {
   PoolChemistrySettingsUnavailableError,
   PoolChemistrySettingsValidationError
 } from "./pool-chemistry-settings.js";
@@ -100,6 +107,13 @@ export interface HttpHandlers {
   }): Promise<PoolCoverHistoryView>;
   createPoolCoverEvent(input: Record<string, unknown>): Promise<PoolCoverEventRecord>;
   getSwimmability(): Promise<SwimmabilityView>;
+  getNotifications(input: {
+    status: string | null;
+    limit: string | null;
+    type: string | null;
+  }): Promise<NotificationsView>;
+  markNotificationRead(id: string): Promise<NotificationRecord | null>;
+  markAllNotificationsRead(): Promise<NotificationsReadAllResult>;
   getPlatformStatus(): Promise<Record<string, unknown>>;
   getMetrics(): string;
   getEventBroker(): EventBroker;
@@ -385,6 +399,35 @@ export class LocalHttpServer implements HttpServer {
 
       if (req.method === "GET" && req.url === "/swimmability") {
         return json(req, res, 200, { data: await this.handlers.getSwimmability(), error: null });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/notifications")) {
+        const url = new URL(req.url, "http://localhost");
+        if (url.pathname === "/notifications") {
+          return json(req, res, 200, {
+            data: await this.handlers.getNotifications({
+              status: url.searchParams.get("status"),
+              limit: url.searchParams.get("limit"),
+              type: url.searchParams.get("type")
+            }),
+            error: null
+          });
+        }
+      }
+
+      if (req.method === "POST" && req.url === "/notifications/read-all") {
+        await readJsonBody(req);
+        return json(req, res, 200, { data: await this.handlers.markAllNotificationsRead(), error: null });
+      }
+
+      const notificationReadMatch = req.url?.match(/^\/notifications\/([^/]+)\/read$/);
+      if (req.method === "POST" && notificationReadMatch) {
+        await readJsonBody(req);
+        const notification = await this.handlers.markNotificationRead(decodeURIComponent(notificationReadMatch[1]));
+        if (!notification) {
+          return json(req, res, 404, { data: null, error: "Notification not found." });
+        }
+        return json(req, res, 200, { data: notification, error: null });
       }
 
       const controllerScheduleUpdateMatch = req.url?.match(/^\/controller\/schedules\/([^/]+)$/);
@@ -810,6 +853,27 @@ export class LocalHttpServer implements HttpServer {
       }
 
       if (error instanceof PoolCoverEventsUnavailableError) {
+        return json(req, res, 503, {
+          data: null,
+          error: {
+            code: "service_unavailable",
+            message: error.message
+          }
+        });
+      }
+
+      if (error instanceof NotificationsValidationError) {
+        return json(req, res, 400, {
+          data: null,
+          error: {
+            code: "validation_error",
+            message: error.message,
+            details: error.details
+          }
+        });
+      }
+
+      if (error instanceof NotificationsUnavailableError) {
         return json(req, res, 503, {
           data: null,
           error: {

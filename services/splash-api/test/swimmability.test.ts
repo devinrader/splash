@@ -244,6 +244,9 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
         telemetry_latest_at: null
       }
     }),
+    getNotifications: async () => ({ status: "unread", limit: 50, notifications: [] }),
+    markNotificationRead: async () => null,
+    markAllNotificationsRead: async () => ({ updated_count: 0 }),
     getPlatformStatus: async () => ({}),
     getMetrics: () => "",
     getEventBroker: () => eventBroker,

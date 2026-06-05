@@ -474,6 +474,7 @@ export interface PoolChemistrySetting {
 
 export interface PoolChemistrySettingsData {
   settings: PoolChemistrySetting[];
+  chemistry_prompt_interval_days: number;
   source: "sqlite" | "defaults";
 }
 
@@ -490,6 +491,7 @@ export interface PoolChemistrySettingsSaveInput {
     maximum?: number | null;
     enabled?: boolean;
   }>;
+  chemistryPromptIntervalDays?: number;
 }
 
 export type ChemistryHistoryMetric =
@@ -639,6 +641,53 @@ export interface SwimmabilityData {
 
 export interface SwimmabilityResponse {
   data: SwimmabilityData;
+  error: unknown;
+}
+
+export type NotificationType =
+  | "chemistry_test_due"
+  | "swimmability_caution"
+  | "swimmability_poor"
+  | "rain_since_test";
+
+export type NotificationSeverity = "info" | "warning" | "critical";
+export type NotificationStatusFilter = "unread" | "all";
+
+export interface NotificationRecord {
+  id: string;
+  pool_id: string;
+  type: NotificationType;
+  severity: NotificationSeverity;
+  title: string;
+  body: string;
+  read: boolean;
+  source: string;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface NotificationsData {
+  status: NotificationStatusFilter;
+  limit: number;
+  notifications: NotificationRecord[];
+}
+
+export interface NotificationsResponse {
+  data: NotificationsData;
+  error: unknown;
+}
+
+export interface NotificationReadResponse {
+  data: NotificationRecord;
+  error: unknown;
+}
+
+export interface NotificationsReadAllResponse {
+  data: {
+    updated_count: number;
+  };
   error: unknown;
 }
 

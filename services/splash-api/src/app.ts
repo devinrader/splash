@@ -76,6 +76,12 @@ import {
   type PoolCoverHistoryQueryInput,
   type PoolCoverHistoryView
 } from "./pool-cover-events.js";
+import {
+  NotificationsService,
+  type NotificationRecord,
+  type NotificationsReadAllResult,
+  type NotificationsView
+} from "./notifications.js";
 import { buildSwimmabilityView, type SwimmabilityView } from "./swimmability.js";
 
 export interface AppOptions {
@@ -91,6 +97,7 @@ export interface AppOptions {
   poolChemistrySettings?: PoolChemistrySettingsService;
   chemistryReadings?: ChemistryReadingsService;
   poolCoverEvents?: PoolCoverEventsService;
+  notifications?: NotificationsService;
 }
 
 interface ControllerScheduleUpdateInput {
@@ -140,6 +147,7 @@ export class App {
   private readonly poolChemistrySettings: PoolChemistrySettingsService;
   private readonly chemistryReadings: ChemistryReadingsService;
   private readonly poolCoverEvents: PoolCoverEventsService;
+  private readonly notifications: NotificationsService;
   private readonly sqliteDatabase: SqliteDatabase | null;
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
@@ -202,6 +210,9 @@ export class App {
         this.config.poolId,
         this.sqliteDatabase ? new SqlitePoolCoverEventsRepository(this.sqliteDatabase) : null
       );
+    this.notifications =
+      options.notifications ??
+      new NotificationsService(this.config.poolId, this.sqliteDatabase);
     this.platformHealthMonitor = new PlatformHealthMonitor({
       registry: this.buildServiceRegistry(),
       fetchImpl: options.fetchImpl,
@@ -357,6 +368,65 @@ export class App {
   }
 
   async getSwimmability(): Promise<SwimmabilityView> {
+    const { chemistry, chemistryBounds, cover, forecast, latestTemperatures, rainfallSinceChemistryInches } =
+      await this.getSwimmabilityInputs();
+
+    return buildSwimmabilityView({
+      chemistry,
+      chemistryBounds,
+      cover,
+      forecast,
+      latestTemperatures,
+      rainfallSinceChemistryInches
+    });
+  }
+
+  async getNotifications(input: { status: string | null; limit: string | null; type: string | null }): Promise<NotificationsView> {
+    const {
+      chemistry,
+      chemistryBounds,
+      cover,
+      forecast,
+      latestTemperatures,
+      rainfallSinceChemistryInches
+    } = await this.getSwimmabilityInputs();
+    const swimmability = buildSwimmabilityView({
+      chemistry,
+      chemistryBounds,
+      cover,
+      forecast,
+      latestTemperatures,
+      rainfallSinceChemistryInches
+    });
+    const chemistryPromptIntervalDays = await this.poolChemistrySettings.getChemistryPromptIntervalDays();
+
+    return this.notifications.getNotifications(input, {
+      chemistry,
+      chemistryPromptIntervalDays,
+      swimmability,
+      rainfallSinceChemistryInches,
+      cover,
+      forecast,
+      latestTemperatures
+    });
+  }
+
+  async markNotificationRead(id: string): Promise<NotificationRecord | null> {
+    return this.notifications.markNotificationRead(id);
+  }
+
+  async markAllNotificationsRead(): Promise<NotificationsReadAllResult> {
+    return this.notifications.markAllNotificationsRead();
+  }
+
+  private async getSwimmabilityInputs(): Promise<{
+    chemistry: ChemistryReadingRecord | null;
+    chemistryBounds: PoolChemistryRecommendationBounds;
+    cover: PoolCoverCurrentView;
+    forecast: Awaited<ReturnType<WeatherForecastService["getLatest"]>>;
+    latestTemperatures: Awaited<ReturnType<TemperatureTelemetryService["getLatest"]>>;
+    rainfallSinceChemistryInches: number | null;
+  }> {
     const [chemistry, chemistryBounds, cover, forecast, latestTemperatures] = await Promise.all([
       this.chemistryReadings.getLatestChemistryReading(),
       this.poolChemistrySettings.getChemistryBoundsForRecommendations(),
@@ -376,14 +446,14 @@ export class App {
       rainfallSinceChemistryInches = sumWeatherHistoryPoints(rainfallHistory) / 25.4;
     }
 
-    return buildSwimmabilityView({
+    return {
       chemistry,
       chemistryBounds,
       cover,
       forecast,
       latestTemperatures,
       rainfallSinceChemistryInches
-    });
+    };
   }
 
   async getChemistryBoundsForRecommendations(): Promise<PoolChemistryRecommendationBounds> {
@@ -1210,6 +1280,9 @@ export class App {
         getPoolCoverHistory: async (query) => this.getPoolCoverHistory(query),
         createPoolCoverEvent: async (input) => this.createPoolCoverEvent(input),
         getSwimmability: async () => this.getSwimmability(),
+        getNotifications: async (query) => this.getNotifications(query),
+        markNotificationRead: async (id) => this.markNotificationRead(id),
+        markAllNotificationsRead: async () => this.markAllNotificationsRead(),
         getPlatformStatus: () => this.getPlatformStatus(),
         getMetrics: () => this.getMetrics(),
         getEventBroker: () => this.events,

@@ -2685,6 +2685,81 @@ textarea:focus-visible {
   font-weight: 600;
 }
 
+.alerts-grid {
+  grid-template-columns: minmax(18rem, 0.8fr) minmax(0, 1.2fr);
+  align-items: start;
+}
+
+.alerts-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.alerts-item {
+  display: grid;
+  gap: var(--space-3);
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.alerts-item-warning {
+  border-color: rgba(180, 83, 9, 0.25);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.alerts-item-critical {
+  border-color: rgba(180, 35, 24, 0.25);
+  background: rgba(180, 35, 24, 0.08);
+}
+
+.alerts-item-header,
+.alerts-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.alerts-item-copy {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.alerts-item-time {
+  color: var(--color-text-subtle);
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+.alerts-severity {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.alerts-severity-info {
+  background: rgba(14, 116, 144, 0.12);
+  color: #0f766e;
+}
+
+.alerts-severity-warning {
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+
+.alerts-severity-critical {
+  background: rgba(180, 35, 24, 0.16);
+  color: #912018;
+}
+
 .network-topology {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2783,6 +2858,7 @@ textarea:focus-visible {
   .system-summary-grid,
   .system-filter-row,
   .system-two-column-grid,
+  .alerts-grid,
   .automation-grid-overview,
   .automation-grid-two-column,
   .water-test-log-grid,

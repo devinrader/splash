@@ -25,6 +25,7 @@ export interface PoolChemistrySetting {
 
 export interface PoolChemistrySettingsView {
   settings: PoolChemistrySetting[];
+  chemistry_prompt_interval_days: number;
   source: "sqlite" | "defaults";
 }
 
@@ -59,6 +60,7 @@ export interface PoolChemistryRecommendationBounds {
 interface StoredPoolChemistrySettings {
   poolId: string;
   settings: Record<PoolChemistryKey, PoolChemistrySetting>;
+  chemistryPromptIntervalDays: number;
 }
 
 export interface PoolChemistrySettingsRepository {
@@ -198,15 +200,17 @@ export class PoolChemistrySettingsService {
     if (!this.repository) {
       return {
         settings: listPoolChemistrySettings(defaultPoolChemistrySettingsMap()),
+        chemistry_prompt_interval_days: 3,
         source: "defaults"
       };
     }
 
     const stored = await this.repository.get(this.poolId);
-      return {
-        settings: listPoolChemistrySettings(stored?.settings ?? defaultPoolChemistrySettingsMap()),
-        source: stored ? "sqlite" : "defaults"
-      };
+    return {
+      settings: listPoolChemistrySettings(stored?.settings ?? defaultPoolChemistrySettingsMap()),
+      chemistry_prompt_interval_days: stored?.chemistryPromptIntervalDays ?? 3,
+      source: stored ? "sqlite" : "defaults"
+    };
   }
 
   async updatePoolChemistrySettings(input: unknown): Promise<PoolChemistrySettingsView> {
@@ -217,10 +221,12 @@ export class PoolChemistrySettingsService {
     const merged = applyPoolChemistrySettingsUpdate(base, update.settings);
     const saved = await repository.upsert({
       poolId: this.poolId,
-      settings: merged
+      settings: merged,
+      chemistryPromptIntervalDays: update.chemistry_prompt_interval_days ?? stored?.chemistryPromptIntervalDays ?? 3
     });
     return {
       settings: listPoolChemistrySettings(saved.settings),
+      chemistry_prompt_interval_days: saved.chemistryPromptIntervalDays,
       source: "sqlite"
     };
   }
@@ -232,6 +238,15 @@ export class PoolChemistrySettingsService {
 
     const stored = await this.repository.get(this.poolId);
     return toRecommendationBounds(stored?.settings ?? defaultPoolChemistrySettingsMap());
+  }
+
+  async getChemistryPromptIntervalDays(): Promise<number> {
+    if (!this.repository) {
+      return 3;
+    }
+
+    const stored = await this.repository.get(this.poolId);
+    return stored?.chemistryPromptIntervalDays ?? 3;
   }
 
   private requireRepository(): PoolChemistrySettingsRepository {
@@ -248,7 +263,7 @@ export class SqlitePoolChemistrySettingsRepository implements PoolChemistrySetti
   async get(poolId: string): Promise<StoredPoolChemistrySettings | null> {
     const row = this.database.get<PoolChemistrySettingsRow>(
       `
-        SELECT pool_id, chemistry_bounds
+        SELECT pool_id, chemistry_bounds, chemistry_prompt_interval_days
         FROM pool_settings
         WHERE pool_id = ?
       `,
@@ -261,7 +276,8 @@ export class SqlitePoolChemistrySettingsRepository implements PoolChemistrySetti
 
     return {
       poolId: row.pool_id,
-      settings: mapStoredChemistryBounds(row.chemistry_bounds)
+      settings: mapStoredChemistryBounds(row.chemistry_bounds),
+      chemistryPromptIntervalDays: normalizePromptInterval(row.chemistry_prompt_interval_days)
     };
   }
 
@@ -277,15 +293,17 @@ export class SqlitePoolChemistrySettingsRepository implements PoolChemistrySetti
           weather_location_postal_code,
           weather_location_country,
           chemistry_bounds,
+          chemistry_prompt_interval_days,
           updated_at
         )
-        VALUES (?, 'address', '', '', '', '', '', ?, CURRENT_TIMESTAMP)
+        VALUES (?, 'address', '', '', '', '', '', ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT (pool_id) DO UPDATE SET
           chemistry_bounds = EXCLUDED.chemistry_bounds,
+          chemistry_prompt_interval_days = EXCLUDED.chemistry_prompt_interval_days,
           updated_at = CURRENT_TIMESTAMP
-        RETURNING pool_id, chemistry_bounds
+        RETURNING pool_id, chemistry_bounds, chemistry_prompt_interval_days
       `,
-      [settings.poolId, JSON.stringify(settings.settings)]
+      [settings.poolId, JSON.stringify(settings.settings), settings.chemistryPromptIntervalDays]
     );
 
     if (!row) {
@@ -294,7 +312,8 @@ export class SqlitePoolChemistrySettingsRepository implements PoolChemistrySetti
 
     return {
       poolId: row.pool_id,
-      settings: mapStoredChemistryBounds(row.chemistry_bounds)
+      settings: mapStoredChemistryBounds(row.chemistry_bounds),
+      chemistryPromptIntervalDays: normalizePromptInterval(row.chemistry_prompt_interval_days)
     };
   }
 }
@@ -302,9 +321,12 @@ export class SqlitePoolChemistrySettingsRepository implements PoolChemistrySetti
 interface PoolChemistrySettingsRow extends Record<string, unknown> {
   pool_id: string;
   chemistry_bounds: Record<string, unknown> | string | null;
+  chemistry_prompt_interval_days: number | null;
 }
 
-export function validatePoolChemistrySettingsUpdateInput(input: unknown): { settings: PoolChemistrySettingsUpdateItem[] } {
+export function validatePoolChemistrySettingsUpdateInput(
+  input: unknown
+): { settings: PoolChemistrySettingsUpdateItem[]; chemistry_prompt_interval_days?: number } {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new PoolChemistrySettingsValidationError("Pool chemistry settings are invalid.", {
       form: "Request body must be a JSON object."
@@ -371,7 +393,18 @@ export function validatePoolChemistrySettingsUpdateInput(input: unknown): { sett
     throw new PoolChemistrySettingsValidationError("Pool chemistry settings are invalid.", details);
   }
 
-  return { settings: normalized };
+  const chemistryPromptIntervalDays = parsePositiveInteger(record.chemistry_prompt_interval_days);
+  if (record.chemistry_prompt_interval_days !== undefined && chemistryPromptIntervalDays === null) {
+    throw new PoolChemistrySettingsValidationError("Pool chemistry settings are invalid.", {
+      ...details,
+      chemistry_prompt_interval_days: "Chemistry prompt interval must be a positive integer."
+    });
+  }
+
+  return {
+    settings: normalized,
+    ...(chemistryPromptIntervalDays != null ? { chemistry_prompt_interval_days: chemistryPromptIntervalDays } : {})
+  };
 }
 
 export function defaultPoolChemistrySettingsMap(): Record<PoolChemistryKey, PoolChemistrySetting> {
@@ -575,4 +608,18 @@ function optionalBoolean(value: unknown): boolean | null {
     return value;
   }
   return null;
+}
+
+function parsePositiveInteger(value: unknown): number | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    return null;
+  }
+  return value;
+}
+
+function normalizePromptInterval(value: number | null | undefined): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 3;
 }

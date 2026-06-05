@@ -32,6 +32,11 @@ import type {
   PlatformStatusResponse,
   PoolChemistrySettingsResponse,
   PoolChemistrySettingsSaveInput,
+  NotificationReadResponse,
+  NotificationsReadAllResponse,
+  NotificationsResponse,
+  NotificationStatusFilter,
+  NotificationType,
   SwimmabilityResponse,
   ProtocolAnnotationConfidence,
   ProtocolAnnotationResponse,
@@ -399,6 +404,58 @@ export async function fetchSwimmability(): Promise<SwimmabilityResponse> {
   return (await response.json()) as SwimmabilityResponse;
 }
 
+export async function fetchNotifications(input: {
+  status?: NotificationStatusFilter;
+  limit?: number;
+  type?: NotificationType | "all";
+} = {}): Promise<NotificationsResponse> {
+  const params = new URLSearchParams();
+  if (input.status) {
+    params.set("status", input.status);
+  }
+  if (typeof input.limit === "number") {
+    params.set("limit", String(input.limit));
+  }
+  if (input.type && input.type !== "all") {
+    params.set("type", input.type);
+  }
+
+  const suffix = params.toString();
+  const response = await fetch(buildApiUrl(suffix ? `/notifications?${suffix}` : "/notifications"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Notifications request failed.");
+  }
+  return (await response.json()) as NotificationsResponse;
+}
+
+export async function markNotificationRead(id: string): Promise<NotificationReadResponse> {
+  const response = await fetch(buildApiUrl(`/notifications/${encodeURIComponent(id)}/read`), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({})
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Notification update failed.");
+  }
+  return (await response.json()) as NotificationReadResponse;
+}
+
+export async function markAllNotificationsRead(): Promise<NotificationsReadAllResponse> {
+  const response = await fetch(buildApiUrl("/notifications/read-all"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({})
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Notification bulk update failed.");
+  }
+  return (await response.json()) as NotificationsReadAllResponse;
+}
+
 export async function fetchWeatherForecast(): Promise<WeatherForecastResponse> {
   const response = await fetch(buildApiUrl("/weather/forecast"));
   if (!response.ok) {
@@ -443,7 +500,10 @@ export async function savePoolChemistrySettings(input: PoolChemistrySettingsSave
     headers: {
       "content-type": "application/json"
     },
-    body: JSON.stringify(input)
+    body: JSON.stringify({
+      settings: input.settings,
+      chemistry_prompt_interval_days: input.chemistryPromptIntervalDays
+    })
   });
   if (!response.ok) {
     throw await buildApiError(response, "Pool chemistry settings save failed.");

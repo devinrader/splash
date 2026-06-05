@@ -58,7 +58,7 @@ export const PAGE_SUMMARIES: Record<NavItemId, string> = {
   routines: "Scheduled maintenance, recurring checklists, and operator workflows will appear here as the broader platform surface expands.",
   history: "Persistence-backed temperature and weather trends now live here for operator review and future analytics surfaces.",
   automation: "Automation now provides a working tabbed surface for schedules, rules, scenes, triggers, and recent activity while live automation APIs mature.",
-  alerts: "Warnings, reminders, and equipment-driven attention items will collect here when the notification workflows are delivered.",
+  alerts: "The alerts inbox collects chemistry reminders, swimmability warnings, and other operator attention items.",
   diagnostics: "Advanced tooling stays grouped under Diagnostics so protocol exploration and lower-level operational views remain separate from day-to-day control.",
   "water-test-log": "Manual chemistry logging and later chart context will live here as the chemistry slice is added to the frontend shell.",
   settings: "Configuration, operator preferences, and system-level controls will be introduced here as setup and management flows expand."
