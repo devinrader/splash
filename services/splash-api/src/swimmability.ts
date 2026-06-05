@@ -6,6 +6,8 @@ import type { WeatherForecastView } from "./weather-forecast.js";
 
 export type SwimmabilityStatus = "good" | "caution" | "poor" | "unknown";
 export type SwimmabilityDriverSeverity = "good" | "neutral" | "caution" | "poor" | "unknown";
+export type SwimmabilityConfidence = "high" | "medium" | "low" | "unknown";
+export type SwimmabilityHighlightTone = "positive" | "neutral" | "caution" | "negative";
 
 export interface SwimmabilityDriver {
   key: string;
@@ -13,10 +15,19 @@ export interface SwimmabilityDriver {
   message: string;
 }
 
+export interface SwimmabilityHighlight {
+  tone: SwimmabilityHighlightTone;
+  label: string;
+}
+
 export interface SwimmabilityView {
   status: SwimmabilityStatus;
   score: number;
   summary: string;
+  headline: string;
+  confidence: SwimmabilityConfidence;
+  last_chemistry_age_label: string | null;
+  highlights: SwimmabilityHighlight[];
   updated_at: string;
   drivers: SwimmabilityDriver[];
   inputs: {
@@ -55,6 +66,15 @@ export function buildSwimmabilityView(input: SwimmabilityInput): SwimmabilityVie
       status: "unknown",
       score: 0,
       summary: "Swimmability is unknown because no chemistry reading has been logged yet.",
+      headline: "Assessment Unavailable",
+      confidence: "unknown",
+      last_chemistry_age_label: null,
+      highlights: [
+        {
+          tone: "caution",
+          label: "No chemistry test logged"
+        }
+      ],
       updated_at: updatedAt,
       drivers: [
         {
@@ -132,11 +152,24 @@ export function buildSwimmabilityView(input: SwimmabilityInput): SwimmabilityVie
 
   score = clamp(Math.round(score), 0, 100);
   const summary = summarize(status, drivers);
+  const confidence = deriveConfidence(status, recency.status, drivers);
+  const lastChemistryAgeLabel = formatAgeLabel(input.chemistry.recorded_at, updatedAt);
+  const headline = deriveHeadline(status);
+  const highlights = deriveHighlights({
+    status,
+    confidence,
+    recencyStatus: recency.status,
+    drivers
+  });
 
   return {
     status,
     score,
     summary,
+    headline,
+    confidence,
+    last_chemistry_age_label: lastChemistryAgeLabel,
+    highlights,
     updated_at: updatedAt,
     drivers,
     inputs: {
@@ -438,6 +471,110 @@ function summarize(status: SwimmabilityStatus, drivers: SwimmabilityDriver[]): s
     return primary ? primary.message : "Swimmability requires caution.";
   }
   return "Water is currently suitable for swimming.";
+}
+
+function deriveHeadline(status: SwimmabilityStatus): string {
+  switch (status) {
+    case "good":
+      return "Safe for Swimming";
+    case "caution":
+      return "Use Caution";
+    case "poor":
+      return "Avoid Swimming";
+    default:
+      return "Assessment Unavailable";
+  }
+}
+
+function deriveConfidence(
+  status: SwimmabilityStatus,
+  recencyStatus: "good" | "caution" | "unknown",
+  drivers: SwimmabilityDriver[]
+): SwimmabilityConfidence {
+  if (status === "unknown") {
+    return "unknown";
+  }
+  if (recencyStatus === "unknown") {
+    return "low";
+  }
+  if (recencyStatus === "caution") {
+    return "medium";
+  }
+  const cautionContext = drivers.some((driver) => driver.key === "weather_context" && driver.severity === "caution");
+  if (cautionContext) {
+    return "medium";
+  }
+  return "high";
+}
+
+function deriveHighlights(input: {
+  status: SwimmabilityStatus;
+  confidence: SwimmabilityConfidence;
+  recencyStatus: "good" | "caution" | "unknown";
+  drivers: SwimmabilityDriver[];
+}): SwimmabilityHighlight[] {
+  const highlights: SwimmabilityHighlight[] = [];
+  const cautionKeys = new Set(
+    input.drivers
+      .filter((driver) => driver.severity === "caution" || driver.severity === "poor")
+      .map((driver) => driver.key)
+  );
+
+  if (input.status === "good") {
+    if (!cautionKeys.has("free_chlorine") && !cautionKeys.has("ph") && !cautionKeys.has("cyanuric_acid") && !cautionKeys.has("combined_chlorine")) {
+      highlights.push({ tone: "positive", label: "Chemistry in range" });
+    }
+    if (input.recencyStatus === "good") {
+      highlights.push({ tone: "positive", label: "Recent test available" });
+    }
+    if (input.drivers.every((driver) => driver.severity !== "poor")) {
+      highlights.push({ tone: "positive", label: "No active swim advisories" });
+    }
+  } else if (input.status === "caution") {
+    if (cautionKeys.has("chemistry_recency")) {
+      highlights.push({ tone: "caution", label: "Retest chemistry soon" });
+    }
+    if (cautionKeys.has("weather_context")) {
+      highlights.push({ tone: "caution", label: "Recent weather may affect chlorine" });
+    }
+    if (cautionKeys.has("combined_chlorine") || cautionKeys.has("free_chlorine") || cautionKeys.has("ph") || cautionKeys.has("cyanuric_acid")) {
+      highlights.push({ tone: "caution", label: "Chemistry needs attention" });
+    }
+  } else if (input.status === "poor") {
+    highlights.push({ tone: "negative", label: "Do not swim chemistry condition" });
+    if (cautionKeys.has("free_chlorine") || cautionKeys.has("ph") || cautionKeys.has("cyanuric_acid")) {
+      highlights.push({ tone: "negative", label: "Correct chemistry before swimming" });
+    }
+  } else {
+    highlights.push({ tone: "neutral", label: "Assessment needs fresher chemistry" });
+  }
+
+  if (highlights.length === 0) {
+    if (input.confidence === "high") {
+      highlights.push({ tone: "positive", label: "Assessment confidence is high" });
+    } else if (input.confidence === "medium") {
+      highlights.push({ tone: "neutral", label: "Assessment confidence is moderate" });
+    } else if (input.confidence === "low") {
+      highlights.push({ tone: "caution", label: "Assessment confidence is limited" });
+    } else {
+      highlights.push({ tone: "neutral", label: "Assessment is currently limited" });
+    }
+  }
+
+  return highlights.slice(0, 3);
+}
+
+function formatAgeLabel(timestamp: string, nowIso: string): string {
+  const hours = positiveHoursBetween(timestamp, nowIso);
+  if (hours < 1) {
+    return "less than 1 hour ago";
+  }
+  if (hours < 24) {
+    const rounded = Math.round(hours);
+    return `${rounded} hour${rounded === 1 ? "" : "s"} ago`;
+  }
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
 function positiveHoursBetween(startIso: string, endIso: string): number {

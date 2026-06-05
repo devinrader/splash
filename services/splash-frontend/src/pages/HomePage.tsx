@@ -108,41 +108,62 @@ export function HomePage() {
   return (
     <section className="automation-shell">
       <div className="automation-grid automation-grid-overview">
-        <Card title="Swimmability">
+        <Card title="Swimmability" showHeader={false} shadowless={true}>
           {swimmability ? (
-            <>
-              <div className="mock-summary-grid">
-                <div><strong>{swimmability.score}</strong><span>Score</span></div>
-                <div><strong>{formatSwimmabilityStatus(swimmability.status)}</strong><span>Status</span></div>
+            <div className="swim-card-content">
+              <div className="swim-score-layout">
+                <div
+                  className={`swim-score-ring swim-score-ring-${swimmability.status}`}
+                  style={{ ["--swim-score" as string]: String(swimmability.score) }}
+                >
+                  <div>
+                    <strong>{swimmability.score}</strong>
+                    <span>{formatSwimmabilityStatus(swimmability.status)}</span>
+                  </div>
+                </div>
+                <div className="swim-status">
+                  <h3>{swimmability.headline}</h3>
+                  <p className="panel-copy">{swimmability.summary}</p>
+                  <div className="swim-meta">
+                    <div>
+                      <span>Last Chemistry </span>
+                      <strong>{swimmability.last_chemistry_age_label ?? "Unavailable"}</strong>
+                    </div>
+                    <div>
+                      <span>Confidence </span>
+                      <strong>{formatSwimmabilityConfidence(swimmability.confidence)}</strong>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <p className="panel-copy" style={{ marginTop: "1rem" }}>{swimmability.summary}</p>
-              <div className="automation-record-list" style={{ marginTop: "1rem" }}>
-                {swimmability.drivers.slice(0, 4).map((driver) => (
-                  <div className="automation-record-row" key={driver.key}>
-                    <strong>{formatDriverLabel(driver.key)}</strong>
-                    <span>{driver.message}</span>
+              {/* <div className="swim-highlights">
+                {swimmability.highlights.map((highlight, index) => (
+                  <div className={`swim-highlight swim-highlight-${highlight.tone}`} key={`${highlight.label}-${index}`}>
+                    {highlight.label}
                   </div>
                 ))}
+              </div>
+              <div className="swim-supporting-meta">
                 <div className="automation-record-row">
                   <strong>Updated</strong>
                   <span>{formatTelemetryTimestamp(swimmability.updated_at)}</span>
                 </div>
-              </div>
-            </>
+              </div> */}
+            </div>
           ) : (
             <p className="chart-empty-state">{swimmabilityError ?? "Swimmability is currently unknown."}</p>
           )}
         </Card>
-      </div>
-
-      <div className="automation-grid automation-grid-two-column">
-        <Card title="Weather Impact" className="automation-card-table">
+        <Card title="Weather Impact" showHeader={false} shadowless={true} borderless={true} className="automation-card-table">
           {hasForecast ? (
             <WeatherImpactCard forecast={forecast as WeatherForecastData} />
           ) : (
             <p className="chart-empty-state">{forecast?.message ?? "No weather forecast has been captured yet."}</p>
           )}
         </Card>
+      </div>
+
+      <div className="automation-grid automation-grid-two-column">
         <Card title="Pool Cover">
           {coverCurrent?.current ? (
             <div className="automation-record-list">
@@ -223,6 +244,7 @@ function WeatherImpactCard({ forecast }: { forecast: WeatherForecastData }) {
           <div className="weather-impact-temperature">{formatTemperatureHeadline(today?.high_temp_f)}</div>
           <div className="weather-impact-condition">{weatherCodeLabel(today?.weather_code)}</div>
           <div className="weather-impact-label">{deriveWeatherImpact(today)}</div>
+          <div className="weather-impact-day-note">{formatUvIndex(today?.uv_index_max)}</div>
         </div>
         {upcoming.map((entry) => (
           <div className="weather-impact-day" key={entry.date}>
@@ -230,13 +252,14 @@ function WeatherImpactCard({ forecast }: { forecast: WeatherForecastData }) {
             <div className="weather-impact-day-range">{formatRange(entry.high_temp_f, entry.low_temp_f)}</div>
             <div className="weather-impact-day-symbol">{weatherCodeIcon(entry.weather_code)}</div>
             <div className="weather-impact-day-note">{formatDayImpact(entry)}</div>
+            <div className="weather-impact-day-note">{formatUvIndex(entry.uv_index_max)}</div>
           </div>
         ))}
       </div>
-      <div className="weather-impact-meta">
+      {/* <div className="weather-impact-meta">
         <strong>{forecast.provider}</strong>
         <span>{forecast.stale ? "Stale forecast" : "Forecast current"}</span>
-      </div>
+      </div> */}
     </div>
   );
 }
@@ -264,6 +287,19 @@ function formatSwimmabilityStatus(value: SwimmabilityData["status"]): string {
       return "Caution";
     case "poor":
       return "Poor";
+    default:
+      return "Unknown";
+  }
+}
+
+function formatSwimmabilityConfidence(value: SwimmabilityData["confidence"]): string {
+  switch (value) {
+    case "high":
+      return "High";
+    case "medium":
+      return "Medium";
+    case "low":
+      return "Low";
     default:
       return "Unknown";
   }
@@ -396,31 +432,12 @@ function formatShortDay(value: string): string {
   return new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(date);
 }
 
-function formatDriverLabel(value: string): string {
-  switch (value) {
-    case "free_chlorine":
-      return "Free Chlorine";
-    case "chemistry_recency":
-      return "Chemistry Age";
-    case "weather_context":
-      return "Weather";
-    case "cover_state":
-      return "Cover";
-    case "water_temperature":
-      return "Water Temp";
-    case "ph":
-      return "pH";
-    case "cyanuric_acid":
-      return "CYA";
-    case "combined_chlorine":
-      return "Combined Chlorine";
-    case "total_alkalinity":
-      return "Alkalinity";
-    case "calcium_hardness":
-      return "Hardness";
-    default:
-      return value.replaceAll("_", " ");
+function formatUvIndex(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) {
+    return "UV unavailable";
   }
+
+  return `UV ${value.toFixed(1)}`;
 }
 
 function formatRange(high: number | null | undefined, low: number | null | undefined): string {

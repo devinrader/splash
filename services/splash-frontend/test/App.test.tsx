@@ -1994,6 +1994,14 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
             status: "good",
             score: 82,
             summary: "Water is currently suitable for swimming.",
+            headline: "Safe for Swimming",
+            confidence: "high",
+            last_chemistry_age_label: "2 hours ago",
+            highlights: [
+              { tone: "positive", label: "Chemistry in range" },
+              { tone: "positive", label: "Recent test available" },
+              { tone: "positive", label: "No active swim advisories" }
+            ],
             updated_at: "2026-05-12T12:00:00.000Z",
             drivers: [
               {
@@ -2024,13 +2032,14 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
 
   await waitFor(() => {
     assert.ok(screen.getByRole("heading", { name: "Home - Overview & actions" }));
-    assert.ok(screen.getByText("Weather Impact"));
     assert.ok(screen.getByText("Elevated chlorine demand"));
     assert.ok(screen.getByText("Rain"));
-    assert.ok(screen.getByText("Forecast current"));
+    assert.ok(screen.getByText("UV 8.6"));
     assert.ok(screen.getByText("Pool Cover"));
-    assert.ok(screen.getByText("Swimmability"));
-    assert.ok(screen.getByText("Water is currently suitable for swimming."));
+    assert.ok(screen.getByText("Safe for Swimming"));
+    assert.ok(screen.getAllByText("High").length >= 1);
+    assert.ok(screen.getByText("Confidence"));
+    assert.ok(screen.getByText("Last Chemistry"));
     assert.ok(screen.getByRole("button", { name: "Cover On" }));
     assert.ok(screen.getByLabelText("Cover Type"));
   });
@@ -2110,6 +2119,12 @@ test("renders the Home weather impact empty state when no forecast exists", asyn
             status: "unknown",
             score: 0,
             summary: "Swimmability is unknown because no chemistry reading has been logged yet.",
+            headline: "Assessment Unavailable",
+            confidence: "unknown",
+            last_chemistry_age_label: null,
+            highlights: [
+              { tone: "caution", label: "No chemistry test logged" }
+            ],
             updated_at: "2026-05-12T12:00:00.000Z",
             drivers: [],
             inputs: {
@@ -2221,6 +2236,13 @@ test("records a pool cover event from the Home page", async () => {
             status: "caution",
             score: 68,
             summary: "Chemistry confidence is aging because the pool is uncovered and UV is elevated.",
+            headline: "Use Caution",
+            confidence: "medium",
+            last_chemistry_age_label: "2 days ago",
+            highlights: [
+              { tone: "caution", label: "Retest chemistry soon" },
+              { tone: "caution", label: "Recent weather may affect chlorine" }
+            ],
             updated_at: "2026-05-12T12:00:00.000Z",
             drivers: [
               {

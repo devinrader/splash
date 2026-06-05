@@ -1061,6 +1061,138 @@ textarea:focus-visible {
   font-size: 13px;
 }
 
+.swim-card-content {
+  display: grid;
+  gap: 18px;
+}
+
+.swim-score-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 168px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: center;
+}
+
+.swim-score-ring {
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at center, var(--color-surface) 58%, transparent 59%),
+    conic-gradient(var(--swim-ring-color) 0deg, var(--swim-ring-color) calc(var(--swim-score) * 3.6deg), rgba(15, 23, 42, 0.12) 0deg);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  position: relative;
+}
+
+.swim-score-ring > div {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+}
+
+.swim-score-ring strong {
+  font-size: 42px;
+  line-height: 1;
+}
+
+.swim-score-ring span {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.swim-score-ring-good {
+  --swim-ring-color: #0f9f69;
+}
+
+.swim-score-ring-caution {
+  --swim-ring-color: #d97706;
+}
+
+.swim-score-ring-poor {
+  --swim-ring-color: #dc2626;
+}
+
+.swim-score-ring-unknown {
+  --swim-ring-color: #64748b;
+}
+
+.swim-status {
+  display: grid;
+  gap: 12px;
+}
+
+.swim-status h3 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.swim-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.swim-meta-item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  background: var(--color-surface-muted);
+}
+
+.swim-meta-item span {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.swim-meta-item strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1rem;
+}
+
+.swim-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.swim-highlight {
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.swim-highlight-positive {
+  background: var(--color-good-bg);
+  color: var(--color-good-text);
+}
+
+.swim-highlight-neutral {
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--color-text);
+}
+
+.swim-highlight-caution {
+  background: rgba(217, 119, 6, 0.14);
+  color: #92400e;
+}
+
+.swim-highlight-negative {
+  background: rgba(220, 38, 38, 0.14);
+  color: #991b1b;
+}
+
+.swim-supporting-meta .automation-record-row {
+  padding-top: 0;
+}
+
 .weather-impact-card {
   display: grid;
   gap: 16px;
@@ -1136,6 +1268,14 @@ textarea:focus-visible {
 }
 
 @media (max-width: 960px) {
+  .swim-score-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .swim-score-ring {
+    margin: 0 auto;
+  }
+
   .weather-impact-grid {
     grid-template-columns: 1fr;
   }
@@ -2281,12 +2421,26 @@ textarea:focus-visible {
 
 .app-card {
   display: grid;
+  align-self: start;
   gap: var(--space-4);
   padding: var(--space-5);
   border-radius: var(--radius-xl);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-panel);
+}
+
+.app-card-borderless {
+  border: 0;
+  padding: 0;
+}
+
+.app-card-shadowless {
+  box-shadow: none;
+}
+
+.app-card-header-hidden {
+  gap: 0;
 }
 
 .app-card-header {

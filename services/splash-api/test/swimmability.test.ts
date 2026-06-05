@@ -57,6 +57,9 @@ test("buildSwimmabilityView returns poor when chemistry hits a do-not-swim condi
   });
 
   assert.equal(result.status, "poor");
+  assert.equal(result.headline, "Avoid Swimming");
+  assert.equal(result.confidence, "medium");
+  assert.ok(result.highlights.some((highlight) => highlight.label === "Do not swim chemistry condition"));
   assert.ok(result.drivers.some((driver) => driver.key === "free_chlorine" && driver.severity === "poor"));
 });
 
@@ -123,6 +126,8 @@ test("buildSwimmabilityView returns unknown when chemistry is old and uncovered 
   });
 
   assert.equal(result.status, "unknown");
+  assert.equal(result.headline, "Assessment Unavailable");
+  assert.equal(result.confidence, "unknown");
   assert.ok(result.drivers.some((driver) => driver.key === "chemistry_recency" && driver.severity === "unknown"));
 });
 
@@ -133,6 +138,15 @@ test("swimmability API route returns the assessment", async () => {
         status: "caution",
         score: 68,
         summary: "Chemistry confidence is aging because the pool is uncovered and UV is elevated.",
+        headline: "Use Caution",
+        confidence: "medium",
+        last_chemistry_age_label: "3 days ago",
+        highlights: [
+          {
+            tone: "caution",
+            label: "Retest chemistry soon"
+          }
+        ],
         updated_at: "2026-06-04T19:20:00.000Z",
         drivers: [
           {
@@ -156,6 +170,8 @@ test("swimmability API route returns the assessment", async () => {
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.data.status, "caution");
   assert.equal(response.body.data.score, 68);
+  assert.equal(response.body.data.headline, "Use Caution");
+  assert.equal(response.body.data.confidence, "medium");
 });
 
 function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
@@ -215,6 +231,10 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       status: "unknown",
       score: 0,
       summary: "Unavailable",
+      headline: "Assessment Unavailable",
+      confidence: "unknown",
+      last_chemistry_age_label: null,
+      highlights: [],
       updated_at: "2026-06-04T18:45:00.000Z",
       drivers: [],
       inputs: {

@@ -605,6 +605,8 @@ export interface PoolCoverEventCreateResponse {
 
 export type SwimmabilityStatus = "good" | "caution" | "poor" | "unknown";
 export type SwimmabilityDriverSeverity = "good" | "neutral" | "caution" | "poor" | "unknown";
+export type SwimmabilityConfidence = "high" | "medium" | "low" | "unknown";
+export type SwimmabilityHighlightTone = "positive" | "neutral" | "caution" | "negative";
 
 export interface SwimmabilityDriver {
   key: string;
@@ -612,10 +614,19 @@ export interface SwimmabilityDriver {
   message: string;
 }
 
+export interface SwimmabilityHighlight {
+  tone: SwimmabilityHighlightTone;
+  label: string;
+}
+
 export interface SwimmabilityData {
   status: SwimmabilityStatus;
   score: number;
   summary: string;
+  headline: string;
+  confidence: SwimmabilityConfidence;
+  last_chemistry_age_label: string | null;
+  highlights: SwimmabilityHighlight[];
   updated_at: string;
   drivers: SwimmabilityDriver[];
   inputs: {

@@ -286,6 +286,10 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       status: "unknown",
       score: 0,
       summary: "Unavailable",
+      headline: "Assessment Unavailable",
+      confidence: "unknown",
+      last_chemistry_age_label: null,
+      highlights: [],
       updated_at: "2026-01-01T00:00:00.000Z",
       drivers: [],
       inputs: {

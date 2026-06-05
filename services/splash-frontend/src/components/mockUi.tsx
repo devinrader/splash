@@ -40,19 +40,35 @@ export function Card({
   title,
   status,
   className,
+  showHeader = true,
+  borderless = false,
+  shadowless = false,
   children
 }: {
-  title: string;
+  title?: string;
   status?: string;
   className?: string;
+  showHeader?: boolean;
+  borderless?: boolean;
+  shadowless?: boolean;
   children: React.ReactNode;
 }) {
+  const classes = [
+    "app-card",
+    className,
+    showHeader ? null : "app-card-header-hidden",
+    borderless ? "app-card-borderless" : null,
+    shadowless ? "app-card-shadowless" : null
+  ].filter(Boolean).join(" ");
+
   return (
-    <article className={`app-card${className ? ` ${className}` : ""}`}>
-      <header className="app-card-header">
-        <h3>{title}</h3>
-        {status ? <span className="app-card-status">{status}</span> : null}
-      </header>
+    <article className={classes}>
+      {showHeader ? (
+        <header className="app-card-header">
+          {title ? <h3>{title}</h3> : null}
+          {status ? <span className="app-card-status">{status}</span> : null}
+        </header>
+      ) : null}
       <div className="app-card-body">{children}</div>
     </article>
   );
