@@ -2570,7 +2570,8 @@ textarea:focus-visible {
   grid-column: 1 / -1;
 }
 
-.settings-field input {
+.settings-field input,
+.settings-field select {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 0.8rem 0.9rem;
@@ -2619,6 +2620,53 @@ textarea:focus-visible {
 .settings-status-list div:last-child {
   padding-bottom: 0;
   border-bottom: none;
+}
+
+.settings-provider-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.settings-provider-item {
+  display: grid;
+  gap: 0.4rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: rgba(15, 23, 42, 0.03);
+}
+
+.settings-provider-item-header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.settings-provider-item-header span {
+  color: var(--color-text-subtle);
+  font-size: 0.9rem;
+}
+
+.settings-provider-warning,
+.settings-provider-meta {
+  margin: 0;
+  color: var(--color-text-subtle);
+  font-size: 0.9rem;
+}
+
+.settings-provider-warning {
+  color: var(--color-danger-700, #912018);
+}
+
+.settings-provider-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.settings-provider-config-grid .settings-field small {
+  color: var(--color-text-subtle);
 }
 
 .settings-message {
@@ -2676,6 +2724,51 @@ textarea:focus-visible {
   padding: 0.6rem 0.75rem;
   background: white;
   color: var(--color-text);
+}
+
+.settings-chemistry-field select {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.75rem;
+  background: white;
+  color: var(--color-text);
+}
+
+.settings-inline-field-group {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.settings-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 6rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.settings-status-current {
+  background: rgba(14, 116, 73, 0.12);
+  color: #166534;
+}
+
+.settings-status-stale {
+  background: rgba(180, 83, 9, 0.12);
+  color: #92400e;
+}
+
+.settings-status-unavailable {
+  background: rgba(180, 35, 24, 0.12);
+  color: var(--color-danger-700, #912018);
+}
+
+.settings-status-disabled {
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--color-text-subtle);
 }
 
 .settings-chemistry-toggle {

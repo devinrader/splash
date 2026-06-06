@@ -31,10 +31,13 @@ test("loadConfig parses expected settings", () => {
   assert.equal(config.protocolHealthUrl, null);
   assert.ok(config.poolSite);
   assert.ok(config.weather);
+  assert.ok(config.geocoding);
   assert.equal(config.poolSite.timezone, "America/New_York");
   assert.equal(config.weather.provider, "openmeteo");
   assert.equal(config.weather.refreshMinutes, null);
   assert.equal(config.weather.refreshIntervalHours, 6);
+  assert.equal(config.geocoding.geoapifyBaseUrl, "https://api.geoapify.com/v1");
+  assert.equal(config.geocoding.osmBaseUrl, "https://nominatim.openstreetmap.org");
 });
 
 test("loadConfig parses optional Influx telemetry configuration", () => {
@@ -138,7 +141,12 @@ test("loadConfig parses pool site and weather provider configuration", () => {
     WEATHER_REFRESH_MINUTES: "15,45",
     WEATHER_REFRESH_INTERVAL_HOURS: "12",
     OPEN_METEO_BASE_URL: "https://api.open-meteo.com/v1",
-    OPEN_METEO_GEOCODING_URL: "https://geocoding-api.open-meteo.com/v1"
+    OPEN_METEO_GEOCODING_URL: "https://geocoding-api.open-meteo.com/v1",
+    GEOCODING_GEOAPIFY_API_KEY: "geo-key",
+    GEOCODING_GEOAPIFY_BASE_URL: "https://geo.example.test/v1",
+    GEOCODING_OSM_BASE_URL: "https://nominatim.example.test",
+    GEOCODING_OSM_USER_AGENT: "Splash/1.0 (dev@example.test)",
+    GEOCODING_OSM_EMAIL: "dev@example.test"
   });
 
   assert.ok(config.poolSite);
@@ -152,6 +160,11 @@ test("loadConfig parses pool site and weather provider configuration", () => {
   assert.deepEqual(config.weather.refreshMinutes, [15, 45]);
   assert.equal(config.weather.refreshIntervalHours, 12);
   assert.equal(config.weather.openMeteoBaseUrl, "https://api.open-meteo.com/v1");
+  assert.equal(config.geocoding?.geoapifyApiKey, "geo-key");
+  assert.equal(config.geocoding?.geoapifyBaseUrl, "https://geo.example.test/v1");
+  assert.equal(config.geocoding?.osmBaseUrl, "https://nominatim.example.test");
+  assert.equal(config.geocoding?.osmUserAgent, "Splash/1.0 (dev@example.test)");
+  assert.equal(config.geocoding?.osmEmail, "dev@example.test");
 });
 
 test("loadConfig rejects invalid weather refresh minute values", () => {

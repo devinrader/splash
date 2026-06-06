@@ -15,6 +15,10 @@ import {
   WeatherLocationSettingsValidationError
 } from "./weather-location-settings.js";
 import {
+  GeocodingSettingsUnavailableError,
+  GeocodingSettingsValidationError
+} from "./geocoding-settings.js";
+import {
   ChemistryReadingsUnavailableError,
   ChemistryReadingsValidationError,
   type ChemistryHistoryView,
@@ -40,6 +44,10 @@ import {
   PoolChemistrySettingsValidationError
 } from "./pool-chemistry-settings.js";
 import type { SwimmabilityView } from "./swimmability.js";
+import {
+  WaterTestingScheduleUnavailableError,
+  WaterTestingScheduleValidationError
+} from "./water-testing-schedule.js";
 
 export interface HttpServer {
   start(signal: AbortSignal): Promise<void>;
@@ -90,8 +98,15 @@ export interface HttpHandlers {
   refreshWeatherForecast(): Promise<Record<string, unknown>>;
   getWeatherLocationSettings(): Promise<Record<string, unknown>>;
   upsertWeatherLocationSettings(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  getGeocodingSettings?(): Promise<Record<string, unknown>>;
+  updateGeocodingSettings?(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  updateGeocodingProviderConfig?(providerId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
   getPoolChemistrySettings(): Promise<Record<string, unknown>>;
   updatePoolChemistrySettings(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  getWaterTestingSchedule?(): Promise<Record<string, unknown>>;
+  updateWaterTestingSchedule?(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  updateWaterTestingScheduleItem?(chemicalKey: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  resetWaterTestingSchedule?(): Promise<Record<string, unknown>>;
   getLatestChemistryReading(): Promise<ChemistryReadingRecord | null>;
   getChemistryHistory(input: {
     start: string | null;
@@ -346,6 +361,51 @@ export class LocalHttpServer implements HttpServer {
         return json(req, res, 200, { data: await this.handlers.upsertWeatherLocationSettings(body), error: null });
       }
 
+      if (req.method === "GET" && req.url === "/api/settings/geocoding") {
+        if (!this.handlers.getGeocodingSettings) {
+          throw new HttpResponseError(503, {
+            data: null,
+            error: {
+              code: "service_unavailable",
+              message: "Geocoding settings are unavailable."
+            }
+          });
+        }
+        return json(req, res, 200, { data: await this.handlers.getGeocodingSettings(), error: null });
+      }
+
+      if (req.method === "PUT" && req.url === "/api/settings/geocoding") {
+        if (!this.handlers.updateGeocodingSettings) {
+          throw new HttpResponseError(503, {
+            data: null,
+            error: {
+              code: "service_unavailable",
+              message: "Geocoding settings are unavailable."
+            }
+          });
+        }
+        const body = await readJsonBody(req);
+        return json(req, res, 200, { data: await this.handlers.updateGeocodingSettings(body), error: null });
+      }
+
+      if (req.method === "PUT" && req.url?.startsWith("/api/settings/geocoding/provider/")) {
+        if (!this.handlers.updateGeocodingProviderConfig) {
+          throw new HttpResponseError(503, {
+            data: null,
+            error: {
+              code: "service_unavailable",
+              message: "Geocoding settings are unavailable."
+            }
+          });
+        }
+        const providerId = decodeURIComponent(req.url.slice("/api/settings/geocoding/provider/".length));
+        const body = await readJsonBody(req);
+        return json(req, res, 200, {
+          data: await this.handlers.updateGeocodingProviderConfig(providerId, body),
+          error: null
+        });
+      }
+
       if (req.method === "GET" && req.url === "/api/settings/pool-chemistry") {
         return json(req, res, 200, { data: await this.handlers.getPoolChemistrySettings(), error: null });
       }
@@ -353,6 +413,68 @@ export class LocalHttpServer implements HttpServer {
       if (req.method === "PUT" && req.url === "/api/settings/pool-chemistry") {
         const body = await readJsonBody(req);
         return json(req, res, 200, { data: await this.handlers.updatePoolChemistrySettings(body), error: null });
+      }
+
+      if (req.method === "GET" && req.url === "/api/settings/water-testing-schedule") {
+        if (!this.handlers.getWaterTestingSchedule) {
+          throw new HttpResponseError(503, {
+            data: null,
+            error: {
+              code: "service_unavailable",
+              message: "Water testing schedule is unavailable."
+            }
+          });
+        }
+        return json(req, res, 200, { data: await this.handlers.getWaterTestingSchedule(), error: null });
+      }
+
+      if (req.method === "PUT" && req.url === "/api/settings/water-testing-schedule") {
+        if (!this.handlers.updateWaterTestingSchedule) {
+          throw new HttpResponseError(503, {
+            data: null,
+            error: {
+              code: "service_unavailable",
+              message: "Water testing schedule is unavailable."
+            }
+          });
+        }
+        const body = await readJsonBody(req);
+        return json(req, res, 200, { data: await this.handlers.updateWaterTestingSchedule(body), error: null });
+      }
+
+      if (req.method === "POST" && req.url === "/api/settings/water-testing-schedule/reset") {
+        if (!this.handlers.resetWaterTestingSchedule) {
+          throw new HttpResponseError(503, {
+            data: null,
+            error: {
+              code: "service_unavailable",
+              message: "Water testing schedule is unavailable."
+            }
+          });
+        }
+        await readJsonBody(req);
+        return json(req, res, 200, { data: await this.handlers.resetWaterTestingSchedule(), error: null });
+      }
+
+      const waterTestingScheduleUpdateMatch = req.url?.match(/^\/api\/settings\/water-testing-schedule\/([^/]+)$/);
+      if (req.method === "PUT" && waterTestingScheduleUpdateMatch) {
+        if (!this.handlers.updateWaterTestingScheduleItem) {
+          throw new HttpResponseError(503, {
+            data: null,
+            error: {
+              code: "service_unavailable",
+              message: "Water testing schedule is unavailable."
+            }
+          });
+        }
+        const body = await readJsonBody(req);
+        return json(req, res, 200, {
+          data: await this.handlers.updateWaterTestingScheduleItem(
+            decodeURIComponent(waterTestingScheduleUpdateMatch[1]),
+            body
+          ),
+          error: null
+        });
       }
 
       if (req.method === "GET" && req.url === "/chemistry/latest") {
@@ -799,6 +921,27 @@ export class LocalHttpServer implements HttpServer {
         });
       }
 
+      if (error instanceof GeocodingSettingsValidationError) {
+        return json(req, res, 400, {
+          data: null,
+          error: {
+            code: "validation_error",
+            message: error.message,
+            details: error.details
+          }
+        });
+      }
+
+      if (error instanceof GeocodingSettingsUnavailableError) {
+        return json(req, res, 503, {
+          data: null,
+          error: {
+            code: "service_unavailable",
+            message: error.message
+          }
+        });
+      }
+
       if (error instanceof PoolChemistrySettingsValidationError) {
         return json(req, res, 400, {
           data: null,
@@ -811,6 +954,27 @@ export class LocalHttpServer implements HttpServer {
       }
 
       if (error instanceof PoolChemistrySettingsUnavailableError) {
+        return json(req, res, 503, {
+          data: null,
+          error: {
+            code: "service_unavailable",
+            message: error.message
+          }
+        });
+      }
+
+      if (error instanceof WaterTestingScheduleValidationError) {
+        return json(req, res, 400, {
+          data: null,
+          error: {
+            code: "validation_error",
+            message: error.message,
+            details: error.details
+          }
+        });
+      }
+
+      if (error instanceof WaterTestingScheduleUnavailableError) {
         return json(req, res, 503, {
           data: null,
           error: {

@@ -5,12 +5,15 @@ import type { PoolCoverCurrentView } from "./pool-cover-events.js";
 import type { SwimmabilityView } from "./swimmability.js";
 import type { TemperatureLatestView } from "./temperature-telemetry.js";
 import type { WeatherForecastView } from "./weather-forecast.js";
+import type { WaterTestingFreshnessView } from "./water-testing-schedule.js";
 
 export type NotificationType =
   | "chemistry_test_due"
   | "swimmability_caution"
   | "swimmability_poor"
-  | "rain_since_test";
+  | "rain_since_test"
+  | "chemistry_value_stale"
+  | "chemistry_value_unavailable";
 
 export type NotificationSeverity = "info" | "warning" | "critical";
 export type NotificationStatusFilter = "unread" | "all";
@@ -48,6 +51,7 @@ export interface NotificationsContext {
   cover: PoolCoverCurrentView;
   forecast: WeatherForecastView;
   latestTemperatures: TemperatureLatestView;
+  freshness: WaterTestingFreshnessView;
   now?: string;
 }
 
@@ -85,7 +89,9 @@ const NOTIFICATION_TYPES: readonly NotificationType[] = [
   "chemistry_test_due",
   "swimmability_caution",
   "swimmability_poor",
-  "rain_since_test"
+  "rain_since_test",
+  "chemistry_value_stale",
+  "chemistry_value_unavailable"
 ];
 
 const SIGNIFICANT_RAINFALL_INCHES = 0.25;
@@ -200,6 +206,11 @@ export class NotificationsService {
     };
   }
 
+  async refresh(context: NotificationsContext): Promise<void> {
+    const database = this.requireDatabase();
+    this.syncActiveNotifications(database, context);
+  }
+
   private syncActiveNotifications(database: SqliteDatabase, context: NotificationsContext): void {
     const activeNotifications = buildNotificationTemplates(context);
     const activeSignatures = new Set(activeNotifications.map((notification) => notificationSignature(notification)));
@@ -229,7 +240,24 @@ export class NotificationsService {
 
       for (const notification of activeNotifications) {
         const signature = notificationSignature(notification);
-        if (existingBySignature.has(signature)) {
+        const existing = existingBySignature.get(signature);
+        if (existing) {
+          if (
+            existing.severity !== notification.severity
+            || existing.title !== notification.title
+            || existing.body !== notification.body
+          ) {
+            database.run(
+              `
+                UPDATE notifications
+                SET severity = ?,
+                    title = ?,
+                    body = ?
+                WHERE id = ?
+              `,
+              [notification.severity, notification.title, notification.body, existing.id]
+            );
+          }
           continue;
         }
 
@@ -384,6 +412,34 @@ function buildNotificationTemplates(context: NotificationsContext): Notification
     });
   }
 
+  for (const item of context.freshness.items) {
+    if (!item.enabled || item.status === "current" || item.status === "disabled") {
+      continue;
+    }
+
+    const type: NotificationType =
+      item.status === "stale" ? "chemistry_value_stale" : "chemistry_value_unavailable";
+    const intervalLabel = formatInterval(item.staleThresholdValue, item.staleThresholdUnit);
+    const lastObservedText = item.lastObservedAt
+      ? ` Last observed at ${item.lastObservedAt}.`
+      : " No recent observation is available.";
+
+    notifications.push({
+      type,
+      severity: severityForFreshness(item.chemicalKey, item.status),
+      title:
+        item.status === "stale"
+          ? `${item.displayName} test is stale`
+          : `${item.displayName} is unavailable`,
+      body:
+        item.status === "stale"
+          ? `${item.displayName} is older than the configured ${intervalLabel} testing interval.${lastObservedText}`
+          : `${item.displayName} is currently unavailable under the configured testing schedule.${lastObservedText}`,
+      relatedEntityType: "water_testing_schedule",
+      relatedEntityId: `${item.chemicalKey}:${item.status}`
+    });
+  }
+
   return notifications;
 }
 
@@ -416,6 +472,24 @@ function mapNotificationRow(row: StoredNotificationRow): NotificationRecord {
 
 function notificationSignature(template: NotificationTemplate): string {
   return [template.type, template.relatedEntityType ?? "", template.relatedEntityId ?? ""].join("|");
+}
+
+function severityForFreshness(
+  chemicalKey: string,
+  status: "stale" | "unavailable"
+): NotificationSeverity {
+  if (chemicalKey === "free_chlorine" || chemicalKey === "ph") {
+    return "warning";
+  }
+  if (chemicalKey === "water_temperature" && status === "unavailable") {
+    return "warning";
+  }
+  return "info";
+}
+
+function formatInterval(value: number, unit: "hours" | "days"): string {
+  const singular = unit === "hours" ? "hour" : "day";
+  return `${value} ${value === 1 ? singular : unit}`;
 }
 
 function notificationSignatureFromRow(row: StoredNotificationRow): string {

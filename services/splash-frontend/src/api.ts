@@ -28,6 +28,9 @@ import type {
   WeatherHistoryMetric,
   WeatherHistoryResponse,
   WeatherForecastResponse,
+  GeocodingSettingsResponse,
+  GeocodingProviderConfigSaveInput,
+  GeocodingSettingsSaveInput,
   EquipmentResponse,
   PlatformStatusResponse,
   PoolChemistrySettingsResponse,
@@ -38,6 +41,8 @@ import type {
   NotificationStatusFilter,
   NotificationType,
   SwimmabilityResponse,
+  WaterTestingScheduleResponse,
+  WaterTestingScheduleSaveInput,
   ProtocolAnnotationConfidence,
   ProtocolAnnotationResponse,
   ProtocolBundleComparisonResponse,
@@ -486,6 +491,46 @@ export async function saveWeatherLocationSettings(input: WeatherLocationSettings
   return (await response.json()) as WeatherLocationSettingsResponse;
 }
 
+export async function fetchGeocodingSettings(): Promise<GeocodingSettingsResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/geocoding"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Geocoding settings request failed.");
+  }
+  return (await response.json()) as GeocodingSettingsResponse;
+}
+
+export async function saveGeocodingSettings(input: GeocodingSettingsSaveInput): Promise<GeocodingSettingsResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/geocoding"), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Geocoding settings save failed.");
+  }
+  return (await response.json()) as GeocodingSettingsResponse;
+}
+
+export async function saveGeocodingProviderConfig(
+  input: GeocodingProviderConfigSaveInput
+): Promise<GeocodingSettingsResponse> {
+  const response = await fetch(buildApiUrl(`/api/settings/geocoding/provider/${encodeURIComponent(input.providerId)}`), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      config: input.config
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Geocoding provider config save failed.");
+  }
+  return (await response.json()) as GeocodingSettingsResponse;
+}
+
 export async function fetchPoolChemistrySettings(): Promise<PoolChemistrySettingsResponse> {
   const response = await fetch(buildApiUrl("/api/settings/pool-chemistry"));
   if (!response.ok) {
@@ -501,7 +546,15 @@ export async function savePoolChemistrySettings(input: PoolChemistrySettingsSave
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      settings: input.settings,
+      settings: input.settings.map((entry) => ({
+        chemicalKey: entry.chemicalKey,
+        minimum: entry.minimum,
+        target: entry.target,
+        maximum: entry.maximum,
+        enabled: entry.enabled,
+        source_mode: entry.sourceMode,
+        source_binding: entry.sourceBinding
+      })),
       chemistry_prompt_interval_days: input.chemistryPromptIntervalDays
     })
   });
@@ -509,6 +562,53 @@ export async function savePoolChemistrySettings(input: PoolChemistrySettingsSave
     throw await buildApiError(response, "Pool chemistry settings save failed.");
   }
   return (await response.json()) as PoolChemistrySettingsResponse;
+}
+
+export async function fetchWaterTestingSchedule(): Promise<WaterTestingScheduleResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/water-testing-schedule"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Water testing schedule request failed.");
+  }
+  return (await response.json()) as WaterTestingScheduleResponse;
+}
+
+export async function saveWaterTestingSchedule(input: WaterTestingScheduleSaveInput): Promise<WaterTestingScheduleResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/water-testing-schedule"), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      items: input.items.map((item) => ({
+        chemicalKey: item.chemicalKey,
+        enabled: item.enabled,
+        expectedIntervalValue: item.expectedIntervalValue,
+        expectedIntervalUnit: item.expectedIntervalUnit,
+        staleThresholdValue: item.staleThresholdValue,
+        staleThresholdUnit: item.staleThresholdUnit,
+        unavailableThresholdValue: item.unavailableThresholdValue,
+        unavailableThresholdUnit: item.unavailableThresholdUnit
+      }))
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Water testing schedule save failed.");
+  }
+  return (await response.json()) as WaterTestingScheduleResponse;
+}
+
+export async function resetWaterTestingSchedule(): Promise<WaterTestingScheduleResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/water-testing-schedule/reset"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({})
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Water testing schedule reset failed.");
+  }
+  return (await response.json()) as WaterTestingScheduleResponse;
 }
 
 export async function fetchWeatherHistory(input: {

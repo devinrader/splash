@@ -2,7 +2,7 @@ import type { SqliteDatabase } from "./database.js";
 
 export type PoolChemistryKey =
   | "free_chlorine"
-  | "combined_chlorine"
+  | "total_chlorine"
   | "ph"
   | "total_alkalinity"
   | "cyanuric_acid"
@@ -21,6 +21,21 @@ export interface PoolChemistrySetting {
   maximum: number | null;
   enabled: boolean;
   sortOrder: number;
+  source_mode: PoolChemistrySourceMode;
+  source_binding: PoolChemistrySourceBinding | null;
+  available_sources: PoolChemistryAvailableSource[];
+}
+
+export type PoolChemistrySourceMode = "manual" | "hardware";
+
+export interface PoolChemistrySourceBinding {
+  provider_type: "controller" | "chlorinator";
+  provider_id: string;
+  measurement_key: "salt" | "water_temperature";
+}
+
+export interface PoolChemistryAvailableSource extends PoolChemistrySourceBinding {
+  label: string;
 }
 
 export interface PoolChemistrySettingsView {
@@ -35,6 +50,8 @@ export interface PoolChemistrySettingsUpdateItem {
   target?: number | null;
   maximum?: number | null;
   enabled?: boolean;
+  source_mode?: PoolChemistrySourceMode;
+  source_binding?: PoolChemistrySourceBinding | null;
 }
 
 export interface PoolChemistryBoundsRecord {
@@ -46,7 +63,7 @@ export interface PoolChemistryBoundsRecord {
 
 export interface PoolChemistryRecommendationBounds {
   freeChlorine?: PoolChemistryBoundsRecord;
-  combinedChlorine?: PoolChemistryBoundsRecord;
+  totalChlorine?: PoolChemistryBoundsRecord;
   ph?: PoolChemistryBoundsRecord;
   totalAlkalinity?: PoolChemistryBoundsRecord;
   cyanuricAcid?: PoolChemistryBoundsRecord;
@@ -93,18 +110,24 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 3,
     target: 5,
     maximum: 10,
-    enabled: true,
-    sortOrder: 10
+      enabled: true,
+    sortOrder: 10,
+    source_mode: "manual",
+    source_binding: null,
+    available_sources: []
   },
   {
-    chemicalKey: "combined_chlorine",
-    displayName: "Combined Chlorine",
+    chemicalKey: "total_chlorine",
+    displayName: "Total Chlorine",
     unit: "ppm",
     minimum: 0,
-    target: 0,
-    maximum: 0.5,
-    enabled: true,
-    sortOrder: 20
+    target: 5,
+    maximum: 10,
+      enabled: true,
+    sortOrder: 20,
+    source_mode: "manual",
+    source_binding: null,
+    available_sources: []
   },
   {
     chemicalKey: "ph",
@@ -113,8 +136,11 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 7.2,
     target: 7.6,
     maximum: 7.8,
-    enabled: true,
-    sortOrder: 30
+      enabled: true,
+    sortOrder: 30,
+    source_mode: "manual",
+    source_binding: null,
+    available_sources: []
   },
   {
     chemicalKey: "total_alkalinity",
@@ -123,8 +149,11 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 60,
     target: 80,
     maximum: 100,
-    enabled: true,
-    sortOrder: 40
+      enabled: true,
+    sortOrder: 40,
+    source_mode: "manual",
+    source_binding: null,
+    available_sources: []
   },
   {
     chemicalKey: "cyanuric_acid",
@@ -133,8 +162,11 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 60,
     target: 70,
     maximum: 80,
-    enabled: true,
-    sortOrder: 50
+      enabled: true,
+    sortOrder: 50,
+    source_mode: "manual",
+    source_binding: null,
+    available_sources: []
   },
   {
     chemicalKey: "calcium_hardness",
@@ -143,8 +175,11 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 200,
     target: 300,
     maximum: 400,
-    enabled: true,
-    sortOrder: 60
+      enabled: true,
+    sortOrder: 60,
+    source_mode: "manual",
+    source_binding: null,
+    available_sources: []
   },
   {
     chemicalKey: "salt",
@@ -153,8 +188,15 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 3000,
     target: 3400,
     maximum: 4000,
-    enabled: true,
-    sortOrder: 70
+      enabled: true,
+    sortOrder: 70,
+    source_mode: "hardware",
+    source_binding: {
+      provider_type: "chlorinator",
+      provider_id: "chlorinator-1",
+      measurement_key: "salt"
+    },
+    available_sources: []
   },
   {
     chemicalKey: "water_temperature",
@@ -163,8 +205,15 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 70,
     target: 84,
     maximum: 92,
-    enabled: true,
-    sortOrder: 80
+      enabled: true,
+    sortOrder: 80,
+    source_mode: "hardware",
+    source_binding: {
+      provider_type: "controller",
+      provider_id: "controller-1",
+      measurement_key: "water_temperature"
+    },
+    available_sources: []
   },
   {
     chemicalKey: "phosphates",
@@ -173,8 +222,11 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 0,
     target: 0,
     maximum: 200,
-    enabled: false,
-    sortOrder: 90
+      enabled: false,
+    sortOrder: 90,
+    source_mode: "manual",
+    source_binding: null,
+    available_sources: []
   },
   {
     chemicalKey: "borates",
@@ -183,8 +235,11 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 30,
     target: 50,
     maximum: 60,
-    enabled: false,
-    sortOrder: 100
+      enabled: false,
+    sortOrder: 100,
+    source_mode: "manual",
+    source_binding: null,
+    available_sources: []
   }
 ];
 
@@ -361,6 +416,8 @@ export function validatePoolChemistrySettingsUpdateInput(
     const target = optionalFiniteNumber(itemRecord.target);
     const maximum = optionalFiniteNumber(itemRecord.maximum);
     const enabled = optionalBoolean(itemRecord.enabled);
+    const sourceMode = optionalSourceMode(itemRecord.source_mode);
+    const sourceBinding = normalizeSourceBinding(itemRecord.source_binding);
 
     if (itemRecord.minimum !== undefined && minimum === null) {
       itemDetails.minimum = "Minimum must be a valid number.";
@@ -374,6 +431,12 @@ export function validatePoolChemistrySettingsUpdateInput(
     if (itemRecord.enabled !== undefined && enabled === null) {
       itemDetails.enabled = "Enabled must be a boolean.";
     }
+    if (itemRecord.source_mode !== undefined && sourceMode === null) {
+      itemDetails.source_mode = "Source mode must be either 'manual' or 'hardware'.";
+    }
+    if (itemRecord.source_binding !== undefined && sourceBinding === undefined) {
+      itemDetails.source_binding = "Source binding must be null or a valid hardware binding.";
+    }
 
     if (Object.keys(itemDetails).length > 0) {
       details[String(chemicalKey ?? `item_${normalized.length}`)] = itemDetails;
@@ -385,7 +448,9 @@ export function validatePoolChemistrySettingsUpdateInput(
       minimum,
       target,
       maximum,
-      enabled: enabled ?? undefined
+      enabled: enabled ?? undefined,
+      source_mode: sourceMode ?? undefined,
+      source_binding: sourceBinding
     });
   }
 
@@ -410,7 +475,10 @@ export function validatePoolChemistrySettingsUpdateInput(
 export function defaultPoolChemistrySettingsMap(): Record<PoolChemistryKey, PoolChemistrySetting> {
   return DEFAULT_POOL_CHEMISTRY_SETTINGS.reduce(
     (accumulator, setting) => {
-      accumulator[setting.chemicalKey] = { ...setting };
+      accumulator[setting.chemicalKey] = {
+        ...setting,
+        available_sources: deriveAvailableSources(setting.chemicalKey)
+      };
       return accumulator;
     },
     {} as Record<PoolChemistryKey, PoolChemistrySetting>
@@ -434,12 +502,24 @@ function applyPoolChemistrySettingsUpdate(
       minimum: update.minimum !== undefined ? update.minimum : currentSetting.minimum,
       target: update.target !== undefined ? update.target : currentSetting.target,
       maximum: update.maximum !== undefined ? update.maximum : currentSetting.maximum,
-      enabled: update.enabled !== undefined ? update.enabled : currentSetting.enabled
+      enabled: update.enabled !== undefined ? update.enabled : currentSetting.enabled,
+      source_mode: update.source_mode !== undefined ? update.source_mode : currentSetting.source_mode,
+      source_binding: update.source_binding !== undefined ? update.source_binding : currentSetting.source_binding,
+      available_sources: deriveAvailableSources(update.chemicalKey)
     };
 
     const relationError = validateBoundOrdering(merged);
     if (relationError) {
       details[update.chemicalKey] = relationError;
+      continue;
+    }
+
+    const sourceError = validateSourceSelection(merged);
+    if (sourceError) {
+      details[update.chemicalKey] = {
+        ...(typeof details[update.chemicalKey] === "object" ? details[update.chemicalKey] as Record<string, string> : {}),
+        ...sourceError
+      };
       continue;
     }
 
@@ -502,8 +582,8 @@ function toRecommendationBounds(settings: Record<PoolChemistryKey, PoolChemistry
       case "free_chlorine":
         result.freeChlorine = value;
         break;
-      case "combined_chlorine":
-        result.combinedChlorine = value;
+      case "total_chlorine":
+        result.totalChlorine = value;
         break;
       case "ph":
         result.ph = value;
@@ -552,7 +632,8 @@ function mapStoredChemistryBounds(value: Record<string, unknown> | string | null
 
   const result = defaultPoolChemistrySettingsMap();
   for (const [key, rawSetting] of Object.entries(parsed)) {
-    if (!KNOWN_CHEMICAL_KEYS.has(key as PoolChemistryKey)) {
+    const normalizedKey = normalizeStoredChemistryKey(key);
+    if (!normalizedKey) {
       continue;
     }
     if (!rawSetting || typeof rawSetting !== "object" || Array.isArray(rawSetting)) {
@@ -560,21 +641,30 @@ function mapStoredChemistryBounds(value: Record<string, unknown> | string | null
     }
 
     const settingRecord = rawSetting as Record<string, unknown>;
-    const base = result[key as PoolChemistryKey];
+    const base = result[normalizedKey];
+    const isLegacyCombinedChlorine = key === "combined_chlorine";
     const merged: PoolChemistrySetting = {
       chemicalKey: base.chemicalKey,
-      displayName: typeof settingRecord.displayName === "string" && settingRecord.displayName.trim().length > 0 ? settingRecord.displayName : base.displayName,
-      unit: typeof settingRecord.unit === "string" ? settingRecord.unit : base.unit,
-      minimum: optionalFiniteNumber(settingRecord.minimum),
-      target: optionalFiniteNumber(settingRecord.target),
-      maximum: optionalFiniteNumber(settingRecord.maximum),
+      displayName: isLegacyCombinedChlorine
+        ? base.displayName
+        : typeof settingRecord.displayName === "string" && settingRecord.displayName.trim().length > 0
+          ? settingRecord.displayName
+          : base.displayName,
+      unit: isLegacyCombinedChlorine ? base.unit : typeof settingRecord.unit === "string" ? settingRecord.unit : base.unit,
+      minimum: isLegacyCombinedChlorine ? base.minimum : optionalFiniteNumber(settingRecord.minimum),
+      target: isLegacyCombinedChlorine ? base.target : optionalFiniteNumber(settingRecord.target),
+      maximum: isLegacyCombinedChlorine ? base.maximum : optionalFiniteNumber(settingRecord.maximum),
       enabled: typeof settingRecord.enabled === "boolean" ? settingRecord.enabled : base.enabled,
-      sortOrder: typeof settingRecord.sortOrder === "number" && Number.isFinite(settingRecord.sortOrder) ? settingRecord.sortOrder : base.sortOrder
+      sortOrder: typeof settingRecord.sortOrder === "number" && Number.isFinite(settingRecord.sortOrder) ? settingRecord.sortOrder : base.sortOrder,
+      source_mode: optionalSourceMode(settingRecord.source_mode) ?? base.source_mode,
+      source_binding: normalizeSourceBinding(settingRecord.source_binding) ?? base.source_binding,
+      available_sources: deriveAvailableSources(base.chemicalKey)
     };
 
     const relationError = validateBoundOrdering(merged);
-    if (!relationError) {
-      result[key as PoolChemistryKey] = merged;
+    const sourceError = validateSourceSelection(merged);
+    if (!relationError && !sourceError) {
+      result[normalizedKey] = merged;
     }
   }
 
@@ -610,6 +700,48 @@ function optionalBoolean(value: unknown): boolean | null {
   return null;
 }
 
+function optionalSourceMode(value: unknown): PoolChemistrySourceMode | null {
+  return value === "manual" || value === "hardware" ? value : null;
+}
+
+function normalizeStoredChemistryKey(value: string): PoolChemistryKey | null {
+  if (value === "combined_chlorine") {
+    return "total_chlorine";
+  }
+  return KNOWN_CHEMICAL_KEYS.has(value as PoolChemistryKey) ? (value as PoolChemistryKey) : null;
+}
+
+function normalizeSourceBinding(value: unknown): PoolChemistrySourceBinding | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const providerType = record.provider_type;
+  const providerId = record.provider_id;
+  const measurementKey = record.measurement_key;
+  if (
+    (providerType !== "controller" && providerType !== "chlorinator")
+    || typeof providerId !== "string"
+    || providerId.trim().length === 0
+    || (measurementKey !== "salt" && measurementKey !== "water_temperature")
+  ) {
+    return undefined;
+  }
+
+  return {
+    provider_type: providerType,
+    provider_id: providerId.trim(),
+    measurement_key: measurementKey
+  };
+}
+
 function parsePositiveInteger(value: unknown): number | null {
   if (value === undefined) {
     return null;
@@ -622,4 +754,60 @@ function parsePositiveInteger(value: unknown): number | null {
 
 function normalizePromptInterval(value: number | null | undefined): number {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 3;
+}
+
+function deriveAvailableSources(chemicalKey: PoolChemistryKey): PoolChemistryAvailableSource[] {
+  switch (chemicalKey) {
+    case "salt":
+      return [
+        {
+          provider_type: "chlorinator",
+          provider_id: "chlorinator-1",
+          measurement_key: "salt",
+          label: "EasyTouch Chlorinator Salt"
+        }
+      ];
+    case "water_temperature":
+      return [
+        {
+          provider_type: "controller",
+          provider_id: "controller-1",
+          measurement_key: "water_temperature",
+          label: "EasyTouch Controller Water Temperature"
+        }
+      ];
+    default:
+      return [];
+  }
+}
+
+function validateSourceSelection(setting: PoolChemistrySetting): Record<string, string> | null {
+  if (setting.source_mode === "manual") {
+    if (setting.source_binding !== null) {
+      return {
+        source_binding: "Manual source mode must not keep a hardware binding."
+      };
+    }
+    return null;
+  }
+
+  if (!setting.source_binding) {
+    return {
+      source_binding: "A hardware source must be selected when source mode is hardware."
+    };
+  }
+
+  const match = setting.available_sources.some((source) =>
+    source.provider_type === setting.source_binding?.provider_type
+    && source.provider_id === setting.source_binding?.provider_id
+    && source.measurement_key === setting.source_binding?.measurement_key
+  );
+
+  if (!match) {
+    return {
+      source_binding: "Selected hardware source is not compatible with this chemistry key."
+    };
+  }
+
+  return null;
 }

@@ -8,6 +8,14 @@ export interface WeatherProviderConfig {
   openMeteoGeocodingUrl: string;
 }
 
+export interface GeocodingConfig {
+  geoapifyApiKey: string | null;
+  geoapifyBaseUrl: string;
+  osmBaseUrl: string;
+  osmUserAgent: string | null;
+  osmEmail: string | null;
+}
+
 export interface SqliteConfig {
   path: string;
   migrationsDir: string;
@@ -38,6 +46,7 @@ export interface ApiConfig {
   influx?: InfluxTelemetryConfig | null;
   sqlite?: SqliteConfig | null;
   weather?: WeatherProviderConfig;
+  geocoding?: GeocodingConfig;
   httpBind: string;
   healthPollIntervalMs?: number;
   healthTimeoutMs?: number;
@@ -59,6 +68,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     influx: optionalInflux(env),
     sqlite: loadSqliteConfig(env),
     weather: loadWeatherProvider(env),
+    geocoding: loadGeocodingConfig(env),
     httpBind: required(env, "API_HTTP_BIND"),
     healthPollIntervalMs: optionalInteger(env, "API_HEALTH_POLL_INTERVAL_MS", 5000),
     healthTimeoutMs: optionalInteger(env, "API_HEALTH_TIMEOUT_MS", 2000),
@@ -104,6 +114,16 @@ export function defaultWeatherProviderConfig(): WeatherProviderConfig {
     refreshIntervalHours: 6,
     openMeteoBaseUrl: "https://api.open-meteo.com/v1",
     openMeteoGeocodingUrl: "https://geocoding-api.open-meteo.com/v1"
+  };
+}
+
+export function defaultGeocodingConfig(): GeocodingConfig {
+  return {
+    geoapifyApiKey: null,
+    geoapifyBaseUrl: "https://api.geoapify.com/v1",
+    osmBaseUrl: "https://nominatim.openstreetmap.org",
+    osmUserAgent: null,
+    osmEmail: null
   };
 }
 
@@ -165,6 +185,16 @@ function loadWeatherProvider(env: NodeJS.ProcessEnv): WeatherProviderConfig {
     refreshIntervalHours: optionalInteger(env, "WEATHER_REFRESH_INTERVAL_HOURS", 6),
     openMeteoBaseUrl: optionalString(env, "OPEN_METEO_BASE_URL") ?? "https://api.open-meteo.com/v1",
     openMeteoGeocodingUrl: optionalString(env, "OPEN_METEO_GEOCODING_URL") ?? "https://geocoding-api.open-meteo.com/v1"
+  };
+}
+
+function loadGeocodingConfig(env: NodeJS.ProcessEnv): GeocodingConfig {
+  return {
+    geoapifyApiKey: optionalString(env, "GEOCODING_GEOAPIFY_API_KEY"),
+    geoapifyBaseUrl: optionalString(env, "GEOCODING_GEOAPIFY_BASE_URL") ?? "https://api.geoapify.com/v1",
+    osmBaseUrl: optionalString(env, "GEOCODING_OSM_BASE_URL") ?? "https://nominatim.openstreetmap.org",
+    osmUserAgent: optionalString(env, "GEOCODING_OSM_USER_AGENT"),
+    osmEmail: optionalString(env, "GEOCODING_OSM_EMAIL")
   };
 }
 

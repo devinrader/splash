@@ -3,6 +3,7 @@ import type { PoolChemistryRecommendationBounds } from "./pool-chemistry-setting
 import type { PoolCoverCurrentView } from "./pool-cover-events.js";
 import type { TemperatureLatestView } from "./temperature-telemetry.js";
 import type { WeatherForecastView } from "./weather-forecast.js";
+import type { WaterTestingFreshnessView } from "./water-testing-schedule.js";
 
 export type SwimmabilityStatus = "good" | "caution" | "poor" | "unknown";
 export type SwimmabilityDriverSeverity = "good" | "neutral" | "caution" | "poor" | "unknown";
@@ -45,6 +46,7 @@ export interface SwimmabilityInput {
   forecast: WeatherForecastView;
   latestTemperatures: TemperatureLatestView;
   rainfallSinceChemistryInches: number | null;
+  freshness?: WaterTestingFreshnessView;
   now?: string;
 }
 
@@ -110,6 +112,27 @@ export function buildSwimmabilityView(input: SwimmabilityInput): SwimmabilityVie
       if (status === "good") {
         status = "caution";
       }
+    }
+  }
+
+  const freshnessDrivers = assessFreshness(input.freshness);
+  for (const driver of freshnessDrivers) {
+    drivers.push(driver);
+    if (
+      (driver.key === "free_chlorine_freshness" || driver.key === "ph_freshness")
+      && (driver.severity === "caution" || driver.severity === "unknown")
+    ) {
+      if (status === "good") {
+        status = "caution";
+      }
+      score -= 12;
+      continue;
+    }
+    if (driver.severity === "caution" || driver.severity === "unknown") {
+      if (status === "good") {
+        status = "caution";
+      }
+      score -= 6;
     }
   }
 
@@ -328,6 +351,33 @@ function assessChemistryRecency(
         : "Chemistry reading is still reasonably fresh."
     }
   };
+}
+
+function assessFreshness(freshness: WaterTestingFreshnessView | undefined): SwimmabilityDriver[] {
+  if (!freshness) {
+    return [];
+  }
+
+  const drivers: SwimmabilityDriver[] = [];
+  for (const item of freshness.items) {
+    if (!item.enabled || item.status === "current" || item.status === "disabled") {
+      continue;
+    }
+
+    const severity: SwimmabilityDriverSeverity =
+      item.status === "unavailable" ? "unknown" : "caution";
+
+    drivers.push({
+      key: `${item.chemicalKey}_freshness`,
+      severity,
+      message:
+        item.status === "stale"
+          ? `${item.displayName} freshness is stale under the configured testing schedule.`
+          : `${item.displayName} freshness is unavailable under the configured testing schedule.`
+    });
+  }
+
+  return drivers;
 }
 
 function deriveContext(input: SwimmabilityInput) {

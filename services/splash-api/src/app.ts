@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { EquipmentBridge } from "./bridge.js";
-import { defaultPoolSite, defaultWeatherProviderConfig, loadConfig, type ApiConfig } from "./config.js";
+import {
+  defaultGeocodingConfig,
+  defaultPoolSite,
+  defaultWeatherProviderConfig,
+  loadConfig,
+  type ApiConfig
+} from "./config.js";
 import { createSqliteDatabase, DatabaseMigrator, type SqliteDatabase } from "./database.js";
 import { EventBroker } from "./events.js";
 import { LocalHttpServer, type HttpServer } from "./http.js";
@@ -54,6 +60,12 @@ import {
   WeatherLocationSettingsService,
   type WeatherLocationSettings
 } from "./weather-location-settings.js";
+import { createGeocodingProviderRegistry } from "./geocoding.js";
+import {
+  GeocodingSettingsService,
+  SqliteGeocodingSettingsRepository,
+  type GeocodingSettingsView
+} from "./geocoding-settings.js";
 import {
   PoolChemistrySettingsService,
   SqlitePoolChemistrySettingsRepository,
@@ -83,6 +95,13 @@ import {
   type NotificationsView
 } from "./notifications.js";
 import { buildSwimmabilityView, type SwimmabilityView } from "./swimmability.js";
+import {
+  WaterTestingScheduleService,
+  SqliteWaterTestingScheduleRepository,
+  evaluateWaterTestingFreshness,
+  type WaterTestingScheduleStatusView,
+  type WaterTestingFreshnessView
+} from "./water-testing-schedule.js";
 
 export interface AppOptions {
   config?: ApiConfig;
@@ -94,10 +113,12 @@ export interface AppOptions {
   pumpTelemetry?: PumpTelemetryService;
   weatherForecast?: WeatherForecastService;
   weatherLocationSettings?: WeatherLocationSettingsService;
+  geocodingSettings?: GeocodingSettingsService;
   poolChemistrySettings?: PoolChemistrySettingsService;
   chemistryReadings?: ChemistryReadingsService;
   poolCoverEvents?: PoolCoverEventsService;
   notifications?: NotificationsService;
+  waterTestingSchedule?: WaterTestingScheduleService;
 }
 
 interface ControllerScheduleUpdateInput {
@@ -144,10 +165,12 @@ export class App {
   private readonly pumpTelemetry: PumpTelemetryService;
   private readonly weatherForecast: WeatherForecastService;
   private readonly weatherLocationSettings: WeatherLocationSettingsService;
+  private readonly geocodingSettings: GeocodingSettingsService;
   private readonly poolChemistrySettings: PoolChemistrySettingsService;
   private readonly chemistryReadings: ChemistryReadingsService;
   private readonly poolCoverEvents: PoolCoverEventsService;
   private readonly notifications: NotificationsService;
+  private readonly waterTestingSchedule: WaterTestingScheduleService;
   private readonly sqliteDatabase: SqliteDatabase | null;
   private readonly nats: NatsSupervisor;
   private readonly httpServer?: HttpServer;
@@ -173,6 +196,26 @@ export class App {
         influx: this.config.influx,
         fetchImpl: options.fetchImpl
       });
+    this.sqliteDatabase = this.config.sqlite ? createSqliteDatabase(this.config.sqlite) : null;
+    const geocodingRegistry = createGeocodingProviderRegistry(
+      this.config.geocoding ?? defaultGeocodingConfig(),
+      options.fetchImpl
+    );
+    this.geocodingSettings =
+      options.geocodingSettings ??
+      new GeocodingSettingsService(
+        this.config.poolId,
+        this.sqliteDatabase ? new SqliteGeocodingSettingsRepository(this.sqliteDatabase) : null,
+        geocodingRegistry
+      );
+    this.weatherLocationSettings =
+      options.weatherLocationSettings ??
+      new WeatherLocationSettingsService(
+        this.config.poolId,
+        this.sqliteDatabase ? new SqliteWeatherLocationSettingsRepository(this.sqliteDatabase) : null,
+        this.geocodingSettings,
+        this.logger
+      );
     this.weatherForecast =
       options.weatherForecast ??
       new WeatherForecastService({
@@ -181,17 +224,25 @@ export class App {
         weather: this.config.weather ?? defaultWeatherProviderConfig(),
         influx: this.config.influx,
         fetchImpl: options.fetchImpl,
+        locationResolver: async () => {
+          const activeCoordinates = await this.weatherLocationSettings.getActiveWeatherCoordinates();
+          if (activeCoordinates.status !== "resolved" || activeCoordinates.latitude === null || activeCoordinates.longitude === null) {
+            return null;
+          }
+          return {
+            location: {
+              latitude: activeCoordinates.latitude,
+              longitude: activeCoordinates.longitude,
+              timezone: activeCoordinates.timezone,
+              name: null
+            },
+            source: activeCoordinates.source ?? "manual"
+          };
+        },
         onUpdate: (view) => {
           this.events.publish("weather.updated", view as unknown as Record<string, unknown>);
         }
       });
-    this.sqliteDatabase = this.config.sqlite ? createSqliteDatabase(this.config.sqlite) : null;
-    this.weatherLocationSettings =
-      options.weatherLocationSettings ??
-      new WeatherLocationSettingsService(
-        this.config.poolId,
-        this.sqliteDatabase ? new SqliteWeatherLocationSettingsRepository(this.sqliteDatabase) : null
-      );
     this.poolChemistrySettings =
       options.poolChemistrySettings ??
       new PoolChemistrySettingsService(
@@ -213,6 +264,12 @@ export class App {
     this.notifications =
       options.notifications ??
       new NotificationsService(this.config.poolId, this.sqliteDatabase);
+    this.waterTestingSchedule =
+      options.waterTestingSchedule ??
+      new WaterTestingScheduleService(
+        this.config.poolId,
+        this.sqliteDatabase ? new SqliteWaterTestingScheduleRepository(this.sqliteDatabase) : null
+      );
     this.platformHealthMonitor = new PlatformHealthMonitor({
       registry: this.buildServiceRegistry(),
       fetchImpl: options.fetchImpl,
@@ -331,12 +388,91 @@ export class App {
     return this.weatherLocationSettings.upsertWeatherLocationSettings(input);
   }
 
+  async getGeocodingSettings(): Promise<GeocodingSettingsView> {
+    return this.geocodingSettings.getGeocodingSettings();
+  }
+
+  async updateGeocodingSettings(input: unknown): Promise<GeocodingSettingsView> {
+    return this.geocodingSettings.updateGeocodingSettings(input);
+  }
+
+  async updateGeocodingProviderConfig(providerId: string, input: unknown): Promise<GeocodingSettingsView> {
+    return this.geocodingSettings.updateGeocodingProviderConfig(providerId, input);
+  }
+
   async getPoolChemistrySettings(): Promise<PoolChemistrySettingsView> {
     return this.poolChemistrySettings.getPoolChemistrySettings();
   }
 
   async updatePoolChemistrySettings(input: unknown): Promise<PoolChemistrySettingsView> {
     return this.poolChemistrySettings.updatePoolChemistrySettings(input);
+  }
+
+  async getWaterTestingSchedule(): Promise<WaterTestingScheduleStatusView> {
+    const schedule = await this.waterTestingSchedule.getSchedule();
+    const freshness = await this.getWaterTestingFreshness();
+    return {
+      items: schedule.items.map((item) => {
+        const statusItem = freshness.items.find((value) => value.chemicalKey === item.chemicalKey);
+        return {
+          ...item,
+          status: statusItem?.status ?? "unavailable",
+          lastObservedAt: statusItem?.lastObservedAt ?? null
+        };
+      }),
+      source: schedule.source
+    };
+  }
+
+  async updateWaterTestingSchedule(input: unknown): Promise<WaterTestingScheduleStatusView> {
+    const schedule = await this.waterTestingSchedule.updateSchedule(input);
+    await this.refreshNotificationsFromCurrentState();
+    const freshness = await this.getWaterTestingFreshness();
+    return {
+      items: schedule.items.map((item) => {
+        const statusItem = freshness.items.find((value) => value.chemicalKey === item.chemicalKey);
+        return {
+          ...item,
+          status: statusItem?.status ?? "unavailable",
+          lastObservedAt: statusItem?.lastObservedAt ?? null
+        };
+      }),
+      source: schedule.source
+    };
+  }
+
+  async updateWaterTestingScheduleItem(chemicalKey: string, input: unknown): Promise<WaterTestingScheduleStatusView> {
+    const schedule = await this.waterTestingSchedule.updateScheduleItem(chemicalKey, input);
+    await this.refreshNotificationsFromCurrentState();
+    const freshness = await this.getWaterTestingFreshness();
+    return {
+      items: schedule.items.map((item) => {
+        const statusItem = freshness.items.find((value) => value.chemicalKey === item.chemicalKey);
+        return {
+          ...item,
+          status: statusItem?.status ?? "unavailable",
+          lastObservedAt: statusItem?.lastObservedAt ?? null
+        };
+      }),
+      source: schedule.source
+    };
+  }
+
+  async resetWaterTestingSchedule(): Promise<WaterTestingScheduleStatusView> {
+    const schedule = await this.waterTestingSchedule.resetSchedule();
+    await this.refreshNotificationsFromCurrentState();
+    const freshness = await this.getWaterTestingFreshness();
+    return {
+      items: schedule.items.map((item) => {
+        const statusItem = freshness.items.find((value) => value.chemicalKey === item.chemicalKey);
+        return {
+          ...item,
+          status: statusItem?.status ?? "unavailable",
+          lastObservedAt: statusItem?.lastObservedAt ?? null
+        };
+      }),
+      source: schedule.source
+    };
   }
 
   async getLatestChemistryReading(): Promise<ChemistryReadingRecord | null> {
@@ -350,6 +486,7 @@ export class App {
   async createChemistryReading(input: unknown): Promise<ChemistryReadingCreateResult> {
     const result = await this.chemistryReadings.createChemistryReading(input);
     this.events.publish("chemistry.reading", result.reading as unknown as Record<string, unknown>);
+    await this.refreshNotificationsFromCurrentState();
     return result;
   }
 
@@ -368,7 +505,7 @@ export class App {
   }
 
   async getSwimmability(): Promise<SwimmabilityView> {
-    const { chemistry, chemistryBounds, cover, forecast, latestTemperatures, rainfallSinceChemistryInches } =
+    const { chemistry, chemistryBounds, cover, forecast, latestTemperatures, rainfallSinceChemistryInches, freshness } =
       await this.getSwimmabilityInputs();
 
     return buildSwimmabilityView({
@@ -377,7 +514,8 @@ export class App {
       cover,
       forecast,
       latestTemperatures,
-      rainfallSinceChemistryInches
+      rainfallSinceChemistryInches,
+      freshness
     });
   }
 
@@ -388,7 +526,8 @@ export class App {
       cover,
       forecast,
       latestTemperatures,
-      rainfallSinceChemistryInches
+      rainfallSinceChemistryInches,
+      freshness
     } = await this.getSwimmabilityInputs();
     const swimmability = buildSwimmabilityView({
       chemistry,
@@ -396,7 +535,8 @@ export class App {
       cover,
       forecast,
       latestTemperatures,
-      rainfallSinceChemistryInches
+      rainfallSinceChemistryInches,
+      freshness
     });
     const chemistryPromptIntervalDays = await this.poolChemistrySettings.getChemistryPromptIntervalDays();
 
@@ -408,6 +548,8 @@ export class App {
       cover,
       forecast,
       latestTemperatures
+      ,
+      freshness
     });
   }
 
@@ -426,6 +568,7 @@ export class App {
     forecast: Awaited<ReturnType<WeatherForecastService["getLatest"]>>;
     latestTemperatures: Awaited<ReturnType<TemperatureTelemetryService["getLatest"]>>;
     rainfallSinceChemistryInches: number | null;
+    freshness: WaterTestingFreshnessView;
   }> {
     const [chemistry, chemistryBounds, cover, forecast, latestTemperatures] = await Promise.all([
       this.chemistryReadings.getLatestChemistryReading(),
@@ -446,14 +589,72 @@ export class App {
       rainfallSinceChemistryInches = sumWeatherHistoryPoints(rainfallHistory) / 25.4;
     }
 
+    const freshness = await this.getWaterTestingFreshness(latestTemperatures);
+
     return {
       chemistry,
       chemistryBounds,
       cover,
       forecast,
       latestTemperatures,
-      rainfallSinceChemistryInches
+      rainfallSinceChemistryInches,
+      freshness
     };
+  }
+
+  private async getWaterTestingFreshness(
+    latestTemperaturesInput?: Awaited<ReturnType<TemperatureTelemetryService["getLatest"]>>
+  ): Promise<WaterTestingFreshnessView> {
+    const [schedule, readings, latestTemperatures] = await Promise.all([
+      this.waterTestingSchedule.getSchedule(),
+      this.chemistryReadings.getRecentChemistryReadings(500),
+      latestTemperaturesInput ? Promise.resolve(latestTemperaturesInput) : this.temperatureTelemetry.getLatest()
+    ]);
+    const snapshot = this.projection.getSnapshot();
+    return evaluateWaterTestingFreshness(schedule.items, {
+      chemistryReadings: readings,
+      latestTemperatures,
+      saltTelemetry: {
+        saltPpm: snapshot.chlorinator.saltPpm,
+        updatedAt: snapshot.chlorinator.updatedAt
+      }
+    });
+  }
+
+  private async refreshNotificationsFromCurrentState(): Promise<void> {
+    if (!this.sqliteDatabase) {
+      return;
+    }
+
+    const {
+      chemistry,
+      chemistryBounds,
+      cover,
+      forecast,
+      latestTemperatures,
+      rainfallSinceChemistryInches,
+      freshness
+    } = await this.getSwimmabilityInputs();
+    const swimmability = buildSwimmabilityView({
+      chemistry,
+      chemistryBounds,
+      cover,
+      forecast,
+      latestTemperatures,
+      rainfallSinceChemistryInches,
+      freshness
+    });
+    const chemistryPromptIntervalDays = await this.poolChemistrySettings.getChemistryPromptIntervalDays();
+    await this.notifications.refresh({
+      chemistry,
+      chemistryPromptIntervalDays,
+      swimmability,
+      rainfallSinceChemistryInches,
+      cover,
+      forecast,
+      latestTemperatures,
+      freshness
+    });
   }
 
   async getChemistryBoundsForRecommendations(): Promise<PoolChemistryRecommendationBounds> {
@@ -1271,8 +1472,17 @@ export class App {
         refreshWeatherForecast: async () => this.refreshWeatherForecast(),
         getWeatherLocationSettings: async () => this.getWeatherLocationSettings() as unknown as Record<string, unknown>,
         upsertWeatherLocationSettings: async (input) => this.upsertWeatherLocationSettings(input) as unknown as Record<string, unknown>,
+        getGeocodingSettings: async () => this.getGeocodingSettings() as unknown as Record<string, unknown>,
+        updateGeocodingSettings: async (input) => this.updateGeocodingSettings(input) as unknown as Record<string, unknown>,
+        updateGeocodingProviderConfig: async (providerId, input) =>
+          this.updateGeocodingProviderConfig(providerId, input) as unknown as Record<string, unknown>,
         getPoolChemistrySettings: async () => this.getPoolChemistrySettings() as unknown as Record<string, unknown>,
         updatePoolChemistrySettings: async (input) => this.updatePoolChemistrySettings(input) as unknown as Record<string, unknown>,
+        getWaterTestingSchedule: async () => this.getWaterTestingSchedule() as unknown as Record<string, unknown>,
+        updateWaterTestingSchedule: async (input) => this.updateWaterTestingSchedule(input) as unknown as Record<string, unknown>,
+        updateWaterTestingScheduleItem: async (chemicalKey, input) =>
+          this.updateWaterTestingScheduleItem(chemicalKey, input) as unknown as Record<string, unknown>,
+        resetWaterTestingSchedule: async () => this.resetWaterTestingSchedule() as unknown as Record<string, unknown>,
         getLatestChemistryReading: async () => this.getLatestChemistryReading(),
         getChemistryHistory: async (query) => this.getChemistryHistory(query),
         createChemistryReading: async (input) => this.createChemistryReading(input),
@@ -1406,9 +1616,15 @@ export class App {
         }
       });
 
+    await this.logRegisteredGeocodingProviders();
     await httpServer.start(signal);
     signal.addEventListener("abort", () => {
       this.sqliteDatabase?.close();
+    });
+    await this.refreshNotificationsFromCurrentState().catch((error) => {
+      this.logger.warn("notifications.refresh.failed", "Initial notification refresh failed.", {
+        error: error instanceof Error ? error.message : String(error)
+      });
     });
     void this.natsVarzMonitor.start(signal);
     void this.platformHealthMonitor.start(signal);
@@ -1424,6 +1640,17 @@ export class App {
 
     const migrator = new DatabaseMigrator(this.sqliteDatabase, this.config.sqlite.migrationsDir);
     await migrator.migrate();
+  }
+
+  private async logRegisteredGeocodingProviders(): Promise<void> {
+    const providers = await this.geocodingSettings.getProviderAvailabilitySnapshot();
+    for (const provider of providers) {
+      this.logger.info("geocoding.provider.registered", "Registered geocoding provider.", {
+        provider_id: provider.id,
+        available: provider.available,
+        unavailable_reason: provider.unavailableReason
+      });
+    }
   }
 
   private currentSession: MessagingSession | null = null;

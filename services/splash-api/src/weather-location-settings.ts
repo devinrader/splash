@@ -1,4 +1,12 @@
 import type { SqliteDatabase } from "./database.js";
+import type { Logger } from "./logger.js";
+import {
+  GeocodingAmbiguousError,
+  GeocodingNoResultError,
+  GeocodingProviderUnavailableError,
+  type GeocodingResult
+} from "./geocoding.js";
+import type { GeocodingSettingsService } from "./geocoding-settings.js";
 
 export type WeatherLocationMode = "address" | "coordinates";
 export type WeatherLocationStatus = "resolved" | "requires_geocoding";
@@ -30,8 +38,10 @@ export interface WeatherLocationSettings {
   timezone: string | null;
   geocodedLatitude: number | null;
   geocodedLongitude: number | null;
+  formattedAddress: string | null;
   geocodeProvider: string | null;
   geocodedAt: string | null;
+  activeGeocodingProviderId: string | null;
   locationStatus: WeatherLocationStatus;
 }
 
@@ -43,7 +53,7 @@ export interface ActiveWeatherCoordinates {
   timezone: string | null;
 }
 
-interface StoredWeatherLocationSettings extends Omit<WeatherLocationSettings, "locationStatus"> {}
+interface StoredWeatherLocationSettings extends Omit<WeatherLocationSettings, "locationStatus" | "activeGeocodingProviderId"> {}
 
 export interface WeatherLocationSettingsRepository {
   get(poolId: string): Promise<StoredWeatherLocationSettings | null>;
@@ -70,20 +80,70 @@ export class WeatherLocationSettingsUnavailableError extends Error {
 export class WeatherLocationSettingsService {
   constructor(
     private readonly poolId: string,
-    private readonly repository: WeatherLocationSettingsRepository | null
+    private readonly repository: WeatherLocationSettingsRepository | null,
+    private readonly geocodingSettings: GeocodingSettingsService | null = null,
+    private readonly logger: Logger | null = null
   ) {}
 
   async getWeatherLocationSettings(): Promise<WeatherLocationSettings> {
     const repository = this.requireRepository();
     const stored = await repository.get(this.poolId);
-    return withStatus(stored ?? defaultWeatherLocationSettings(this.poolId));
+    const activeGeocodingProviderId = await this.geocodingSettings?.getEffectiveActiveProviderId() ?? null;
+    return withStatus(stored ?? defaultStoredWeatherLocationSettings(this.poolId), activeGeocodingProviderId);
   }
 
   async upsertWeatherLocationSettings(input: unknown): Promise<WeatherLocationSettings> {
     const repository = this.requireRepository();
     const normalized = validateWeatherLocationSettingsInput(input);
-    const stored = await repository.upsert(toStoredWeatherLocationSettings(this.poolId, normalized));
-    return withStatus(stored);
+    let storedInput: StoredWeatherLocationSettings;
+
+    if (normalized.locationMode === "coordinates") {
+      storedInput = toCoordinateWeatherLocationSettings(this.poolId, normalized);
+    } else if (looksLikePhysicalAddress(normalized)) {
+      const geocodingSettings = this.requireGeocodingSettings();
+      let providerId = "unknown";
+      try {
+        const provider = await geocodingSettings.getActiveProviderForGeocoding();
+        providerId = provider.id;
+        const geocoded = await provider.geocode(buildGeocodingQuery(normalized));
+        storedInput = toGeocodedWeatherLocationSettings(this.poolId, normalized, provider.id, geocoded);
+      } catch (error) {
+        this.logger?.warn("weather_location.geocode.failed", "Weather location geocoding failed.", {
+          pool_id: this.poolId,
+          provider_id: providerId,
+          reason: error instanceof Error ? error.message : String(error)
+        });
+        if (
+          error instanceof GeocodingNoResultError
+          || error instanceof GeocodingAmbiguousError
+          || error instanceof GeocodingProviderUnavailableError
+        ) {
+          throw new WeatherLocationSettingsValidationError(
+            "Unable to geocode this address. Please check the address or enter latitude/longitude.",
+            {
+              addressLine1: "Unable to geocode this address. Please check the address or enter latitude/longitude."
+            }
+          );
+        }
+        if (error instanceof Error && error.message.includes("No geocoding provider is configured")) {
+          throw new WeatherLocationSettingsValidationError(error.message, {
+            addressLine1: error.message
+          });
+        }
+        throw new WeatherLocationSettingsValidationError(
+          "Unable to geocode this address. Please check the address or enter latitude/longitude.",
+          {
+            addressLine1: "Unable to geocode this address. Please check the address or enter latitude/longitude."
+          }
+        );
+      }
+    } else {
+      storedInput = toUnresolvedAddressWeatherLocationSettings(this.poolId, normalized);
+    }
+
+    const stored = await repository.upsert(storedInput);
+    const activeGeocodingProviderId = await this.geocodingSettings?.getEffectiveActiveProviderId() ?? null;
+    return withStatus(stored, activeGeocodingProviderId);
   }
 
   async getActiveWeatherCoordinates(): Promise<ActiveWeatherCoordinates> {
@@ -134,6 +194,13 @@ export class WeatherLocationSettingsService {
     }
     return this.repository;
   }
+
+  private requireGeocodingSettings(): GeocodingSettingsService {
+    if (!this.geocodingSettings) {
+      throw new WeatherLocationSettingsUnavailableError("Geocoding-backed weather location settings are not configured.");
+    }
+    return this.geocodingSettings;
+  }
 }
 
 export class SqliteWeatherLocationSettingsRepository implements WeatherLocationSettingsRepository {
@@ -156,6 +223,7 @@ export class SqliteWeatherLocationSettingsRepository implements WeatherLocationS
           weather_location_timezone,
           weather_geocoded_latitude,
           weather_geocoded_longitude,
+          weather_geocoded_formatted_address,
           weather_geocode_provider,
           weather_geocoded_at
         FROM pool_settings
@@ -188,12 +256,13 @@ export class SqliteWeatherLocationSettingsRepository implements WeatherLocationS
           weather_location_timezone,
           weather_geocoded_latitude,
           weather_geocoded_longitude,
+          weather_geocoded_formatted_address,
           weather_geocode_provider,
           weather_geocoded_at,
           updated_at
         )
         VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
         )
         ON CONFLICT (pool_id) DO UPDATE SET
           weather_location_mode = EXCLUDED.weather_location_mode,
@@ -208,6 +277,7 @@ export class SqliteWeatherLocationSettingsRepository implements WeatherLocationS
           weather_location_timezone = EXCLUDED.weather_location_timezone,
           weather_geocoded_latitude = EXCLUDED.weather_geocoded_latitude,
           weather_geocoded_longitude = EXCLUDED.weather_geocoded_longitude,
+          weather_geocoded_formatted_address = EXCLUDED.weather_geocoded_formatted_address,
           weather_geocode_provider = EXCLUDED.weather_geocode_provider,
           weather_geocoded_at = EXCLUDED.weather_geocoded_at,
           updated_at = CURRENT_TIMESTAMP
@@ -225,6 +295,7 @@ export class SqliteWeatherLocationSettingsRepository implements WeatherLocationS
           weather_location_timezone,
           weather_geocoded_latitude,
           weather_geocoded_longitude,
+          weather_geocoded_formatted_address,
           weather_geocode_provider,
           weather_geocoded_at
       `,
@@ -242,6 +313,7 @@ export class SqliteWeatherLocationSettingsRepository implements WeatherLocationS
         settings.timezone,
         settings.geocodedLatitude,
         settings.geocodedLongitude,
+        settings.formattedAddress,
         settings.geocodeProvider,
         settings.geocodedAt
       ]
@@ -269,6 +341,7 @@ interface WeatherLocationSettingsRow extends Record<string, unknown> {
   weather_location_timezone: string | null;
   weather_geocoded_latitude: number | string | null;
   weather_geocoded_longitude: number | string | null;
+  weather_geocoded_formatted_address: string | null;
   weather_geocode_provider: string | null;
   weather_geocoded_at: string | Date | null;
 }
@@ -343,8 +416,30 @@ export function validateWeatherLocationSettingsInput(input: unknown): WeatherLoc
   return normalized;
 }
 
+export function looksLikePhysicalAddress(input: WeatherLocationSettingsInput): boolean {
+  if (input.locationMode !== "address") {
+    return false;
+  }
+
+  const addressLine1 = input.addressLine1?.trim() ?? "";
+  const addressLine2 = input.addressLine2?.trim() ?? "";
+  const city = input.city?.trim() ?? "";
+  const stateRegion = input.stateRegion?.trim() ?? "";
+  const postalCode = input.postalCode?.trim() ?? "";
+
+  const hasStreetNumber = /\d/.test(addressLine1);
+  const hasStreetLikeText = /\b(st|street|rd|road|dr|drive|ln|lane|ave|avenue|blvd|boulevard|ct|court|way|pl|place|pkwy|parkway|cir|circle)\b/i.test(addressLine1);
+  const hasCityStatePostal = city.length > 0 && stateRegion.length > 0 && postalCode.length > 0;
+
+  return Boolean(addressLine2 || hasStreetNumber || hasStreetLikeText || hasCityStatePostal);
+}
+
 export function defaultWeatherLocationSettings(poolId: string): WeatherLocationSettings {
-  return withStatus({
+  return withStatus(defaultStoredWeatherLocationSettings(poolId), null);
+}
+
+function defaultStoredWeatherLocationSettings(poolId: string): StoredWeatherLocationSettings {
+  return {
     poolId,
     locationMode: "address",
     addressLine1: null,
@@ -358,32 +453,60 @@ export function defaultWeatherLocationSettings(poolId: string): WeatherLocationS
     timezone: null,
     geocodedLatitude: null,
     geocodedLongitude: null,
+    formattedAddress: null,
     geocodeProvider: null,
     geocodedAt: null
-  });
+  };
 }
 
-function toStoredWeatherLocationSettings(poolId: string, input: WeatherLocationSettingsInput): StoredWeatherLocationSettings {
-  if (input.locationMode === "coordinates") {
-    return {
-      poolId,
-      locationMode: "coordinates",
-      addressLine1: null,
-      addressLine2: null,
-      city: null,
-      stateRegion: null,
-      postalCode: null,
-      country: null,
-      latitude: input.latitude ?? null,
-      longitude: input.longitude ?? null,
-      timezone: input.timezone ?? null,
-      geocodedLatitude: null,
-      geocodedLongitude: null,
-      geocodeProvider: null,
-      geocodedAt: null
-    };
-  }
+function toCoordinateWeatherLocationSettings(poolId: string, input: WeatherLocationSettingsInput): StoredWeatherLocationSettings {
+  return {
+    poolId,
+    locationMode: "coordinates",
+    addressLine1: null,
+    addressLine2: null,
+    city: null,
+    stateRegion: null,
+    postalCode: null,
+    country: null,
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    timezone: input.timezone ?? null,
+    geocodedLatitude: null,
+    geocodedLongitude: null,
+    formattedAddress: null,
+    geocodeProvider: null,
+    geocodedAt: null
+  };
+}
 
+function toGeocodedWeatherLocationSettings(
+  poolId: string,
+  input: WeatherLocationSettingsInput,
+  providerId: string,
+  geocoded: GeocodingResult
+): StoredWeatherLocationSettings {
+  return {
+    poolId,
+    locationMode: "address",
+    addressLine1: input.addressLine1 ?? null,
+    addressLine2: input.addressLine2 ?? null,
+    city: input.city ?? null,
+    stateRegion: input.stateRegion ?? null,
+    postalCode: input.postalCode ?? null,
+    country: input.country ?? null,
+    latitude: null,
+    longitude: null,
+    timezone: input.timezone ?? geocoded.timezone ?? null,
+    geocodedLatitude: geocoded.latitude,
+    geocodedLongitude: geocoded.longitude,
+    formattedAddress: geocoded.formattedAddress,
+    geocodeProvider: providerId,
+    geocodedAt: new Date().toISOString()
+  };
+}
+
+function toUnresolvedAddressWeatherLocationSettings(poolId: string, input: WeatherLocationSettingsInput): StoredWeatherLocationSettings {
   return {
     poolId,
     locationMode: "address",
@@ -398,6 +521,7 @@ function toStoredWeatherLocationSettings(poolId: string, input: WeatherLocationS
     timezone: input.timezone ?? null,
     geocodedLatitude: null,
     geocodedLongitude: null,
+    formattedAddress: null,
     geocodeProvider: null,
     geocodedAt: null
   };
@@ -418,19 +542,34 @@ function mapWeatherLocationSettingsRow(row: WeatherLocationSettingsRow): StoredW
     timezone: normalizeNullableText(row.weather_location_timezone),
     geocodedLatitude: coerceNullableNumber(row.weather_geocoded_latitude),
     geocodedLongitude: coerceNullableNumber(row.weather_geocoded_longitude),
+    formattedAddress: normalizeNullableText(row.weather_geocoded_formatted_address),
     geocodeProvider: normalizeNullableText(row.weather_geocode_provider),
     geocodedAt: row.weather_geocoded_at ? new Date(row.weather_geocoded_at).toISOString() : null
   };
 }
 
-function withStatus(settings: StoredWeatherLocationSettings): WeatherLocationSettings {
+function withStatus(settings: StoredWeatherLocationSettings, activeGeocodingProviderId: string | null): WeatherLocationSettings {
   return {
     ...settings,
+    activeGeocodingProviderId,
     locationStatus:
       settings.locationMode === "coordinates" || (settings.geocodedLatitude !== null && settings.geocodedLongitude !== null)
         ? "resolved"
         : "requires_geocoding"
   };
+}
+
+function buildGeocodingQuery(input: WeatherLocationSettingsInput): string {
+  return [
+    input.addressLine1,
+    input.addressLine2,
+    input.city,
+    input.stateRegion,
+    input.postalCode,
+    input.country
+  ]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(", ");
 }
 
 function optionalTrimmedString(value: unknown): string | null {

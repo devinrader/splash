@@ -20,7 +20,7 @@ test("notifications service generates alerts and does not recreate a read alert 
   const firstInbox = await service.getNotifications({ status: null, limit: null, type: null }, context);
   assert.deepEqual(
     firstInbox.notifications.map((notification) => notification.type).sort(),
-    ["chemistry_test_due", "rain_since_test", "swimmability_caution"]
+    ["chemistry_test_due", "chemistry_value_stale", "rain_since_test", "swimmability_caution"]
   );
 
   const swimmabilityNotification = firstInbox.notifications.find((notification) => notification.type === "swimmability_caution");
@@ -33,7 +33,7 @@ test("notifications service generates alerts and does not recreate a read alert 
   const secondInbox = await service.getNotifications({ status: null, limit: null, type: null }, context);
   assert.deepEqual(
     secondInbox.notifications.map((notification) => notification.type).sort(),
-    ["chemistry_test_due", "rain_since_test"]
+    ["chemistry_test_due", "chemistry_value_stale", "rain_since_test"]
   );
 });
 
@@ -213,6 +213,24 @@ function buildNotificationContext(overrides: {
       message: "Temperature telemetry is available.",
       last_updated: "2026-06-04T19:18:00.000Z",
       readings: {}
+    },
+    freshness: {
+      generatedAt: "2026-06-04T21:00:00.000Z",
+      items: [
+        {
+          chemicalKey: "free_chlorine" as const,
+          displayName: "Free Chlorine",
+          enabled: true,
+          status: "stale" as const,
+          lastObservedAt: "2026-05-28T18:45:00.000Z",
+          expectedIntervalValue: 3,
+          expectedIntervalUnit: "days" as const,
+          staleThresholdValue: 3,
+          staleThresholdUnit: "days" as const,
+          unavailableThresholdValue: 7,
+          unavailableThresholdUnit: "days" as const
+        }
+      ]
     },
     now: "2026-06-04T21:00:00.000Z"
   };

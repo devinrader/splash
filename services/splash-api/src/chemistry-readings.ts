@@ -107,6 +107,7 @@ interface AggregatedChemistryRow {
 export interface ChemistryReadingsRepository {
   getLatest(poolId: string): Promise<ChemistryReadingRecord | null>;
   create(record: ChemistryReadingStoredRecord): Promise<ChemistryReadingRecord>;
+  listRecent(poolId: string, limit: number): Promise<ChemistryReadingRecord[]>;
   listRaw(poolId: string, start: string, end: string): Promise<ChemistryReadingRecord[]>;
   listDailyAverage(poolId: string, start: string, end: string): Promise<AggregatedChemistryRow[]>;
 }
@@ -161,6 +162,10 @@ export class ChemistryReadingsService {
       readings,
       series: buildSeriesFromAggregateRows(rows)
     };
+  }
+
+  async getRecentChemistryReadings(limit = 200): Promise<ChemistryReadingRecord[]> {
+    return this.requireRepository().listRecent(this.poolId, limit);
   }
 
   async createChemistryReading(input: unknown): Promise<ChemistryReadingCreateResult> {
@@ -273,6 +278,30 @@ export class SqliteChemistryReadingsRepository implements ChemistryReadingsRepos
       recorded_at: record.recordedAt,
       created_at: createdAt
     };
+  }
+
+  async listRecent(poolId: string, limit: number): Promise<ChemistryReadingRecord[]> {
+    return this.database.all<ChemistryReadingRow>(
+      `
+        SELECT
+          id,
+          pool_id,
+          ph,
+          free_chlorine,
+          total_chlorine,
+          total_alkalinity,
+          calcium_hardness,
+          cyanuric_acid,
+          source,
+          recorded_at,
+          created_at
+        FROM chemistry_readings
+        WHERE pool_id = ?
+        ORDER BY recorded_at DESC, created_at DESC
+        LIMIT ?
+      `,
+      [poolId, limit]
+    ).map(mapChemistryReadingRow);
   }
 
   async listRaw(poolId: string, start: string, end: string): Promise<ChemistryReadingRecord[]> {

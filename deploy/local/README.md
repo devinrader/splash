@@ -110,6 +110,17 @@ Notes:
 - weather refresh can be scheduled on fixed wall-clock minute marks with `WEATHER_REFRESH_MINUTES`, for example `15,45`
 - if `WEATHER_REFRESH_MINUTES` is unset, `WEATHER_REFRESH_INTERVAL_HOURS` remains the fallback refresh cadence
 - the default API env example also includes pool site location and Open-Meteo weather settings so the Home dashboard can cache site forecast data locally
+- the default API env example now also includes geocoding provider bootstrap
+  settings:
+  - `GEOCODING_GEOAPIFY_API_KEY`
+  - `GEOCODING_GEOAPIFY_BASE_URL`
+  - `GEOCODING_OSM_BASE_URL`
+  - `GEOCODING_OSM_USER_AGENT`
+  - `GEOCODING_OSM_EMAIL`
+- `Geoapify` is the preferred geocoding provider when configured
+- `OpenStreetMap / Nominatim` can be used as a development or low-volume fallback
+- the public Nominatim endpoint is rate-limited and not appropriate for heavy production traffic; use a compliant deployment or self-hosted base URL for higher-volume use
+- weather-location saves now prefer persisted latitude/longitude after a street address has been resolved successfully
 - the default API env example points `API_SERIAL_HEALTH_URL` and `API_PROTOCOL_HEALTH_URL` at `/health`, not `/healthz`, because the platform aggregator needs semantic health rather than liveness-only checks
 - the script loads `deploy/local/splash-protocol.env.example` by default
 - the script loads `deploy/local/splash-frontend.env.example` by default
@@ -146,6 +157,36 @@ SPLASH_API_ENV_FILE=deploy/local/splash-api.env.local deploy/local/start-splash-
 
 - `deploy/local/*.env.local` is ignored by the repo so local secret-bearing env
   files can stay outside commits
+
+## Geocoding provider selection
+
+Splash now separates weather forecast providers from weather-address geocoding
+providers.
+
+For local development:
+
+- `GEOCODING_GEOAPIFY_API_KEY` and the other `GEOCODING_*` variables are now
+  bootstrap defaults, not the only runtime source of truth
+- after the app starts, geocoding provider configuration can be edited and
+  persisted from the Settings page `Geocoding` section
+- configure `GEOCODING_GEOAPIFY_API_KEY` to bootstrap `Geoapify`
+- configure `GEOCODING_OSM_USER_AGENT` to bootstrap `OpenStreetMap / Nominatim`
+- keep `GEOCODING_OSM_EMAIL` set when using the public Nominatim endpoint
+- override `GEOCODING_OSM_BASE_URL` if you want to target a self-hosted
+  Nominatim deployment
+
+The active provider is selected from the Settings page `Geocoding` section.
+Provider-specific configuration fields are rendered from provider metadata and
+saved durably in Splash settings. Secret values such as API keys are masked in
+the UI and not returned in full through the API.
+When a street address is saved in `Weather Location`, Splash geocodes that
+address immediately and persists:
+
+- the original address fields
+- resolved latitude/longitude
+- formatted address
+- provider id
+- geocoded timestamp
 
 ## Prometheus and Grafana
 

@@ -19,13 +19,34 @@ test("validatePoolChemistrySettingsUpdateInput accepts supported chemistry updat
         target: 5,
         maximum: 10,
         enabled: true
+      },
+      {
+        chemicalKey: "total_chlorine",
+        minimum: 3,
+        target: 5,
+        maximum: 10,
+        enabled: true
+      },
+      {
+        chemicalKey: "salt",
+        source_mode: "hardware",
+        source_binding: {
+          provider_type: "chlorinator",
+          provider_id: "chlorinator-1",
+          measurement_key: "salt"
+        }
       }
-    ]
+    ],
+    chemistry_prompt_interval_days: 4
   });
 
-  assert.equal(result.settings.length, 1);
+  assert.equal(result.settings.length, 3);
   assert.equal(result.settings[0]?.chemicalKey, "free_chlorine");
   assert.equal(result.settings[0]?.target, 5);
+  assert.equal(result.settings[1]?.chemicalKey, "total_chlorine");
+  assert.equal(result.settings[1]?.target, 5);
+  assert.equal(result.settings[2]?.source_mode, "hardware");
+  assert.equal(result.chemistry_prompt_interval_days, 4);
 });
 
 test("validatePoolChemistrySettingsUpdateInput rejects unknown keys and invalid ordering", () => {
@@ -67,7 +88,9 @@ test("repository maps saved chemistry settings rows", async () => {
             target: 5,
             maximum: 10,
             enabled: true,
-            sortOrder: 10
+            sortOrder: 10,
+            source_mode: "manual",
+            source_binding: null
           }
         }
       };
@@ -90,6 +113,46 @@ test("repository maps saved chemistry settings rows", async () => {
   assert.equal(result?.settings.ph.target, 7.6);
 });
 
+test("repository maps legacy combined chlorine settings onto total chlorine defaults", async () => {
+  const repository = new SqlitePoolChemistrySettingsRepository({
+    get() {
+      return {
+        pool_id: "pool-1",
+        chemistry_bounds: {
+          combined_chlorine: {
+            chemicalKey: "combined_chlorine",
+            displayName: "Combined Chlorine",
+            unit: "ppm",
+            minimum: 0,
+            target: 0,
+            maximum: 0.5,
+            enabled: true,
+            sortOrder: 20,
+            source_mode: "manual",
+            source_binding: null
+          }
+        }
+      };
+    },
+    all() {
+      return [];
+    },
+    run() {},
+    exec() {},
+    transaction<T>(callback: () => T) {
+      return callback();
+    },
+    close() {}
+  } as never);
+
+  const result = await repository.get("pool-1");
+
+  assert.ok(result);
+  assert.equal(result?.settings.total_chlorine.displayName, "Total Chlorine");
+  assert.equal(result?.settings.total_chlorine.target, 5);
+  assert.equal(result?.settings.total_chlorine.maximum, 10);
+});
+
 test("service returns seeded defaults when SQLite rows are missing", async () => {
   const service = new PoolChemistrySettingsService("pool-1", {
     async get() {
@@ -104,7 +167,10 @@ test("service returns seeded defaults when SQLite rows are missing", async () =>
 
   assert.equal(result.source, "defaults");
   assert.equal(result.settings[0]?.chemicalKey, "free_chlorine");
+  assert.equal(result.settings.find((setting) => setting.chemicalKey === "total_chlorine")?.displayName, "Total Chlorine");
   assert.equal(result.settings.find((setting) => setting.chemicalKey === "salt")?.target, 3400);
+  assert.equal(result.settings.find((setting) => setting.chemicalKey === "salt")?.source_mode, "hardware");
+  assert.equal(result.settings.find((setting) => setting.chemicalKey === "water_temperature")?.available_sources[0]?.label, "EasyTouch Controller Water Temperature");
 });
 
 test("service merges partial updates onto current chemistry settings", async () => {
@@ -135,6 +201,7 @@ test("service merges partial updates onto current chemistry settings", async () 
   assert.equal(result.source, "sqlite");
   assert.equal(ph?.target, 7.5);
   assert.equal(salt?.target, 3400);
+  assert.equal(salt?.source_mode, "hardware");
 });
 
 test("service returns fallback recommendation bounds when repository is unavailable", async () => {
@@ -182,9 +249,13 @@ test("pool chemistry API GET and PUT routes work", async () => {
             target: 5,
             maximum: 10,
             enabled: true,
-            sortOrder: 10
+            sortOrder: 10,
+            source_mode: "manual",
+            source_binding: null,
+            available_sources: []
           }
         ],
+        chemistry_prompt_interval_days: 3,
         source: "sqlite"
       };
     },
@@ -200,9 +271,13 @@ test("pool chemistry API GET and PUT routes work", async () => {
             target: 7.6,
             maximum: 7.8,
             enabled: true,
-            sortOrder: 30
+            sortOrder: 30,
+            source_mode: "manual",
+            source_binding: null,
+            available_sources: []
           }
         ],
+        chemistry_prompt_interval_days: 3,
         source: "sqlite"
       };
     }

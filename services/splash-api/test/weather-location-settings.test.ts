@@ -7,8 +7,10 @@ import {
   WeatherLocationSettingsService,
   WeatherLocationSettingsUnavailableError,
   WeatherLocationSettingsValidationError,
+  looksLikePhysicalAddress,
   validateWeatherLocationSettingsInput
 } from "../src/weather-location-settings.js";
+import { GeocodingNoResultError } from "../src/geocoding.js";
 
 test("validateWeatherLocationSettingsInput accepts coordinate mode", () => {
   const result = validateWeatherLocationSettingsInput({
@@ -53,6 +55,28 @@ test("validateWeatherLocationSettingsInput rejects invalid latitude and longitud
       assert.equal(error.details.longitude, "Longitude must be between -180 and 180.");
       return true;
     }
+  );
+});
+
+test("looksLikePhysicalAddress identifies structured street addresses", () => {
+  assert.equal(
+    looksLikePhysicalAddress({
+      locationMode: "address",
+      addressLine1: "123 Main St",
+      city: "Gastonia",
+      stateRegion: "NC",
+      postalCode: "28054",
+      country: "US"
+    }),
+    true
+  );
+  assert.equal(
+    looksLikePhysicalAddress({
+      locationMode: "coordinates",
+      latitude: 35.2621,
+      longitude: -81.1873
+    }),
+    false
   );
 });
 
@@ -112,6 +136,7 @@ test("service returns requires_geocoding for address mode without resolved coord
         timezone: null,
         geocodedLatitude: null,
         geocodedLongitude: null,
+        formattedAddress: null,
         geocodeProvider: null,
         geocodedAt: null
       };
@@ -139,6 +164,152 @@ test("service throws unavailable when repository is not configured", async () =>
   );
 });
 
+test("service geocodes a physical address when saving weather location settings", async () => {
+  const service = new WeatherLocationSettingsService(
+    "pool-1",
+    {
+      async get() {
+        return null;
+      },
+      async upsert(settings) {
+        return settings;
+      }
+    },
+    {
+      async getEffectiveActiveProviderId() {
+        return "geoapify";
+      },
+      async getActiveProviderForGeocoding() {
+        return {
+          id: "geoapify",
+          displayName: "Geoapify",
+          description: "",
+          configurationRequirements: [],
+          available: true,
+          unavailableReason: null,
+          configurationSummary: "",
+          async geocode() {
+            return {
+              latitude: 35.2621,
+              longitude: -81.1873,
+              formattedAddress: "123 Main St, Gastonia, NC 28054, United States",
+              timezone: "America/New_York",
+              confidence: 0.99,
+              raw: null
+            };
+          }
+        };
+      }
+    } as never
+  );
+
+  const result = await service.upsertWeatherLocationSettings({
+    locationMode: "address",
+    addressLine1: "123 Main St",
+    city: "Gastonia",
+    stateRegion: "NC",
+    postalCode: "28054",
+    country: "US"
+  });
+
+  assert.equal(result.locationStatus, "resolved");
+  assert.equal(result.geocodedLatitude, 35.2621);
+  assert.equal(result.geocodedLongitude, -81.1873);
+  assert.equal(result.formattedAddress, "123 Main St, Gastonia, NC 28054, United States");
+  assert.equal(result.geocodeProvider, "geoapify");
+  assert.equal(result.activeGeocodingProviderId, "geoapify");
+});
+
+test("service returns a validation error when no geocoding provider is configured", async () => {
+  const service = new WeatherLocationSettingsService(
+    "pool-1",
+    {
+      async get() {
+        return null;
+      },
+      async upsert(settings) {
+        return settings;
+      }
+    },
+    {
+      async getEffectiveActiveProviderId() {
+        return null;
+      },
+      async getActiveProviderForGeocoding() {
+        throw new Error("No geocoding provider is configured. Select a provider in Settings.");
+      }
+    } as never
+  );
+
+  await assert.rejects(
+    () => service.upsertWeatherLocationSettings({
+      locationMode: "address",
+      addressLine1: "123 Main St",
+      city: "Gastonia",
+      stateRegion: "NC",
+      postalCode: "28054",
+      country: "US"
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof WeatherLocationSettingsValidationError);
+      assert.equal(error.message, "No geocoding provider is configured. Select a provider in Settings.");
+      return true;
+    }
+  );
+});
+
+test("service returns a validation error when geocoding finds no result", async () => {
+  const service = new WeatherLocationSettingsService(
+    "pool-1",
+    {
+      async get() {
+        return null;
+      },
+      async upsert(settings) {
+        return settings;
+      }
+    },
+    {
+      async getEffectiveActiveProviderId() {
+        return "geoapify";
+      },
+      async getActiveProviderForGeocoding() {
+        return {
+          id: "geoapify",
+          displayName: "Geoapify",
+          description: "",
+          configurationRequirements: [],
+          available: true,
+          unavailableReason: null,
+          configurationSummary: "",
+          async geocode() {
+            throw new GeocodingNoResultError("No result");
+          }
+        };
+      }
+    } as never
+  );
+
+  await assert.rejects(
+    () => service.upsertWeatherLocationSettings({
+      locationMode: "address",
+      addressLine1: "123 Main St",
+      city: "Gastonia",
+      stateRegion: "NC",
+      postalCode: "28054",
+      country: "US"
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof WeatherLocationSettingsValidationError);
+      assert.equal(
+        error.message,
+        "Unable to geocode this address. Please check the address or enter latitude/longitude."
+      );
+      return true;
+    }
+  );
+});
+
 test("weather location API GET and PUT routes work", async () => {
   const server = new LocalHttpServer("127.0.0.1:8080", createHttpHandlers({
     async getWeatherLocationSettings() {
@@ -156,8 +327,10 @@ test("weather location API GET and PUT routes work", async () => {
         timezone: null,
         geocodedLatitude: null,
         geocodedLongitude: null,
+        formattedAddress: null,
         geocodeProvider: null,
         geocodedAt: null,
+        activeGeocodingProviderId: null,
         locationStatus: "requires_geocoding"
       };
     },
@@ -177,8 +350,10 @@ test("weather location API GET and PUT routes work", async () => {
         timezone: "America/New_York",
         geocodedLatitude: null,
         geocodedLongitude: null,
+        formattedAddress: null,
         geocodeProvider: null,
         geocodedAt: null,
+        activeGeocodingProviderId: null,
         locationStatus: "resolved"
       };
     }
@@ -234,8 +409,10 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       timezone: null,
       geocodedLatitude: null,
       geocodedLongitude: null,
+      formattedAddress: null,
       geocodeProvider: null,
       geocodedAt: null,
+      activeGeocodingProviderId: null,
       locationStatus: "requires_geocoding"
     }),
     upsertWeatherLocationSettings: async () => ({
@@ -252,8 +429,10 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       timezone: null,
       geocodedLatitude: null,
       geocodedLongitude: null,
+      formattedAddress: null,
       geocodeProvider: null,
       geocodedAt: null,
+      activeGeocodingProviderId: null,
       locationStatus: "requires_geocoding"
     }),
     getPoolChemistrySettings: async () => ({

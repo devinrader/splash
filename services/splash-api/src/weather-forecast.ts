@@ -130,6 +130,7 @@ export interface WeatherForecastServiceOptions {
   influx?: InfluxTelemetryConfig | null;
   fetchImpl?: typeof fetch;
   onUpdate?: (view: WeatherForecastView) => void;
+  locationResolver?: () => Promise<{ location: GeoLocation; source: "manual" | "geocoded" } | null>;
 }
 
 export interface WeatherHistoryQuery {
@@ -148,6 +149,7 @@ export class WeatherForecastService {
   private readonly onUpdate?: (view: WeatherForecastView) => void;
   private readonly poolId: string;
   private readonly poolSite: PoolSiteConfig;
+  private readonly locationResolver?: WeatherForecastServiceOptions["locationResolver"];
   private geocodedLocation: GeoLocation | null = null;
   private cache: WeatherForecastView = emptyWeatherView("No weather forecast has been captured yet.");
   private refreshInFlight: Promise<WeatherForecastView> | null = null;
@@ -157,6 +159,7 @@ export class WeatherForecastService {
   constructor(options: WeatherForecastServiceOptions) {
     this.poolId = options.poolId;
     this.poolSite = options.poolSite;
+    this.locationResolver = options.locationResolver;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.refreshMinutes = options.weather.refreshMinutes;
     this.refreshIntervalMs = options.weather.refreshIntervalHours * 60 * 60 * 1000;
@@ -437,6 +440,13 @@ export class WeatherForecastService {
   }
 
   private async resolveLocation(): Promise<{ location: GeoLocation; source: "manual" | "geocoded" } | null> {
+    if (this.locationResolver) {
+      const resolved = await this.locationResolver();
+      if (resolved) {
+        return resolved;
+      }
+    }
+
     if (typeof this.poolSite.latitude === "number" && typeof this.poolSite.longitude === "number") {
       return {
         location: {

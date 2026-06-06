@@ -66,6 +66,9 @@ test("service warns when pH and free chlorine are both omitted", async () => {
     async listRaw() {
       return [];
     },
+    async listRecent() {
+      return [];
+    },
     async listDailyAverage() {
       return [];
     }
@@ -89,6 +92,9 @@ test("service rejects empty chemistry reading writes", async () => {
       throw new Error("should not be called");
     },
     async listRaw() {
+      return [];
+    },
+    async listRecent() {
       return [];
     },
     async listDailyAverage() {

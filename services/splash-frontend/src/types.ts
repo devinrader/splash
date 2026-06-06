@@ -420,8 +420,10 @@ export interface WeatherLocationSettingsData {
   timezone: string | null;
   geocodedLatitude: number | null;
   geocodedLongitude: number | null;
+  formattedAddress: string | null;
   geocodeProvider: string | null;
   geocodedAt: string | null;
+  activeGeocodingProviderId: string | null;
   locationStatus: WeatherLocationStatus;
 }
 
@@ -449,9 +451,55 @@ export interface WeatherLocationSettingsSaveInput {
   timezone?: string | null;
 }
 
+export interface GeocodingProviderView {
+  id: string;
+  displayName: string;
+  description: string;
+  configurationRequirements: string[];
+  configFields: GeocodingProviderConfigFieldView[];
+  available: boolean;
+  unavailableReason: string | null;
+}
+
+export type GeocodingProviderConfigFieldType = "text" | "password" | "url" | "email";
+
+export interface GeocodingProviderConfigFieldView {
+  key: string;
+  label: string;
+  description: string;
+  type: GeocodingProviderConfigFieldType;
+  required: boolean;
+  secret: boolean;
+  placeholder: string | null;
+  defaultValue?: string | null;
+  configured: boolean;
+  value: string | null;
+}
+
+export interface GeocodingSettingsData {
+  activeProviderId: string | null;
+  activeProviderAvailable: boolean;
+  activeProviderUnavailableReason: string | null;
+  providers: GeocodingProviderView[];
+}
+
+export interface GeocodingSettingsResponse {
+  data: GeocodingSettingsData;
+  error: unknown;
+}
+
+export interface GeocodingSettingsSaveInput {
+  activeProviderId: string;
+}
+
+export interface GeocodingProviderConfigSaveInput {
+  providerId: string;
+  config: Record<string, string>;
+}
+
 export type PoolChemistryKey =
   | "free_chlorine"
-  | "combined_chlorine"
+  | "total_chlorine"
   | "ph"
   | "total_alkalinity"
   | "cyanuric_acid"
@@ -460,6 +508,18 @@ export type PoolChemistryKey =
   | "water_temperature"
   | "phosphates"
   | "borates";
+
+export type PoolChemistrySourceMode = "manual" | "hardware";
+
+export interface PoolChemistrySourceBinding {
+  provider_type: "controller" | "chlorinator";
+  provider_id: string;
+  measurement_key: "salt" | "water_temperature";
+}
+
+export interface PoolChemistryAvailableSource extends PoolChemistrySourceBinding {
+  label: string;
+}
 
 export interface PoolChemistrySetting {
   chemicalKey: PoolChemistryKey;
@@ -470,6 +530,9 @@ export interface PoolChemistrySetting {
   maximum: number | null;
   enabled: boolean;
   sortOrder: number;
+  source_mode: PoolChemistrySourceMode;
+  source_binding: PoolChemistrySourceBinding | null;
+  available_sources: PoolChemistryAvailableSource[];
 }
 
 export interface PoolChemistrySettingsData {
@@ -490,8 +553,61 @@ export interface PoolChemistrySettingsSaveInput {
     target?: number | null;
     maximum?: number | null;
     enabled?: boolean;
+    sourceMode?: PoolChemistrySourceMode;
+    sourceBinding?: PoolChemistrySourceBinding | null;
   }>;
   chemistryPromptIntervalDays?: number;
+}
+
+export type WaterTestingScheduleChemicalKey =
+  | "free_chlorine"
+  | "ph"
+  | "total_alkalinity"
+  | "combined_chlorine"
+  | "calcium_hardness"
+  | "cyanuric_acid"
+  | "salt"
+  | "water_temperature";
+
+export type WaterTestingIntervalUnit = "hours" | "days";
+export type WaterTestingFreshnessStatus = "current" | "stale" | "unavailable" | "disabled";
+
+export interface WaterTestingScheduleItem {
+  chemicalKey: WaterTestingScheduleChemicalKey;
+  displayName: string;
+  enabled: boolean;
+  expectedIntervalValue: number;
+  expectedIntervalUnit: WaterTestingIntervalUnit;
+  staleThresholdValue: number;
+  staleThresholdUnit: WaterTestingIntervalUnit;
+  unavailableThresholdValue: number;
+  unavailableThresholdUnit: WaterTestingIntervalUnit;
+  status: WaterTestingFreshnessStatus;
+  lastObservedAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface WaterTestingScheduleData {
+  items: WaterTestingScheduleItem[];
+  source: "sqlite" | "defaults";
+}
+
+export interface WaterTestingScheduleResponse {
+  data: WaterTestingScheduleData;
+  error: unknown;
+}
+
+export interface WaterTestingScheduleSaveInput {
+  items: Array<{
+    chemicalKey: WaterTestingScheduleChemicalKey;
+    enabled?: boolean;
+    expectedIntervalValue?: number;
+    expectedIntervalUnit?: WaterTestingIntervalUnit;
+    staleThresholdValue?: number;
+    staleThresholdUnit?: WaterTestingIntervalUnit;
+    unavailableThresholdValue?: number;
+    unavailableThresholdUnit?: WaterTestingIntervalUnit;
+  }>;
 }
 
 export type ChemistryHistoryMetric =
@@ -648,7 +764,9 @@ export type NotificationType =
   | "chemistry_test_due"
   | "swimmability_caution"
   | "swimmability_poor"
-  | "rain_since_test";
+  | "rain_since_test"
+  | "chemistry_value_stale"
+  | "chemistry_value_unavailable";
 
 export type NotificationSeverity = "info" | "warning" | "critical";
 export type NotificationStatusFilter = "unread" | "all";
