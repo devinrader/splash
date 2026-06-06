@@ -277,6 +277,41 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       },
       warnings: []
     }),
+    getChemistryObservations: async () => ({
+      start: null,
+      end: null,
+      limit: 25,
+      observations: []
+    }),
+    createChemistryObservation: async () => ({
+      id: "observation-1",
+      pool_id: "pool-1",
+      clarity: "clear",
+      algae_presence: null,
+      debris_level: null,
+      bather_load_estimate: null,
+      notes: null,
+      source: "manual",
+      recorded_at: "2026-01-01T00:00:00.000Z",
+      created_at: "2026-01-01T00:00:00.000Z"
+    }),
+    getChemicalAdditions: async () => ({
+      start: null,
+      end: null,
+      limit: 25,
+      additions: []
+    }),
+    createChemicalAddition: async () => ({
+      id: "addition-1",
+      pool_id: "pool-1",
+      chemical_type: "liquid_chlorine",
+      amount: 1,
+      unit: "gal",
+      notes: null,
+      source: "manual",
+      recorded_at: "2026-01-01T00:00:00.000Z",
+      created_at: "2026-01-01T00:00:00.000Z"
+    }),
     getCurrentPoolCover: async () => ({ current: null }),
     getPoolCoverHistory: async () => ({ start: null, end: null, limit: 100, events: [] }),
     createPoolCoverEvent: async () => ({

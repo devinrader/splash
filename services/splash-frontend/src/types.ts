@@ -677,6 +677,100 @@ export interface ChemistryReadingCreateResponse {
   error: unknown;
 }
 
+export type ChemistryObservationClarity = "clear" | "slightly_hazy" | "cloudy" | "opaque";
+export type ChemistryObservationAlgaePresence = "absent" | "suspected" | "visible";
+export type ChemistryObservationLevel = "none" | "light" | "moderate" | "heavy";
+
+export interface ChemistryObservationRecord {
+  id: string;
+  pool_id: string;
+  clarity: ChemistryObservationClarity | null;
+  algae_presence: ChemistryObservationAlgaePresence | null;
+  debris_level: ChemistryObservationLevel | null;
+  bather_load_estimate: ChemistryObservationLevel | null;
+  notes: string | null;
+  source: "manual";
+  recorded_at: string;
+  created_at: string;
+}
+
+export interface ChemistryObservationsData {
+  start: string | null;
+  end: string | null;
+  limit: number;
+  observations: ChemistryObservationRecord[];
+}
+
+export interface ChemistryObservationsResponse {
+  data: ChemistryObservationsData;
+  error: unknown;
+}
+
+export interface ChemistryObservationCreateInput {
+  clarity?: ChemistryObservationClarity | null;
+  algaePresence?: ChemistryObservationAlgaePresence | null;
+  debrisLevel?: ChemistryObservationLevel | null;
+  batherLoadEstimate?: ChemistryObservationLevel | null;
+  notes?: string | null;
+}
+
+export interface ChemistryObservationCreateResponse {
+  data: ChemistryObservationRecord;
+  error: unknown;
+}
+
+export type ChemicalAdditionType =
+  | "liquid_chlorine"
+  | "cal_hypo"
+  | "trichlor"
+  | "dichlor"
+  | "muriatic_acid"
+  | "soda_ash"
+  | "baking_soda"
+  | "calcium_chloride"
+  | "stabilizer"
+  | "salt"
+  | "algaecide"
+  | "other";
+
+export type ChemicalAdditionUnit = "gal" | "qt" | "oz" | "lb" | "kg" | "g" | "L";
+
+export interface ChemicalAdditionRecord {
+  id: string;
+  pool_id: string;
+  chemical_type: ChemicalAdditionType;
+  amount: number;
+  unit: ChemicalAdditionUnit;
+  notes: string | null;
+  source: "manual";
+  recorded_at: string;
+  created_at: string;
+}
+
+export interface ChemicalAdditionsData {
+  start: string | null;
+  end: string | null;
+  limit: number;
+  additions: ChemicalAdditionRecord[];
+}
+
+export interface ChemicalAdditionsResponse {
+  data: ChemicalAdditionsData;
+  error: unknown;
+}
+
+export interface ChemicalAdditionCreateInput {
+  chemicalType: ChemicalAdditionType;
+  amount: number;
+  unit: ChemicalAdditionUnit;
+  notes?: string | null;
+}
+
+export interface ChemicalAdditionCreateResponse {
+  data: ChemicalAdditionRecord;
+  error: unknown;
+}
+
 export type PoolCoverState = "on" | "off";
 export type PoolCoverType = "unknown" | "solar" | "winter" | "safety" | "automatic";
 

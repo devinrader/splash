@@ -81,6 +81,20 @@ import {
   type ChemistryReadingRecord
 } from "./chemistry-readings.js";
 import {
+  ChemistryObservationsService,
+  SqliteChemistryObservationsRepository,
+  type ChemistryObservationRecord,
+  type ChemistryObservationsQueryInput,
+  type ChemistryObservationsView
+} from "./chemistry-observations.js";
+import {
+  ChemicalAdditionsService,
+  SqliteChemicalAdditionsRepository,
+  type ChemicalAdditionRecord,
+  type ChemicalAdditionsQueryInput,
+  type ChemicalAdditionsView
+} from "./chemical-additions.js";
+import {
   PoolCoverEventsService,
   SqlitePoolCoverEventsRepository,
   type PoolCoverCurrentView,
@@ -116,6 +130,8 @@ export interface AppOptions {
   geocodingSettings?: GeocodingSettingsService;
   poolChemistrySettings?: PoolChemistrySettingsService;
   chemistryReadings?: ChemistryReadingsService;
+  chemistryObservations?: ChemistryObservationsService;
+  chemicalAdditions?: ChemicalAdditionsService;
   poolCoverEvents?: PoolCoverEventsService;
   notifications?: NotificationsService;
   waterTestingSchedule?: WaterTestingScheduleService;
@@ -168,6 +184,8 @@ export class App {
   private readonly geocodingSettings: GeocodingSettingsService;
   private readonly poolChemistrySettings: PoolChemistrySettingsService;
   private readonly chemistryReadings: ChemistryReadingsService;
+  private readonly chemistryObservations: ChemistryObservationsService;
+  private readonly chemicalAdditions: ChemicalAdditionsService;
   private readonly poolCoverEvents: PoolCoverEventsService;
   private readonly notifications: NotificationsService;
   private readonly waterTestingSchedule: WaterTestingScheduleService;
@@ -254,6 +272,18 @@ export class App {
       new ChemistryReadingsService(
         this.config.poolId,
         this.sqliteDatabase ? new SqliteChemistryReadingsRepository(this.sqliteDatabase) : null
+      );
+    this.chemistryObservations =
+      options.chemistryObservations ??
+      new ChemistryObservationsService(
+        this.config.poolId,
+        this.sqliteDatabase ? new SqliteChemistryObservationsRepository(this.sqliteDatabase) : null
+      );
+    this.chemicalAdditions =
+      options.chemicalAdditions ??
+      new ChemicalAdditionsService(
+        this.config.poolId,
+        this.sqliteDatabase ? new SqliteChemicalAdditionsRepository(this.sqliteDatabase) : null
       );
     this.poolCoverEvents =
       options.poolCoverEvents ??
@@ -488,6 +518,26 @@ export class App {
     this.events.publish("chemistry.reading", result.reading as unknown as Record<string, unknown>);
     await this.refreshNotificationsFromCurrentState();
     return result;
+  }
+
+  async getChemistryObservations(input: ChemistryObservationsQueryInput): Promise<ChemistryObservationsView> {
+    return this.chemistryObservations.getChemistryObservations(input);
+  }
+
+  async createChemistryObservation(input: unknown): Promise<ChemistryObservationRecord> {
+    const observation = await this.chemistryObservations.createChemistryObservation(input);
+    this.events.publish("chemistry.observation", observation as unknown as Record<string, unknown>);
+    return observation;
+  }
+
+  async getChemicalAdditions(input: ChemicalAdditionsQueryInput): Promise<ChemicalAdditionsView> {
+    return this.chemicalAdditions.getChemicalAdditions(input);
+  }
+
+  async createChemicalAddition(input: unknown): Promise<ChemicalAdditionRecord> {
+    const addition = await this.chemicalAdditions.createChemicalAddition(input);
+    this.events.publish("chemistry.addition", addition as unknown as Record<string, unknown>);
+    return addition;
   }
 
   async getCurrentPoolCover(): Promise<PoolCoverCurrentView> {
@@ -1486,6 +1536,10 @@ export class App {
         getLatestChemistryReading: async () => this.getLatestChemistryReading(),
         getChemistryHistory: async (query) => this.getChemistryHistory(query),
         createChemistryReading: async (input) => this.createChemistryReading(input),
+        getChemistryObservations: async (query) => this.getChemistryObservations(query),
+        createChemistryObservation: async (input) => this.createChemistryObservation(input),
+        getChemicalAdditions: async (query) => this.getChemicalAdditions(query),
+        createChemicalAddition: async (input) => this.createChemicalAddition(input),
         getCurrentPoolCover: async () => this.getCurrentPoolCover(),
         getPoolCoverHistory: async (query) => this.getPoolCoverHistory(query),
         createPoolCoverEvent: async (input) => this.createPoolCoverEvent(input),

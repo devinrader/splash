@@ -1,6 +1,12 @@
 import type {
   ChemistryHistoryResponse,
   ChemistryLatestResponse,
+  ChemistryObservationsResponse,
+  ChemistryObservationCreateInput,
+  ChemistryObservationCreateResponse,
+  ChemicalAdditionsResponse,
+  ChemicalAdditionCreateInput,
+  ChemicalAdditionCreateResponse,
   ChemistryReadingCreateInput,
   ChemistryReadingCreateResponse,
   PoolCoverCurrentResponse,
@@ -350,6 +356,93 @@ export async function createChemistryReading(input: ChemistryReadingCreateInput)
     throw await buildApiError(response, "Chemistry reading save failed.");
   }
   return (await response.json()) as ChemistryReadingCreateResponse;
+}
+
+export async function fetchChemistryObservations(input?: {
+  start?: string | null;
+  end?: string | null;
+  limit?: number | null;
+}): Promise<ChemistryObservationsResponse> {
+  const params = new URLSearchParams();
+  if (input?.start) {
+    params.set("start", input.start);
+  }
+  if (input?.end) {
+    params.set("end", input.end);
+  }
+  if (typeof input?.limit === "number") {
+    params.set("limit", String(input.limit));
+  }
+  const path = params.size > 0 ? `/chemistry/observations?${params.toString()}` : "/chemistry/observations";
+  const response = await fetch(buildApiUrl(path));
+  if (!response.ok) {
+    throw await buildApiError(response, "Chemistry observations request failed.");
+  }
+  return (await response.json()) as ChemistryObservationsResponse;
+}
+
+export async function createChemistryObservation(
+  input: ChemistryObservationCreateInput
+): Promise<ChemistryObservationCreateResponse> {
+  const response = await fetch(buildApiUrl("/chemistry/observations"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      clarity: input.clarity ?? null,
+      algae_presence: input.algaePresence ?? null,
+      debris_level: input.debrisLevel ?? null,
+      bather_load_estimate: input.batherLoadEstimate ?? null,
+      notes: input.notes ?? null
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Chemistry observation save failed.");
+  }
+  return (await response.json()) as ChemistryObservationCreateResponse;
+}
+
+export async function fetchChemicalAdditions(input?: {
+  start?: string | null;
+  end?: string | null;
+  limit?: number | null;
+}): Promise<ChemicalAdditionsResponse> {
+  const params = new URLSearchParams();
+  if (input?.start) {
+    params.set("start", input.start);
+  }
+  if (input?.end) {
+    params.set("end", input.end);
+  }
+  if (typeof input?.limit === "number") {
+    params.set("limit", String(input.limit));
+  }
+  const path = params.size > 0 ? `/chemistry/additions?${params.toString()}` : "/chemistry/additions";
+  const response = await fetch(buildApiUrl(path));
+  if (!response.ok) {
+    throw await buildApiError(response, "Chemical additions request failed.");
+  }
+  return (await response.json()) as ChemicalAdditionsResponse;
+}
+
+export async function createChemicalAddition(input: ChemicalAdditionCreateInput): Promise<ChemicalAdditionCreateResponse> {
+  const response = await fetch(buildApiUrl("/chemistry/additions"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      chemical_type: input.chemicalType,
+      amount: input.amount,
+      unit: input.unit,
+      notes: input.notes ?? null
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Chemical addition save failed.");
+  }
+  return (await response.json()) as ChemicalAdditionCreateResponse;
 }
 
 export async function fetchCurrentPoolCover(): Promise<PoolCoverCurrentResponse> {

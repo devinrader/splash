@@ -1964,7 +1964,8 @@ textarea:focus-visible {
 }
 
 .control-form input,
-.control-form select {
+.control-form select,
+.control-form textarea {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.1);
@@ -1972,9 +1973,28 @@ textarea:focus-visible {
   padding: 0.9rem 1rem;
 }
 
+.control-form textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+
 .control-form button {
   background: white;
   color: var(--color-brand-700);
+}
+
+.inline-success-message,
+.inline-error-message {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.inline-success-message {
+  color: var(--color-success-600);
+}
+
+.inline-error-message {
+  color: var(--color-danger-600);
 }
 
 .circuit-list,

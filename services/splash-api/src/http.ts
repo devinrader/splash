@@ -26,6 +26,18 @@ import {
   type ChemistryReadingRecord
 } from "./chemistry-readings.js";
 import {
+  ChemistryObservationsUnavailableError,
+  ChemistryObservationsValidationError,
+  type ChemistryObservationRecord,
+  type ChemistryObservationsView
+} from "./chemistry-observations.js";
+import {
+  ChemicalAdditionsUnavailableError,
+  ChemicalAdditionsValidationError,
+  type ChemicalAdditionRecord,
+  type ChemicalAdditionsView
+} from "./chemical-additions.js";
+import {
   PoolCoverEventsUnavailableError,
   PoolCoverEventsValidationError,
   type PoolCoverCurrentView,
@@ -114,6 +126,18 @@ export interface HttpHandlers {
     interval: string | null;
   }): Promise<ChemistryHistoryView>;
   createChemistryReading(input: Record<string, unknown>): Promise<ChemistryReadingCreateResult>;
+  getChemistryObservations(input: {
+    start: string | null;
+    end: string | null;
+    limit: string | null;
+  }): Promise<ChemistryObservationsView>;
+  createChemistryObservation(input: Record<string, unknown>): Promise<ChemistryObservationRecord>;
+  getChemicalAdditions(input: {
+    start: string | null;
+    end: string | null;
+    limit: string | null;
+  }): Promise<ChemicalAdditionsView>;
+  createChemicalAddition(input: Record<string, unknown>): Promise<ChemicalAdditionRecord>;
   getCurrentPoolCover(): Promise<PoolCoverCurrentView>;
   getPoolCoverHistory(input: {
     start: string | null;
@@ -496,6 +520,44 @@ export class LocalHttpServer implements HttpServer {
       if (req.method === "POST" && req.url === "/chemistry") {
         const body = await readJsonBody(req);
         return json(req, res, 201, { data: await this.handlers.createChemistryReading(body), error: null });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/chemistry/observations")) {
+        const url = new URL(req.url, "http://localhost");
+        if (url.pathname === "/chemistry/observations") {
+          return json(req, res, 200, {
+            data: await this.handlers.getChemistryObservations({
+              start: url.searchParams.get("start"),
+              end: url.searchParams.get("end"),
+              limit: url.searchParams.get("limit")
+            }),
+            error: null
+          });
+        }
+      }
+
+      if (req.method === "POST" && req.url === "/chemistry/observations") {
+        const body = await readJsonBody(req);
+        return json(req, res, 201, { data: await this.handlers.createChemistryObservation(body), error: null });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/chemistry/additions")) {
+        const url = new URL(req.url, "http://localhost");
+        if (url.pathname === "/chemistry/additions") {
+          return json(req, res, 200, {
+            data: await this.handlers.getChemicalAdditions({
+              start: url.searchParams.get("start"),
+              end: url.searchParams.get("end"),
+              limit: url.searchParams.get("limit")
+            }),
+            error: null
+          });
+        }
+      }
+
+      if (req.method === "POST" && req.url === "/chemistry/additions") {
+        const body = await readJsonBody(req);
+        return json(req, res, 201, { data: await this.handlers.createChemicalAddition(body), error: null });
       }
 
       if (req.method === "GET" && req.url === "/pool/cover") {
@@ -996,6 +1058,48 @@ export class LocalHttpServer implements HttpServer {
       }
 
       if (error instanceof ChemistryReadingsUnavailableError) {
+        return json(req, res, 503, {
+          data: null,
+          error: {
+            code: "service_unavailable",
+            message: error.message
+          }
+        });
+      }
+
+      if (error instanceof ChemistryObservationsValidationError) {
+        return json(req, res, 400, {
+          data: null,
+          error: {
+            code: "validation_error",
+            message: error.message,
+            details: error.details
+          }
+        });
+      }
+
+      if (error instanceof ChemistryObservationsUnavailableError) {
+        return json(req, res, 503, {
+          data: null,
+          error: {
+            code: "service_unavailable",
+            message: error.message
+          }
+        });
+      }
+
+      if (error instanceof ChemicalAdditionsValidationError) {
+        return json(req, res, 400, {
+          data: null,
+          error: {
+            code: "validation_error",
+            message: error.message,
+            details: error.details
+          }
+        });
+      }
+
+      if (error instanceof ChemicalAdditionsUnavailableError) {
         return json(req, res, 503, {
           data: null,
           error: {
