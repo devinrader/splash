@@ -24,14 +24,13 @@ import { AppShell } from "./components/AppShell";
 import { SplashIcon } from "./components/icons/SplashIcon";
 import { NAV_ITEMS, PAGE_SUMMARIES, getActiveNavItem } from "./navigation";
 import { AutomationPage } from "./pages/AutomationPage";
-import { AlertsPage } from "./pages/AlertsPage";
+import { ChemistryPage } from "./pages/ChemistryPage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { HomePage } from "./pages/HomePage";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { RoutinesPage } from "./pages/RoutinesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SystemPage } from "./pages/SystemPage";
-import { WaterTestLogPage } from "./pages/WaterTestLogPage";
 import { useFrontendStore } from "./store";
 import type {
   ConnectivityHistorySample,
@@ -780,13 +779,15 @@ function AppLayout({
         {explorerError ? <section className="notice notice-error" role="alert"><SplashIcon name="warning" size={18} />{explorerError}</section> : null}
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/chemistry" element={<ChemistryPage />} />
+          <Route path="/chemistry/water-test-log" element={<ChemistryPage />} />
           <Route path="/system/*" element={<SystemPage {...systemPageProps} />} />
           <Route path="/automation/*" element={<AutomationPage />} />
           <Route path="/diagnostics/*" element={<DiagnosticsPage {...diagnosticsPageProps} />} />
-          <Route path="/routines" element={<PlaceholderPage kicker="Routines" title="Maintenance Workflows" description="Checklist-driven maintenance, reminders, and routine tracking will arrive here in a later milestone." />} />
+          <Route path="/routines" element={<RoutinesPage />} />
           <Route path="/history" element={<HistoryPage />} />
-          <Route path="/alerts" element={<AlertsPage />} />
-          <Route path="/water-test-log" element={<WaterTestLogPage />} />
+          <Route path="/alerts" element={<Navigate to="/routines" replace />} />
+          <Route path="/water-test-log" element={<Navigate to="/chemistry" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/system/overview" replace />} />
         </Routes>

@@ -251,16 +251,15 @@ test("renders milestone equipment values from the API snapshot", async () => {
   await waitFor(() => {
     assert.ok(screen.getByText("Smart Pool Management"));
     assert.ok(screen.getByText("Automation"));
-    assert.ok(screen.getByText("Water Test Log"));
+    assert.ok(screen.getByText("Chemistry"));
     assert.ok(screen.getByText("System - Equipment & sensors"));
     assert.ok(screen.getByText("Overview & actions"));
+    assert.ok(screen.getByText("Water testing & treatment"));
     assert.ok(screen.getByText("Equipment & sensors"));
-    assert.ok(screen.getByText("Maintenance and tasks"));
+    assert.ok(screen.getByText("Alerts & guided processes"));
     assert.ok(screen.getByText("Trends & insights"));
     assert.ok(screen.getByText("Schedules & rules"));
-    assert.ok(screen.getByText("Messages & warnings"));
     assert.ok(screen.getByText("Protocol explorer"));
-    assert.ok(screen.getByText("Test history & results"));
     assert.ok(screen.getByText("System & preferences"));
     assert.ok(
       screen.getByText(
@@ -300,6 +299,68 @@ test("renders milestone equipment values from the API snapshot", async () => {
     assert.ok(screen.getByText("Controller Status"));
     assert.ok(screen.getByText("04/23/26 14:37"));
     assert.ok(screen.getByText("run + freeze protection"));
+  });
+});
+
+test("redirects legacy alerts route into Routines", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+      if (input.endsWith("/equipment")) {
+        return response({ data: [], error: null });
+      }
+      if (input.includes("/notifications")) {
+        return response({
+          data: {
+            notifications: []
+          },
+          error: null
+        });
+      }
+      return platformStatusResponse();
+    })
+  );
+
+  renderApp(["/alerts"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Routines - Alerts & guided processes"));
+    assert.ok(screen.getByText("Routines Overview"));
+    assert.ok(screen.getByText("Alert Filters"));
+  });
+});
+
+test("redirects legacy water test log route into Chemistry", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+      if (input.endsWith("/equipment")) {
+        return response({ data: [], error: null });
+      }
+      if (input.includes("/chemistry/history")) {
+        return response({
+          data: {
+            readings: []
+          },
+          error: null
+        });
+      }
+      return platformStatusResponse();
+    })
+  );
+
+  renderApp(["/water-test-log"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Chemistry - Water testing & treatment"));
+    assert.ok(screen.getByText("Chemistry Workspace"));
+    assert.ok(screen.getByText("Prior Logs"));
   });
 });
 

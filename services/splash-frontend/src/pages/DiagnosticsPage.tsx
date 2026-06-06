@@ -46,7 +46,8 @@ export function DiagnosticsPage(props: DiagnosticsPageProps) {
           <Route path="network" element={<NetworkTab />} />
           <Route path="live-data-monitor" element={<PlaceholderPage kicker="Diagnostics" title="Live Data Monitor" description="Streaming protocol and normalized telemetry views will land here once the first dedicated monitor surface is implemented." />} />
           <Route path="device-inspector" element={<PlaceholderPage kicker="Diagnostics" title="Device Inspector" description="Per-device capabilities, mappings, and low-level state inspection will appear here in a later diagnostics slice." />} />
-          <Route path="logs-history" element={<PlaceholderPage kicker="Diagnostics" title="Logs & History" description="Historical diagnostics events and longer-running operator traces will surface here once retention workflows are in place." />} />
+          <Route path="event-log" element={<PlaceholderPage kicker="Diagnostics" title="Event Log" description="Historical diagnostics events and longer-running operator traces will surface here once retention workflows are in place." />} />
+          <Route path="logs-history" element={<Navigate to="../event-log" replace />} />
           <Route path="*" element={<Navigate to="protocol-explorer" replace />} />
         </Routes>
       </div>
