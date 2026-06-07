@@ -31,7 +31,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("chemistry page loads observations and additions and saves both workflows", async () => {
+test("chemistry page loads observations, maintenance, and additions and saves all workflows", async () => {
   const requests: string[] = [];
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url =
@@ -102,6 +102,44 @@ test("chemistry page loads observations and additions and saves both workflows",
         error: null
       });
     }
+    if (url.includes("/chemistry/maintenance") && (!method || method === "GET")) {
+      return response({
+        data: {
+          start: null,
+          end: null,
+          limit: 10,
+          activities: [
+            {
+              id: "activity-1",
+              pool_id: "pool-1",
+              activity_type: "brushed",
+              notes: "Brushed after windy day",
+              source: "manual",
+              recorded_at: "2026-06-02T19:00:00.000Z",
+              created_at: "2026-06-02T19:00:03.000Z"
+            }
+          ]
+        },
+        error: null
+      });
+    }
+    if (url.endsWith("/chemistry/maintenance") && method === "POST") {
+      const parsed = JSON.parse(init?.body as string) as Record<string, unknown>;
+      assert.equal(parsed.activity_type, "brushed");
+      assert.equal(parsed.notes, "Brushed after windy day");
+      return response({
+        data: {
+          id: "activity-2",
+          pool_id: "pool-1",
+          activity_type: "brushed",
+          notes: "Brushed after windy day",
+          source: "manual",
+          recorded_at: "2026-06-03T19:00:00.000Z",
+          created_at: "2026-06-03T19:00:03.000Z"
+        },
+        error: null
+      });
+    }
     if (url.includes("/chemistry/additions") && (!method || method === "GET")) {
       return response({
         data: {
@@ -156,11 +194,13 @@ test("chemistry page loads observations and additions and saves both workflows",
   await waitFor(() => {
     assert.ok(screen.getByText("Chemistry Workspace"));
     assert.ok(screen.getByText("Water Condition"));
+    assert.ok(screen.getByText("Maintenance Activity"));
     assert.ok(screen.getByText("Chemical Additions"));
   });
 
   await waitFor(() => {
     assert.ok(requests.some((entry) => entry.includes("/chemistry/observations")));
+    assert.ok(requests.some((entry) => entry.includes("/chemistry/maintenance")));
     assert.ok(requests.some((entry) => entry.includes("/chemistry/additions")));
   });
 
@@ -175,6 +215,13 @@ test("chemistry page loads observations and additions and saves both workflows",
     assert.ok(screen.getByText("Water condition saved."));
   });
 
+  fireEvent.change(screen.getByLabelText("Maintenance Notes"), { target: { value: "Brushed after windy day" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save maintenance activity" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Maintenance activity saved."));
+  });
+
   fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "1.5" } });
   fireEvent.change(screen.getByLabelText("Addition Notes"), { target: { value: "After storm" } });
   fireEvent.click(screen.getByRole("button", { name: "Save chemical addition" }));
@@ -185,6 +232,8 @@ test("chemistry page loads observations and additions and saves both workflows",
 
   const observationListRequests = requests.filter((entry) => entry.includes("/chemistry/observations"));
   assert.ok(observationListRequests.length >= 3);
+  const maintenanceListRequests = requests.filter((entry) => entry.includes("/chemistry/maintenance"));
+  assert.ok(maintenanceListRequests.length >= 3);
   const additionListRequests = requests.filter((entry) => entry.includes("/chemistry/additions"));
   assert.ok(additionListRequests.length >= 3);
 });

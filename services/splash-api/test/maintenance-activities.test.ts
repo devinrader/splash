@@ -4,24 +4,21 @@ import { Readable } from "node:stream";
 import { EventBroker } from "../src/events.js";
 import { LocalHttpServer, type HttpHandlers } from "../src/http.js";
 import {
-  ChemistryObservationsService,
-  ChemistryObservationsUnavailableError,
-  ChemistryObservationsValidationError,
-  SqliteChemistryObservationsRepository
-} from "../src/chemistry-observations.js";
+  MaintenanceActivitiesService,
+  MaintenanceActivitiesUnavailableError,
+  MaintenanceActivitiesValidationError,
+  SqliteMaintenanceActivitiesRepository
+} from "../src/maintenance-activities.js";
 
-test("repository maps stored chemistry observation rows", async () => {
-  const repository = new SqliteChemistryObservationsRepository({
+test("repository maps stored maintenance activity rows", async () => {
+  const repository = new SqliteMaintenanceActivitiesRepository({
     all() {
       return [
         {
-          id: "observation-1",
+          id: "activity-1",
           pool_id: "pool-1",
-          clarity: "clear",
-          algae_presence: "absent",
-          debris_level: "light",
-          bather_load_estimate: "moderate",
-          notes: "Busy afternoon swim",
+          activity_type: "brushed",
+          notes: "Brushed walls after storm.",
           source: "manual",
           recorded_at: "2026-06-06T18:00:00.000Z",
           created_at: "2026-06-06T18:00:03.000Z"
@@ -46,12 +43,12 @@ test("repository maps stored chemistry observation rows", async () => {
   });
 
   assert.equal(result.length, 1);
-  assert.equal(result[0]?.clarity, "clear");
-  assert.equal(result[0]?.bather_load_estimate, "moderate");
+  assert.equal(result[0]?.activity_type, "brushed");
+  assert.equal(result[0]?.notes, "Brushed walls after storm.");
 });
 
-test("service rejects invalid chemistry observation writes", async () => {
-  const service = new ChemistryObservationsService("pool-1", {
+test("service rejects invalid maintenance activity writes", async () => {
+  const service = new MaintenanceActivitiesService("pool-1", {
     async create() {
       throw new Error("should not be called");
     },
@@ -61,78 +58,47 @@ test("service rejects invalid chemistry observation writes", async () => {
   });
 
   await assert.rejects(
-    () => service.createChemistryObservation({
-      clarity: "murky",
-      algae_presence: "probably",
-      debris_level: "tons",
-      bather_load_estimate: "packed"
+    () => service.createMaintenanceActivity({
+      activity_type: "rinsed_everything"
     }),
     (error: unknown) => {
-      assert.ok(error instanceof ChemistryObservationsValidationError);
-      assert.equal(error.details.clarity, "clarity must be one of the supported clarity values.");
-      assert.equal(error.details.algae_presence, "algae_presence must be one of the supported algae values.");
-      assert.equal(error.details.debris_level, "debris_level must be one of the supported debris values.");
-      assert.equal(error.details.bather_load_estimate, "bather_load_estimate must be one of the supported bather load values.");
+      assert.ok(error instanceof MaintenanceActivitiesValidationError);
+      assert.equal(error.details.activity_type, "activity_type must be one of the supported maintenance activity values.");
       return true;
     }
   );
 });
 
-test("service rejects writes with no observational fields", async () => {
-  const service = new ChemistryObservationsService("pool-1", {
-    async create() {
-      throw new Error("should not be called");
-    },
-    async list() {
-      return [];
-    }
-  });
+test("service throws unavailable when maintenance repository is missing", async () => {
+  const service = new MaintenanceActivitiesService("pool-1", null);
 
   await assert.rejects(
-    () => service.createChemistryObservation({ notes: "Looked okay." }),
+    () => service.getMaintenanceActivities({ start: null, end: null, limit: null }),
     (error: unknown) => {
-      assert.ok(error instanceof ChemistryObservationsValidationError);
-      assert.equal(error.details.observation, "At least one observational field must be provided.");
+      assert.ok(error instanceof MaintenanceActivitiesUnavailableError);
       return true;
     }
   );
 });
 
-test("service throws unavailable when chemistry observations repository is missing", async () => {
-  const service = new ChemistryObservationsService("pool-1", null);
-
-  await assert.rejects(
-    () => service.getChemistryObservations({ start: null, end: null, limit: null }),
-    (error: unknown) => {
-      assert.ok(error instanceof ChemistryObservationsUnavailableError);
-      return true;
-    }
-  );
-});
-
-test("chemistry observations API list and create routes work", async () => {
+test("maintenance activities API list and create routes work", async () => {
   const server = new LocalHttpServer("127.0.0.1:0", createHttpHandlers({
-    async getChemistryObservations(input) {
+    async getMaintenanceActivities(input) {
       assert.equal(input.limit, "10");
       return {
         start: null,
         end: null,
         limit: 10,
-        observations: []
+        activities: []
       };
     },
-    async createChemistryObservation(input) {
-      assert.equal(input.clarity, "clear");
-      assert.equal(input.algae_presence, "absent");
-      assert.equal(input.debris_level, "light");
+    async createMaintenanceActivity(input) {
+      assert.equal(input.activity_type, "brushed");
       return {
-        id: "observation-2",
+        id: "activity-2",
         pool_id: "pool-1",
-        clarity: "clear",
-        algae_presence: "absent",
-        debris_level: "light",
-        bather_load_estimate: "moderate",
-        notes: "Crowded afternoon.",
+        activity_type: "brushed",
+        notes: "Brushed walls and steps.",
         source: "manual",
         recorded_at: "2026-06-06T19:30:00.000Z",
         created_at: "2026-06-06T19:30:03.000Z"
@@ -140,19 +106,16 @@ test("chemistry observations API list and create routes work", async () => {
     }
   }));
 
-  const listResponse = await invokeRoute(server, "GET", "/chemistry/observations?limit=10");
+  const listResponse = await invokeRoute(server, "GET", "/chemistry/maintenance?limit=10");
   assert.equal(listResponse.statusCode, 200);
   assert.equal(listResponse.body.data.limit, 10);
 
-  const createResponse = await invokeRoute(server, "POST", "/chemistry/observations", {
-    clarity: "clear",
-    algae_presence: "absent",
-    debris_level: "light",
-    bather_load_estimate: "moderate",
-    notes: "Crowded afternoon."
+  const createResponse = await invokeRoute(server, "POST", "/chemistry/maintenance", {
+    activity_type: "brushed",
+    notes: "Brushed walls and steps."
   });
   assert.equal(createResponse.statusCode, 201);
-  assert.equal(createResponse.body.data.id, "observation-2");
+  assert.equal(createResponse.body.data.id, "activity-2");
 });
 
 function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {

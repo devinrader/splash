@@ -3,8 +3,10 @@ import { useEffect, useState } from "react";
 import {
   createChemicalAddition,
   createChemistryObservation,
+  createMaintenanceActivity,
   fetchChemicalAdditions,
-  fetchChemistryObservations
+  fetchChemistryObservations,
+  fetchMaintenanceActivities
 } from "../api";
 import { Card } from "../components/mockUi";
 import type {
@@ -18,7 +20,11 @@ import type {
   ChemistryObservationCreateInput,
   ChemistryObservationLevel,
   ChemistryObservationRecord,
-  ChemistryObservationsData
+  ChemistryObservationsData,
+  MaintenanceActivitiesData,
+  MaintenanceActivityCreateInput,
+  MaintenanceActivityRecord,
+  MaintenanceActivityType
 } from "../types";
 import { WaterTestLogPage } from "./WaterTestLogPage";
 
@@ -59,6 +65,18 @@ const CHEMICAL_TYPE_OPTIONS: Array<{ value: ChemicalAdditionType; label: string 
 
 const CHEMICAL_UNIT_OPTIONS: ChemicalAdditionUnit[] = ["gal", "qt", "oz", "lb", "kg", "g", "L"];
 
+const MAINTENANCE_ACTIVITY_OPTIONS: Array<{ value: MaintenanceActivityType; label: string }> = [
+  { value: "brushed", label: "Brushed" },
+  { value: "vacuumed", label: "Vacuumed" },
+  { value: "robot_cleaned", label: "Robot Cleaned" },
+  { value: "skimmed", label: "Skimmed" },
+  { value: "skimmer_basket_cleaned", label: "Skimmer Basket Cleaned" },
+  { value: "pump_basket_cleaned", label: "Pump Basket Cleaned" },
+  { value: "filter_cleaned", label: "Filter Cleaned" },
+  { value: "filter_backwashed", label: "Filter Backwashed" },
+  { value: "other", label: "Other" }
+];
+
 interface ObservationFormState {
   clarity: string;
   algaePresence: string;
@@ -71,6 +89,11 @@ interface ChemicalAdditionFormState {
   chemicalType: ChemicalAdditionType;
   amount: string;
   unit: ChemicalAdditionUnit;
+  notes: string;
+}
+
+interface MaintenanceActivityFormState {
+  activityType: MaintenanceActivityType;
   notes: string;
 }
 
@@ -89,6 +112,11 @@ const EMPTY_ADDITION_FORM: ChemicalAdditionFormState = {
   notes: ""
 };
 
+const EMPTY_MAINTENANCE_FORM: MaintenanceActivityFormState = {
+  activityType: "brushed",
+  notes: ""
+};
+
 export function ChemistryPage() {
   const [observations, setObservations] = useState<ChemistryObservationsData | null>(null);
   const [observationsLoading, setObservationsLoading] = useState(true);
@@ -96,6 +124,13 @@ export function ChemistryPage() {
   const [observationErrorMessage, setObservationErrorMessage] = useState<string | null>(null);
   const [observationSuccessMessage, setObservationSuccessMessage] = useState<string | null>(null);
   const [observationFormState, setObservationFormState] = useState<ObservationFormState>(EMPTY_OBSERVATION_FORM);
+
+  const [maintenance, setMaintenance] = useState<MaintenanceActivitiesData | null>(null);
+  const [maintenanceLoading, setMaintenanceLoading] = useState(true);
+  const [maintenanceSaving, setMaintenanceSaving] = useState(false);
+  const [maintenanceErrorMessage, setMaintenanceErrorMessage] = useState<string | null>(null);
+  const [maintenanceSuccessMessage, setMaintenanceSuccessMessage] = useState<string | null>(null);
+  const [maintenanceFormState, setMaintenanceFormState] = useState<MaintenanceActivityFormState>(EMPTY_MAINTENANCE_FORM);
 
   const [additions, setAdditions] = useState<ChemicalAdditionsData | null>(null);
   const [additionsLoading, setAdditionsLoading] = useState(true);
@@ -109,10 +144,12 @@ export function ChemistryPage() {
 
     void (async () => {
       setObservationsLoading(true);
+      setMaintenanceLoading(true);
       setAdditionsLoading(true);
       try {
-        const [observationsResponse, additionsResponse] = await Promise.all([
+        const [observationsResponse, maintenanceResponse, additionsResponse] = await Promise.all([
           fetchChemistryObservations({ limit: 10 }),
+          fetchMaintenanceActivities({ limit: 10 }),
           fetchChemicalAdditions({ limit: 10 })
         ]);
 
@@ -121,18 +158,22 @@ export function ChemistryPage() {
         }
 
         setObservations(observationsResponse.data);
+        setMaintenance(maintenanceResponse.data);
         setAdditions(additionsResponse.data);
         setObservationErrorMessage(null);
+        setMaintenanceErrorMessage(null);
         setAdditionErrorMessage(null);
       } catch (error) {
         if (!cancelled) {
           const message = error instanceof Error ? error.message : String(error);
           setObservationErrorMessage(message);
+          setMaintenanceErrorMessage(message);
           setAdditionErrorMessage(message);
         }
       } finally {
         if (!cancelled) {
           setObservationsLoading(false);
+          setMaintenanceLoading(false);
           setAdditionsLoading(false);
         }
       }
@@ -160,6 +201,26 @@ export function ChemistryPage() {
       setObservationErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setObservationSaving(false);
+    }
+  }
+
+  async function handleMaintenanceSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMaintenanceSaving(true);
+    setMaintenanceErrorMessage(null);
+    setMaintenanceSuccessMessage(null);
+
+    try {
+      const input = buildMaintenanceCreateInput(maintenanceFormState);
+      await createMaintenanceActivity(input);
+      const response = await fetchMaintenanceActivities({ limit: 10 });
+      setMaintenance(response.data);
+      setMaintenanceFormState(EMPTY_MAINTENANCE_FORM);
+      setMaintenanceSuccessMessage("Maintenance activity saved.");
+    } catch (error) {
+      setMaintenanceErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMaintenanceSaving(false);
     }
   }
 
@@ -302,6 +363,66 @@ export function ChemistryPage() {
             ) : null}
           </Card>
 
+          <Card title="Maintenance Activity" className="automation-card-table">
+            <form className="control-form" onSubmit={handleMaintenanceSubmit}>
+              <label htmlFor="chemistry-maintenance-type">Activity Type</label>
+              <select
+                id="chemistry-maintenance-type"
+                value={maintenanceFormState.activityType}
+                onChange={(event) =>
+                  setMaintenanceFormState((current) => ({ ...current, activityType: event.target.value as MaintenanceActivityType }))
+                }
+              >
+                {MAINTENANCE_ACTIVITY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+
+              <label htmlFor="chemistry-maintenance-notes">Maintenance Notes</label>
+              <textarea
+                id="chemistry-maintenance-notes"
+                value={maintenanceFormState.notes}
+                onChange={(event) => setMaintenanceFormState((current) => ({ ...current, notes: event.target.value }))}
+                rows={3}
+              />
+
+              <button type="submit" disabled={maintenanceSaving}>
+                {maintenanceSaving ? "Saving…" : "Save maintenance activity"}
+              </button>
+            </form>
+
+            {maintenanceSuccessMessage ? <p className="inline-success-message">{maintenanceSuccessMessage}</p> : null}
+            {maintenanceErrorMessage ? <p className="inline-error-message">{maintenanceErrorMessage}</p> : null}
+            {maintenanceLoading ? <p className="chart-empty-state">Loading maintenance history…</p> : null}
+            {!maintenanceLoading && maintenance?.activities.length ? (
+              <div className="settings-chemistry-table-shell">
+                <table className="system-data-table" aria-label="recent maintenance activities">
+                  <thead>
+                    <tr>
+                      <th>Recorded</th>
+                      <th>Activity</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {maintenance.activities.map((activity) => (
+                      <tr key={activity.id}>
+                        <td>{formatTimestamp(activity.recorded_at)}</td>
+                        <td>{formatMaintenanceActivityType(activity.activity_type)}</td>
+                        <td>{activity.notes || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+            {!maintenanceLoading && !maintenance?.activities.length ? (
+              <p className="chart-empty-state">No maintenance activities have been logged yet.</p>
+            ) : null}
+          </Card>
+
           <Card title="Chemical Additions" className="automation-card-table">
             <form className="control-form" onSubmit={handleAdditionSubmit}>
               <label htmlFor="chemical-addition-type">Chemical Type</label>
@@ -413,6 +534,13 @@ function buildAdditionCreateInput(formState: ChemicalAdditionFormState): Chemica
   };
 }
 
+function buildMaintenanceCreateInput(formState: MaintenanceActivityFormState): MaintenanceActivityCreateInput {
+  return {
+    activityType: formState.activityType,
+    notes: formState.notes.trim() ? formState.notes.trim() : null
+  };
+}
+
 function normalizeOptionalValue<T extends string>(value: string): T | null {
   return value.trim() ? (value as T) : null;
 }
@@ -432,6 +560,11 @@ function formatTimestamp(value: string): string {
 
 function formatChemicalType(value: ChemicalAdditionRecord["chemical_type"]): string {
   const match = CHEMICAL_TYPE_OPTIONS.find((option) => option.value === value);
+  return match?.label ?? value;
+}
+
+function formatMaintenanceActivityType(value: MaintenanceActivityRecord["activity_type"]): string {
+  const match = MAINTENANCE_ACTIVITY_OPTIONS.find((option) => option.value === value);
   return match?.label ?? value;
 }
 

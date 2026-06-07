@@ -32,6 +32,12 @@ import {
   type ChemistryObservationsView
 } from "./chemistry-observations.js";
 import {
+  MaintenanceActivitiesUnavailableError,
+  MaintenanceActivitiesValidationError,
+  type MaintenanceActivitiesView,
+  type MaintenanceActivityRecord
+} from "./maintenance-activities.js";
+import {
   ChemicalAdditionsUnavailableError,
   ChemicalAdditionsValidationError,
   type ChemicalAdditionRecord,
@@ -132,6 +138,12 @@ export interface HttpHandlers {
     limit: string | null;
   }): Promise<ChemistryObservationsView>;
   createChemistryObservation(input: Record<string, unknown>): Promise<ChemistryObservationRecord>;
+  getMaintenanceActivities(input: {
+    start: string | null;
+    end: string | null;
+    limit: string | null;
+  }): Promise<MaintenanceActivitiesView>;
+  createMaintenanceActivity(input: Record<string, unknown>): Promise<MaintenanceActivityRecord>;
   getChemicalAdditions(input: {
     start: string | null;
     end: string | null;
@@ -539,6 +551,25 @@ export class LocalHttpServer implements HttpServer {
       if (req.method === "POST" && req.url === "/chemistry/observations") {
         const body = await readJsonBody(req);
         return json(req, res, 201, { data: await this.handlers.createChemistryObservation(body), error: null });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/chemistry/maintenance")) {
+        const url = new URL(req.url, "http://localhost");
+        if (url.pathname === "/chemistry/maintenance") {
+          return json(req, res, 200, {
+            data: await this.handlers.getMaintenanceActivities({
+              start: url.searchParams.get("start"),
+              end: url.searchParams.get("end"),
+              limit: url.searchParams.get("limit")
+            }),
+            error: null
+          });
+        }
+      }
+
+      if (req.method === "POST" && req.url === "/chemistry/maintenance") {
+        const body = await readJsonBody(req);
+        return json(req, res, 201, { data: await this.handlers.createMaintenanceActivity(body), error: null });
       }
 
       if (req.method === "GET" && req.url?.startsWith("/chemistry/additions")) {
@@ -1079,6 +1110,27 @@ export class LocalHttpServer implements HttpServer {
       }
 
       if (error instanceof ChemistryObservationsUnavailableError) {
+        return json(req, res, 503, {
+          data: null,
+          error: {
+            code: "service_unavailable",
+            message: error.message
+          }
+        });
+      }
+
+      if (error instanceof MaintenanceActivitiesValidationError) {
+        return json(req, res, 400, {
+          data: null,
+          error: {
+            code: "validation_error",
+            message: error.message,
+            details: error.details
+          }
+        });
+      }
+
+      if (error instanceof MaintenanceActivitiesUnavailableError) {
         return json(req, res, 503, {
           data: null,
           error: {

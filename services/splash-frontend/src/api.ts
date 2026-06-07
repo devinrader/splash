@@ -4,6 +4,9 @@ import type {
   ChemistryObservationsResponse,
   ChemistryObservationCreateInput,
   ChemistryObservationCreateResponse,
+  MaintenanceActivitiesResponse,
+  MaintenanceActivityCreateInput,
+  MaintenanceActivityCreateResponse,
   ChemicalAdditionsResponse,
   ChemicalAdditionCreateInput,
   ChemicalAdditionCreateResponse,
@@ -401,6 +404,48 @@ export async function createChemistryObservation(
     throw await buildApiError(response, "Chemistry observation save failed.");
   }
   return (await response.json()) as ChemistryObservationCreateResponse;
+}
+
+export async function fetchMaintenanceActivities(input?: {
+  start?: string | null;
+  end?: string | null;
+  limit?: number | null;
+}): Promise<MaintenanceActivitiesResponse> {
+  const params = new URLSearchParams();
+  if (input?.start) {
+    params.set("start", input.start);
+  }
+  if (input?.end) {
+    params.set("end", input.end);
+  }
+  if (typeof input?.limit === "number") {
+    params.set("limit", String(input.limit));
+  }
+  const path = params.size > 0 ? `/chemistry/maintenance?${params.toString()}` : "/chemistry/maintenance";
+  const response = await fetch(buildApiUrl(path));
+  if (!response.ok) {
+    throw await buildApiError(response, "Maintenance activities request failed.");
+  }
+  return (await response.json()) as MaintenanceActivitiesResponse;
+}
+
+export async function createMaintenanceActivity(
+  input: MaintenanceActivityCreateInput
+): Promise<MaintenanceActivityCreateResponse> {
+  const response = await fetch(buildApiUrl("/chemistry/maintenance"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      activity_type: input.activityType,
+      notes: input.notes ?? null
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Maintenance activity save failed.");
+  }
+  return (await response.json()) as MaintenanceActivityCreateResponse;
 }
 
 export async function fetchChemicalAdditions(input?: {

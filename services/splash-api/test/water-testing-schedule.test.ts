@@ -316,6 +316,21 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       recorded_at: "2026-01-01T00:00:00.000Z",
       created_at: "2026-01-01T00:00:00.000Z"
     }),
+    getMaintenanceActivities: async () => ({
+      start: null,
+      end: null,
+      limit: 25,
+      activities: []
+    }),
+    createMaintenanceActivity: async () => ({
+      id: "activity-1",
+      pool_id: "pool-1",
+      activity_type: "brushed",
+      notes: null,
+      source: "manual",
+      recorded_at: "2026-01-01T00:00:00.000Z",
+      created_at: "2026-01-01T00:00:00.000Z"
+    }),
     getChemicalAdditions: async () => ({
       start: null,
       end: null,

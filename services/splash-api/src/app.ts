@@ -88,6 +88,13 @@ import {
   type ChemistryObservationsView
 } from "./chemistry-observations.js";
 import {
+  MaintenanceActivitiesService,
+  SqliteMaintenanceActivitiesRepository,
+  type MaintenanceActivitiesQueryInput,
+  type MaintenanceActivitiesView,
+  type MaintenanceActivityRecord
+} from "./maintenance-activities.js";
+import {
   ChemicalAdditionsService,
   SqliteChemicalAdditionsRepository,
   type ChemicalAdditionRecord,
@@ -131,6 +138,7 @@ export interface AppOptions {
   poolChemistrySettings?: PoolChemistrySettingsService;
   chemistryReadings?: ChemistryReadingsService;
   chemistryObservations?: ChemistryObservationsService;
+  maintenanceActivities?: MaintenanceActivitiesService;
   chemicalAdditions?: ChemicalAdditionsService;
   poolCoverEvents?: PoolCoverEventsService;
   notifications?: NotificationsService;
@@ -185,6 +193,7 @@ export class App {
   private readonly poolChemistrySettings: PoolChemistrySettingsService;
   private readonly chemistryReadings: ChemistryReadingsService;
   private readonly chemistryObservations: ChemistryObservationsService;
+  private readonly maintenanceActivities: MaintenanceActivitiesService;
   private readonly chemicalAdditions: ChemicalAdditionsService;
   private readonly poolCoverEvents: PoolCoverEventsService;
   private readonly notifications: NotificationsService;
@@ -278,6 +287,12 @@ export class App {
       new ChemistryObservationsService(
         this.config.poolId,
         this.sqliteDatabase ? new SqliteChemistryObservationsRepository(this.sqliteDatabase) : null
+      );
+    this.maintenanceActivities =
+      options.maintenanceActivities ??
+      new MaintenanceActivitiesService(
+        this.config.poolId,
+        this.sqliteDatabase ? new SqliteMaintenanceActivitiesRepository(this.sqliteDatabase) : null
       );
     this.chemicalAdditions =
       options.chemicalAdditions ??
@@ -528,6 +543,16 @@ export class App {
     const observation = await this.chemistryObservations.createChemistryObservation(input);
     this.events.publish("chemistry.observation", observation as unknown as Record<string, unknown>);
     return observation;
+  }
+
+  async getMaintenanceActivities(input: MaintenanceActivitiesQueryInput): Promise<MaintenanceActivitiesView> {
+    return this.maintenanceActivities.getMaintenanceActivities(input);
+  }
+
+  async createMaintenanceActivity(input: unknown): Promise<MaintenanceActivityRecord> {
+    const activity = await this.maintenanceActivities.createMaintenanceActivity(input);
+    this.events.publish("chemistry.maintenance_activity", activity as unknown as Record<string, unknown>);
+    return activity;
   }
 
   async getChemicalAdditions(input: ChemicalAdditionsQueryInput): Promise<ChemicalAdditionsView> {
@@ -1538,6 +1563,8 @@ export class App {
         createChemistryReading: async (input) => this.createChemistryReading(input),
         getChemistryObservations: async (query) => this.getChemistryObservations(query),
         createChemistryObservation: async (input) => this.createChemistryObservation(input),
+        getMaintenanceActivities: async (query) => this.getMaintenanceActivities(query),
+        createMaintenanceActivity: async (input) => this.createMaintenanceActivity(input),
         getChemicalAdditions: async (query) => this.getChemicalAdditions(query),
         createChemicalAddition: async (input) => this.createChemicalAddition(input),
         getCurrentPoolCover: async () => this.getCurrentPoolCover(),

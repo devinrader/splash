@@ -719,6 +719,49 @@ export interface ChemistryObservationCreateResponse {
   error: unknown;
 }
 
+export type MaintenanceActivityType =
+  | "brushed"
+  | "vacuumed"
+  | "robot_cleaned"
+  | "skimmed"
+  | "skimmer_basket_cleaned"
+  | "pump_basket_cleaned"
+  | "filter_cleaned"
+  | "filter_backwashed"
+  | "other";
+
+export interface MaintenanceActivityRecord {
+  id: string;
+  pool_id: string;
+  activity_type: MaintenanceActivityType;
+  notes: string | null;
+  source: "manual";
+  recorded_at: string;
+  created_at: string;
+}
+
+export interface MaintenanceActivitiesData {
+  start: string | null;
+  end: string | null;
+  limit: number;
+  activities: MaintenanceActivityRecord[];
+}
+
+export interface MaintenanceActivitiesResponse {
+  data: MaintenanceActivitiesData;
+  error: unknown;
+}
+
+export interface MaintenanceActivityCreateInput {
+  activityType: MaintenanceActivityType;
+  notes?: string | null;
+}
+
+export interface MaintenanceActivityCreateResponse {
+  data: MaintenanceActivityRecord;
+  error: unknown;
+}
+
 export type ChemicalAdditionType =
   | "liquid_chlorine"
   | "cal_hypo"
