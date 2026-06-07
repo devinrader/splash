@@ -862,6 +862,21 @@ export type SwimmabilityStatus = "good" | "caution" | "poor" | "unknown";
 export type SwimmabilityDriverSeverity = "good" | "neutral" | "caution" | "poor" | "unknown";
 export type SwimmabilityConfidence = "high" | "medium" | "low" | "unknown";
 export type SwimmabilityHighlightTone = "positive" | "neutral" | "caution" | "negative";
+export type ProvenanceValueKind = "measured" | "observed" | "derived" | "predicted" | "estimated";
+export type ProvenanceSourceType =
+  | "manual_test"
+  | "manual_observation"
+  | "manual_log"
+  | "sensor"
+  | "weather_provider"
+  | "controller"
+  | "direct_device"
+  | "derived_calculation"
+  | "prediction_model"
+  | "user_estimate"
+  | "default";
+export type ProvenanceFreshnessState = "fresh" | "aging" | "stale" | "missing" | "unavailable" | "estimated";
+export type ProvenanceConfidenceBand = "high" | "medium" | "low" | "unknown";
 
 export interface SwimmabilityDriver {
   key: string;
@@ -872,6 +887,17 @@ export interface SwimmabilityDriver {
 export interface SwimmabilityHighlight {
   tone: SwimmabilityHighlightTone;
   label: string;
+}
+
+export interface ValueProvenanceData {
+  value_kind: ProvenanceValueKind;
+  source_type: ProvenanceSourceType;
+  source_detail: string | null;
+  freshness_state: ProvenanceFreshnessState;
+  confidence_band: ProvenanceConfidenceBand;
+  measured_at: string | null;
+  evaluated_at: string;
+  reasons: string[];
 }
 
 export interface SwimmabilityData {
@@ -889,6 +915,13 @@ export interface SwimmabilityData {
     cover_latest_at: string | null;
     forecast_fetched_at: string | null;
     telemetry_latest_at: string | null;
+  };
+  input_provenance?: {
+    chemistry: ValueProvenanceData;
+    cover: ValueProvenanceData;
+    weather_forecast: ValueProvenanceData;
+    water_temperature: ValueProvenanceData;
+    rainfall_since_chemistry: ValueProvenanceData;
   };
 }
 

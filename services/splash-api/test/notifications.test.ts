@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { EventBroker } from "../src/events.js";
+import { buildUnknownSwimmabilityView } from "./swimmability-fixtures.js";
 import { LocalHttpServer, type HttpHandlers } from "../src/http.js";
 import { createSqliteDatabase } from "../src/database.js";
 import { NotificationsService } from "../src/notifications.js";
@@ -152,6 +153,8 @@ function buildNotificationContext(overrides: {
     summary: string;
   };
 } = {}) {
+  const swimmability = buildUnknownSwimmabilityView();
+
   return {
     chemistry: {
       id: "reading-1",
@@ -168,15 +171,14 @@ function buildNotificationContext(overrides: {
     },
     chemistryPromptIntervalDays: 3,
     swimmability: {
+      ...swimmability,
       status: overrides.swimmability?.status ?? "good",
       score: overrides.swimmability?.status === "good" ? 85 : 68,
       summary: overrides.swimmability?.summary ?? "Water is currently suitable for swimming.",
       headline: "Safe for Swimming",
       confidence: "high" as const,
       last_chemistry_age_label: "7 days ago",
-      highlights: [],
       updated_at: "2026-06-04T21:00:00.000Z",
-      drivers: [],
       inputs: {
         chemistry_latest_at: "2026-05-28T18:45:00.000Z",
         cover_latest_at: "2026-06-04T17:30:00.000Z",
@@ -339,23 +341,7 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       recorded_at: "2026-06-04T18:45:00.000Z",
       created_at: "2026-06-04T18:45:00.000Z"
     }),
-    getSwimmability: async () => ({
-      status: "unknown",
-      score: 0,
-      summary: "Unavailable",
-      headline: "Assessment Unavailable",
-      confidence: "unknown",
-      last_chemistry_age_label: null,
-      highlights: [],
-      updated_at: "2026-06-04T18:45:00.000Z",
-      drivers: [],
-      inputs: {
-        chemistry_latest_at: null,
-        cover_latest_at: null,
-        forecast_fetched_at: null,
-        telemetry_latest_at: null
-      }
-    }),
+    getSwimmability: async () => buildUnknownSwimmabilityView(),
     getNotifications: async () => ({ status: "unread", limit: 50, notifications: [] }),
     markNotificationRead: async () => null,
     markAllNotificationsRead: async () => ({ updated_count: 0 }),

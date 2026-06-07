@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventBroker } from "../src/events.js";
+import { buildUnknownSwimmabilityView } from "./swimmability-fixtures.js";
 import { LocalHttpServer, type HttpHandlers } from "../src/http.js";
 import { buildSwimmabilityView } from "../src/swimmability.js";
 
@@ -61,6 +62,9 @@ test("buildSwimmabilityView returns poor when chemistry hits a do-not-swim condi
   assert.equal(result.confidence, "medium");
   assert.ok(result.highlights.some((highlight) => highlight.label === "Do not swim chemistry condition"));
   assert.ok(result.drivers.some((driver) => driver.key === "free_chlorine" && driver.severity === "poor"));
+  assert.equal(result.input_provenance.chemistry.value_kind, "measured");
+  assert.equal(result.input_provenance.chemistry.source_type, "manual_test");
+  assert.equal(result.input_provenance.weather_forecast.value_kind, "predicted");
 });
 
 test("buildSwimmabilityView returns unknown when chemistry is old and uncovered in high UV after rain", () => {
@@ -129,6 +133,9 @@ test("buildSwimmabilityView returns unknown when chemistry is old and uncovered 
   assert.equal(result.headline, "Assessment Unavailable");
   assert.equal(result.confidence, "unknown");
   assert.ok(result.drivers.some((driver) => driver.key === "chemistry_recency" && driver.severity === "unknown"));
+  assert.equal(result.input_provenance.chemistry.freshness_state, "stale");
+  assert.equal(result.input_provenance.cover.source_type, "manual_log");
+  assert.equal(result.input_provenance.rainfall_since_chemistry.value_kind, "derived");
 });
 
 test("swimmability API route returns the assessment", async () => {
@@ -160,6 +167,58 @@ test("swimmability API route returns the assessment", async () => {
           cover_latest_at: "2026-06-04T17:30:00.000Z",
           forecast_fetched_at: "2026-06-04T19:00:00.000Z",
           telemetry_latest_at: "2026-06-04T19:18:00.000Z"
+        },
+        input_provenance: {
+          chemistry: {
+            value_kind: "measured",
+            source_type: "manual_test",
+            source_detail: "chemistry.manual_test",
+            freshness_state: "aging",
+            confidence_band: "medium",
+            measured_at: "2026-06-04T18:45:00.000Z",
+            evaluated_at: "2026-06-04T19:20:00.000Z",
+            reasons: ["Chemistry reading is recent enough for use."]
+          },
+          cover: {
+            value_kind: "observed",
+            source_type: "manual_log",
+            source_detail: "pool_cover.unknown",
+            freshness_state: "fresh",
+            confidence_band: "high",
+            measured_at: "2026-06-04T17:30:00.000Z",
+            evaluated_at: "2026-06-04T19:20:00.000Z",
+            reasons: ["Latest cover state was recorded as off."]
+          },
+          weather_forecast: {
+            value_kind: "predicted",
+            source_type: "weather_provider",
+            source_detail: "openmeteo",
+            freshness_state: "fresh",
+            confidence_band: "high",
+            measured_at: "2026-06-04T19:00:00.000Z",
+            evaluated_at: "2026-06-04T19:20:00.000Z",
+            reasons: ["available"]
+          },
+          water_temperature: {
+            value_kind: "measured",
+            source_type: "controller",
+            source_detail: "controller.pool_water",
+            freshness_state: "fresh",
+            confidence_band: "high",
+            measured_at: "2026-06-04T19:18:00.000Z",
+            evaluated_at: "2026-06-04T19:20:00.000Z",
+            reasons: ["Pool-water telemetry is available."]
+          },
+          rainfall_since_chemistry: {
+            value_kind: "derived",
+            source_type: "derived_calculation",
+            source_detail: "rainfall_since_chemistry",
+            freshness_state: "fresh",
+            confidence_band: "high",
+            measured_at: "2026-06-04T19:00:00.000Z",
+            evaluated_at: "2026-06-04T19:20:00.000Z",
+            reasons: ["This value is derived from weather history relative to the last chemistry timestamp."]
+          }
         }
       };
     }
@@ -172,6 +231,8 @@ test("swimmability API route returns the assessment", async () => {
   assert.equal(response.body.data.score, 68);
   assert.equal(response.body.data.headline, "Use Caution");
   assert.equal(response.body.data.confidence, "medium");
+  assert.equal(response.body.data.input_provenance.chemistry.value_kind, "measured");
+  assert.equal(response.body.data.input_provenance.weather_forecast.source_type, "weather_provider");
 });
 
 function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
@@ -277,23 +338,7 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       recorded_at: "2026-06-04T18:45:00.000Z",
       created_at: "2026-06-04T18:45:00.000Z"
     }),
-    getSwimmability: async () => ({
-      status: "unknown",
-      score: 0,
-      summary: "Unavailable",
-      headline: "Assessment Unavailable",
-      confidence: "unknown",
-      last_chemistry_age_label: null,
-      highlights: [],
-      updated_at: "2026-06-04T18:45:00.000Z",
-      drivers: [],
-      inputs: {
-        chemistry_latest_at: null,
-        cover_latest_at: null,
-        forecast_fetched_at: null,
-        telemetry_latest_at: null
-      }
-    }),
+    getSwimmability: async () => buildUnknownSwimmabilityView(),
     getNotifications: async () => ({ status: "unread", limit: 50, notifications: [] }),
     markNotificationRead: async () => null,
     markAllNotificationsRead: async () => ({ updated_count: 0 }),

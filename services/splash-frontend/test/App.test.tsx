@@ -2076,6 +2076,58 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
               cover_latest_at: "2026-05-12T11:45:00.000Z",
               forecast_fetched_at: "2026-05-12T12:00:00.000Z",
               telemetry_latest_at: "2026-05-12T11:30:00.000Z"
+            },
+            input_provenance: {
+              chemistry: {
+                value_kind: "measured",
+                source_type: "manual_test",
+                source_detail: "manual",
+                freshness_state: "fresh",
+                confidence_band: "high",
+                measured_at: "2026-05-12T10:30:00.000Z",
+                evaluated_at: "2026-05-12T12:00:00.000Z",
+                reasons: ["Manual chemistry is recent."]
+              },
+              cover: {
+                value_kind: "observed",
+                source_type: "manual_log",
+                source_detail: "manual",
+                freshness_state: "fresh",
+                confidence_band: "high",
+                measured_at: "2026-05-12T11:45:00.000Z",
+                evaluated_at: "2026-05-12T12:00:00.000Z",
+                reasons: ["Recent cover event is available."]
+              },
+              weather_forecast: {
+                value_kind: "predicted",
+                source_type: "weather_provider",
+                source_detail: "openmeteo",
+                freshness_state: "fresh",
+                confidence_band: "high",
+                measured_at: "2026-05-12T12:00:00.000Z",
+                evaluated_at: "2026-05-12T12:00:00.000Z",
+                reasons: ["Forecast is current."]
+              },
+              water_temperature: {
+                value_kind: "measured",
+                source_type: "controller",
+                source_detail: "easytouch.water_temperature",
+                freshness_state: "fresh",
+                confidence_band: "high",
+                measured_at: "2026-05-12T11:30:00.000Z",
+                evaluated_at: "2026-05-12T12:00:00.000Z",
+                reasons: ["Controller telemetry is recent."]
+              },
+              rainfall_since_chemistry: {
+                value_kind: "derived",
+                source_type: "derived_calculation",
+                source_detail: "weather.rainfall_since_chemistry",
+                freshness_state: "fresh",
+                confidence_band: "medium",
+                measured_at: "2026-05-12T12:00:00.000Z",
+                evaluated_at: "2026-05-12T12:00:00.000Z",
+                reasons: ["Rainfall context is derived from current weather history."]
+              }
             }
           },
           error: null
@@ -2101,6 +2153,11 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
     assert.ok(screen.getAllByText("High").length >= 1);
     assert.ok(screen.getByText("Confidence"));
     assert.ok(screen.getByText("Last Chemistry"));
+    const provenance = within(screen.getByLabelText("Swimmability input provenance"));
+    assert.ok(provenance.getByText("Chemistry"));
+    assert.ok(provenance.getByText("Manual test · Fresh · High confidence"));
+    assert.ok(provenance.getByText("Weather"));
+    assert.ok(provenance.getByText("Weather provider · Fresh · High confidence"));
     assert.ok(screen.getByRole("button", { name: "Cover On" }));
     assert.ok(screen.getByLabelText("Cover Type"));
   });

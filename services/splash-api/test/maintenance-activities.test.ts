@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import { EventBroker } from "../src/events.js";
+import { buildUnknownSwimmabilityView } from "./swimmability-fixtures.js";
 import { LocalHttpServer, type HttpHandlers } from "../src/http.js";
 import {
   MaintenanceActivitiesService,
@@ -267,23 +268,7 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       recorded_at: "2026-01-01T00:00:00.000Z",
       created_at: "2026-01-01T00:00:00.000Z"
     }),
-    getSwimmability: async () => ({
-      status: "unknown",
-      score: 0,
-      summary: "No chemistry reading is available yet.",
-      headline: "No data",
-      confidence: "unknown",
-      last_chemistry_age_label: null,
-      highlights: [],
-      updated_at: "2026-01-01T00:00:00.000Z",
-      drivers: [],
-      inputs: {
-        chemistry_latest_at: null,
-        cover_latest_at: null,
-        forecast_fetched_at: null,
-        telemetry_latest_at: null
-      }
-    }),
+    getSwimmability: async () => buildUnknownSwimmabilityView(),
     getNotifications: async () => ({
       status: "unread",
       limit: 50,

@@ -1,6 +1,7 @@
 import type { ChemistryReadingRecord } from "./chemistry-readings.js";
 import type { PoolChemistryRecommendationBounds } from "./pool-chemistry-settings.js";
 import type { PoolCoverCurrentView } from "./pool-cover-events.js";
+import { ageHours, buildValueProvenance, classifyAgeFreshness, type ValueProvenance } from "./provenance.js";
 import type { TemperatureLatestView } from "./temperature-telemetry.js";
 import type { WeatherForecastView } from "./weather-forecast.js";
 import type { WaterTestingFreshnessView } from "./water-testing-schedule.js";
@@ -36,6 +37,13 @@ export interface SwimmabilityView {
     cover_latest_at: string | null;
     forecast_fetched_at: string | null;
     telemetry_latest_at: string | null;
+  };
+  input_provenance: {
+    chemistry: ValueProvenance;
+    cover: ValueProvenance;
+    weather_forecast: ValueProvenance;
+    water_temperature: ValueProvenance;
+    rainfall_since_chemistry: ValueProvenance;
   };
 }
 
@@ -90,7 +98,18 @@ export function buildSwimmabilityView(input: SwimmabilityInput): SwimmabilityVie
         cover_latest_at: input.cover.current?.recorded_at ?? null,
         forecast_fetched_at: input.forecast.fetched_at,
         telemetry_latest_at: input.latestTemperatures.last_updated
-      }
+      },
+      input_provenance: buildInputProvenance({
+        chemistry: null,
+        chemistrySource: null,
+        cover: input.cover,
+        forecast: input.forecast,
+        latestTemperatures: input.latestTemperatures,
+        rainfallSinceChemistryInches: input.rainfallSinceChemistryInches,
+        updatedAt,
+        recencyStatus: "unknown",
+        confidence: "unknown"
+      })
     };
   }
 
@@ -200,8 +219,235 @@ export function buildSwimmabilityView(input: SwimmabilityInput): SwimmabilityVie
       cover_latest_at: input.cover.current?.recorded_at ?? null,
       forecast_fetched_at: input.forecast.fetched_at,
       telemetry_latest_at: input.latestTemperatures.last_updated
-    }
+    },
+    input_provenance: buildInputProvenance({
+      chemistry: input.chemistry.recorded_at,
+      chemistrySource: input.chemistry.source,
+      cover: input.cover,
+      forecast: input.forecast,
+      latestTemperatures: input.latestTemperatures,
+      rainfallSinceChemistryInches: input.rainfallSinceChemistryInches,
+      updatedAt,
+      recencyStatus: recency.status,
+      confidence
+    })
   };
+}
+
+function buildInputProvenance(input: {
+  chemistry: string | null;
+  chemistrySource: ChemistryReadingRecord["source"] | null;
+  cover: PoolCoverCurrentView;
+  forecast: WeatherForecastView;
+  latestTemperatures: TemperatureLatestView;
+  rainfallSinceChemistryInches: number | null;
+  updatedAt: string;
+  recencyStatus: "good" | "caution" | "unknown";
+  confidence: SwimmabilityConfidence;
+}): SwimmabilityView["input_provenance"] {
+  return {
+    chemistry: buildChemistryProvenance(input.chemistry, input.chemistrySource, input.updatedAt, input.recencyStatus, input.confidence),
+    cover: buildCoverProvenance(input.cover, input.updatedAt),
+    weather_forecast: buildForecastProvenance(input.forecast, input.updatedAt),
+    water_temperature: buildWaterTemperatureProvenance(input.latestTemperatures, input.updatedAt),
+    rainfall_since_chemistry: buildRainfallProvenance(input.rainfallSinceChemistryInches, input.chemistry, input.forecast, input.updatedAt)
+  };
+}
+
+function buildChemistryProvenance(
+  measuredAt: string | null,
+  source: ChemistryReadingRecord["source"] | null,
+  evaluatedAt: string,
+  recencyStatus: "good" | "caution" | "unknown",
+  confidence: SwimmabilityConfidence
+): ValueProvenance {
+  if (!measuredAt) {
+    return buildValueProvenance({
+      value_kind: "measured",
+      source_type: source === "sensor" ? "sensor" : "manual_test",
+      source_detail: source === "sensor" ? "chemistry.sensor" : "chemistry.manual_test",
+      freshness_state: "missing",
+      confidence_band: "unknown",
+      measured_at: null,
+      evaluated_at: evaluatedAt,
+      reasons: ["No chemistry reading is available."]
+    });
+  }
+
+  const freshnessState = recencyStatus === "good" ? "fresh" : recencyStatus === "caution" ? "aging" : "stale";
+  const age = ageHours(measuredAt, evaluatedAt);
+  const reasonPrefix = age == null ? "Chemistry reading age could not be evaluated." : `Chemistry reading is ${formatHours(age)} old.`;
+
+  return buildValueProvenance({
+    value_kind: "measured",
+    source_type: source === "sensor" ? "sensor" : "manual_test",
+    source_detail: source === "sensor" ? "chemistry.sensor" : "chemistry.manual_test",
+    freshness_state: freshnessState,
+    confidence_band: confidence === "unknown" ? "low" : confidence,
+    measured_at: measuredAt,
+    evaluated_at: evaluatedAt,
+    reasons: [
+      reasonPrefix,
+      recencyStatus === "good"
+        ? "Chemistry recency is still considered acceptable."
+        : recencyStatus === "caution"
+          ? "Chemistry confidence is aging because recency context is less favorable."
+          : "Chemistry is too old to support a trustworthy current assessment."
+    ]
+  });
+}
+
+function buildCoverProvenance(cover: PoolCoverCurrentView, evaluatedAt: string): ValueProvenance {
+  const measuredAt = cover.current?.recorded_at ?? null;
+  if (!cover.current) {
+    return buildValueProvenance({
+      value_kind: "observed",
+      source_type: "manual_log",
+      source_detail: "pool_cover.manual_event",
+      freshness_state: "missing",
+      confidence_band: "unknown",
+      measured_at: null,
+      evaluated_at: evaluatedAt,
+      reasons: ["No recent cover event is available."]
+    });
+  }
+
+  const freshnessState = classifyAgeFreshness(measuredAt, evaluatedAt, { freshHours: 48, agingHours: 7 * 24 });
+  const confidenceBand = freshnessState === "fresh" ? "high" : freshnessState === "aging" ? "medium" : "low";
+
+  return buildValueProvenance({
+    value_kind: "observed",
+    source_type: "manual_log",
+    source_detail: `pool_cover.${cover.current.cover_type}`,
+    freshness_state: freshnessState,
+    confidence_band: confidenceBand,
+    measured_at: measuredAt,
+    evaluated_at: evaluatedAt,
+    reasons: [
+      `Latest cover state was recorded as ${cover.current.state}.`,
+      freshnessState === "stale"
+        ? "Cover state is old enough that its current accuracy is uncertain."
+        : "Cover state is recent enough to use as current context."
+    ]
+  });
+}
+
+function buildForecastProvenance(forecast: WeatherForecastView, evaluatedAt: string): ValueProvenance {
+  const freshnessState =
+    forecast.fetched_at == null
+      ? forecast.status === "empty"
+        ? "missing"
+        : "unavailable"
+      : forecast.stale
+        ? "stale"
+        : "fresh";
+  const confidenceBand =
+    freshnessState === "fresh"
+      ? "high"
+      : freshnessState === "stale"
+        ? "low"
+        : freshnessState === "missing"
+          ? "unknown"
+          : "low";
+
+  return buildValueProvenance({
+    value_kind: "predicted",
+    source_type: "weather_provider",
+    source_detail: forecast.provider || null,
+    freshness_state: freshnessState,
+    confidence_band: confidenceBand,
+    measured_at: forecast.fetched_at,
+    evaluated_at: evaluatedAt,
+    reasons: [
+      forecast.message,
+      forecast.stale ? "The latest cached weather forecast is stale." : "Weather forecast metadata is current."
+    ]
+  });
+}
+
+function buildWaterTemperatureProvenance(temperatures: TemperatureLatestView, evaluatedAt: string): ValueProvenance {
+  const reading = temperatures.readings.pool_water ?? null;
+  const measuredAt = reading?.timestamp ?? null;
+  const freshnessState =
+    temperatures.status === "empty"
+      ? "missing"
+      : classifyAgeFreshness(measuredAt, evaluatedAt, { freshHours: 1, agingHours: 6 });
+  const confidenceBand =
+    freshnessState === "fresh"
+      ? "high"
+      : freshnessState === "aging"
+        ? "medium"
+        : freshnessState === "stale"
+          ? "low"
+          : "unknown";
+
+  return buildValueProvenance({
+    value_kind: "measured",
+    source_type: "controller",
+    source_detail: "controller.pool_water",
+    freshness_state: freshnessState,
+    confidence_band: confidenceBand,
+    measured_at: measuredAt,
+    evaluated_at: evaluatedAt,
+    reasons: [
+      temperatures.message,
+      measuredAt ? "Pool-water telemetry is available." : "No pool-water telemetry reading is available."
+    ]
+  });
+}
+
+function buildRainfallProvenance(
+  rainfallSinceChemistryInches: number | null,
+  chemistryMeasuredAt: string | null,
+  forecast: WeatherForecastView,
+  evaluatedAt: string
+): ValueProvenance {
+  if (!chemistryMeasuredAt) {
+    return buildValueProvenance({
+      value_kind: "derived",
+      source_type: "derived_calculation",
+      source_detail: "rainfall_since_chemistry",
+      freshness_state: "missing",
+      confidence_band: "unknown",
+      measured_at: null,
+      evaluated_at: evaluatedAt,
+      reasons: ["Rainfall since chemistry cannot be derived without a chemistry reading timestamp."]
+    });
+  }
+
+  if (rainfallSinceChemistryInches == null) {
+    return buildValueProvenance({
+      value_kind: "derived",
+      source_type: "derived_calculation",
+      source_detail: "rainfall_since_chemistry",
+      freshness_state: forecast.fetched_at ? (forecast.stale ? "stale" : "aging") : "unavailable",
+      confidence_band: forecast.stale ? "low" : "medium",
+      measured_at: forecast.fetched_at,
+      evaluated_at: evaluatedAt,
+      reasons: ["Rainfall-since-chemistry context could not be derived from the available weather history."]
+    });
+  }
+
+  return buildValueProvenance({
+    value_kind: "derived",
+    source_type: "derived_calculation",
+    source_detail: "rainfall_since_chemistry",
+    freshness_state: forecast.stale ? "aging" : "fresh",
+    confidence_band: forecast.stale ? "medium" : "high",
+    measured_at: forecast.fetched_at,
+    evaluated_at: evaluatedAt,
+    reasons: [
+      `Rainfall since the last chemistry reading is estimated at ${rainfallSinceChemistryInches.toFixed(2)} inches.`,
+      "This value is derived from weather history relative to the last chemistry timestamp."
+    ]
+  });
+}
+
+function formatHours(hours: number): string {
+  if (hours < 24) {
+    return `${Math.round(hours)} hours`;
+  }
+  return `${Math.round(hours / 24)} days`;
 }
 
 function assessHardBlock(reading: ChemistryReadingRecord): SwimmabilityDriver | null {

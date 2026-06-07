@@ -12,6 +12,7 @@ import type {
   PoolCoverEventRecord,
   PoolCoverType,
   SwimmabilityData,
+  ValueProvenanceData,
   WeatherForecastData
 } from "../types";
 
@@ -136,6 +137,16 @@ export function HomePage() {
                   </div>
                 </div>
               </div>
+              {swimmability.input_provenance ? (
+                <div className="swim-provenance-list" aria-label="Swimmability input provenance">
+                  {buildSwimmabilityProvenanceRows(swimmability).map((entry) => (
+                    <div className="swim-provenance-item" key={entry.label}>
+                      <strong>{entry.label}</strong>
+                      <span>{entry.summary}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {/* <div className="swim-highlights">
                 {swimmability.highlights.map((highlight, index) => (
                   <div className={`swim-highlight swim-highlight-${highlight.tone}`} key={`${highlight.label}-${index}`}>
@@ -300,6 +311,91 @@ function formatSwimmabilityConfidence(value: SwimmabilityData["confidence"]): st
       return "Medium";
     case "low":
       return "Low";
+    default:
+      return "Unknown";
+  }
+}
+
+function buildSwimmabilityProvenanceRows(swimmability: SwimmabilityData): Array<{ label: string; summary: string }> {
+  const provenance = swimmability.input_provenance;
+  if (!provenance) {
+    return [];
+  }
+
+  return [
+    summarizeProvenance("Chemistry", provenance.chemistry),
+    summarizeProvenance("Cover", provenance.cover),
+    summarizeProvenance("Weather", provenance.weather_forecast),
+    summarizeProvenance("Water Temp", provenance.water_temperature),
+    summarizeProvenance("Rain Context", provenance.rainfall_since_chemistry)
+  ];
+}
+
+function summarizeProvenance(label: string, provenance: ValueProvenanceData): { label: string; summary: string } {
+  return {
+    label,
+    summary: `${formatSourceType(provenance.source_type)} · ${formatFreshnessState(provenance.freshness_state)} · ${formatConfidenceBand(provenance.confidence_band)} confidence`
+  };
+}
+
+function formatSourceType(value: ValueProvenanceData["source_type"]): string {
+  switch (value) {
+    case "manual_test":
+      return "Manual test";
+    case "manual_observation":
+      return "Manual observation";
+    case "manual_log":
+      return "Manual log";
+    case "sensor":
+      return "Sensor";
+    case "weather_provider":
+      return "Weather provider";
+    case "controller":
+      return "Controller";
+    case "direct_device":
+      return "Direct device";
+    case "derived_calculation":
+      return "Derived";
+    case "prediction_model":
+      return "Prediction model";
+    case "user_estimate":
+      return "User estimate";
+    case "default":
+      return "Default";
+    default:
+      return "Unknown";
+  }
+}
+
+function formatFreshnessState(value: ValueProvenanceData["freshness_state"]): string {
+  switch (value) {
+    case "fresh":
+      return "Fresh";
+    case "aging":
+      return "Aging";
+    case "stale":
+      return "Stale";
+    case "missing":
+      return "Missing";
+    case "unavailable":
+      return "Unavailable";
+    case "estimated":
+      return "Estimated";
+    default:
+      return "Unknown";
+  }
+}
+
+function formatConfidenceBand(value: ValueProvenanceData["confidence_band"]): string {
+  switch (value) {
+    case "high":
+      return "High";
+    case "medium":
+      return "Medium";
+    case "low":
+      return "Low";
+    case "unknown":
+      return "Unknown";
     default:
       return "Unknown";
   }
