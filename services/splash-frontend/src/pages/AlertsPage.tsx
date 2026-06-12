@@ -12,7 +12,11 @@ const NOTIFICATION_TYPE_OPTIONS: Array<{ value: NotificationType | "all"; label:
   { value: "chemistry_test_due", label: "Chemistry test due" },
   { value: "swimmability_caution", label: "Swimmability caution" },
   { value: "swimmability_poor", label: "Swimmability poor" },
-  { value: "rain_since_test", label: "Rain since test" }
+  { value: "rain_since_test", label: "Rain since test" },
+  { value: "swimmability_low_confidence", label: "Low confidence" },
+  { value: "critical_input_missing", label: "Critical input missing" },
+  { value: "critical_input_stale", label: "Critical input stale" },
+  { value: "provenance_contradiction", label: "Provenance contradiction" }
 ];
 
 export function AlertsPage() {

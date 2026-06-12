@@ -4,7 +4,7 @@ import { EventBroker } from "../src/events.js";
 import { buildUnknownSwimmabilityView } from "./swimmability-fixtures.js";
 import { LocalHttpServer, type HttpHandlers } from "../src/http.js";
 import { createSqliteDatabase } from "../src/database.js";
-import { NotificationsService } from "../src/notifications.js";
+import { NotificationsService, type NotificationsContext } from "../src/notifications.js";
 
 test("notifications service generates alerts and does not recreate a read alert for the same active context", async () => {
   const database = createNotificationsDatabase();
@@ -21,7 +21,7 @@ test("notifications service generates alerts and does not recreate a read alert 
   const firstInbox = await service.getNotifications({ status: null, limit: null, type: null }, context);
   assert.deepEqual(
     firstInbox.notifications.map((notification) => notification.type).sort(),
-    ["chemistry_test_due", "chemistry_value_stale", "rain_since_test", "swimmability_caution"]
+    ["chemistry_test_due", "chemistry_value_stale", "critical_input_stale", "rain_since_test", "swimmability_caution"]
   );
 
   const swimmabilityNotification = firstInbox.notifications.find((notification) => notification.type === "swimmability_caution");
@@ -34,7 +34,7 @@ test("notifications service generates alerts and does not recreate a read alert 
   const secondInbox = await service.getNotifications({ status: null, limit: null, type: null }, context);
   assert.deepEqual(
     secondInbox.notifications.map((notification) => notification.type).sort(),
-    ["chemistry_test_due", "chemistry_value_stale", "rain_since_test"]
+    ["chemistry_test_due", "chemistry_value_stale", "critical_input_stale", "rain_since_test"]
   );
 });
 
@@ -57,6 +57,47 @@ test("notifications service removes inactive unread alerts when the condition cl
   );
 
   assert.equal(refreshed.notifications.some((notification) => notification.type === "rain_since_test"), false);
+});
+
+test("notifications service emits a low-confidence alert when swimmability confidence is low", async () => {
+  const database = createNotificationsDatabase();
+  const service = new NotificationsService("pool-1", database);
+
+  const inbox = await service.getNotifications(
+    { status: null, limit: null, type: null },
+    buildNotificationContext({
+      swimmability: {
+        status: "caution",
+        summary: "Confidence is limited because chemistry is stale."
+      },
+      swimmabilityConfidence: "low"
+    })
+  );
+
+  const notification = inbox.notifications.find((item) => item.type === "swimmability_low_confidence");
+  assert.ok(notification);
+  assert.equal(notification.severity, "warning");
+  assert.match(notification.body, /limited confidence/i);
+});
+
+test("notifications service emits a contradiction alert when swimmability looks good but chemistry support is stale", async () => {
+  const database = createNotificationsDatabase();
+  const service = new NotificationsService("pool-1", database);
+
+  const inbox = await service.getNotifications(
+    { status: null, limit: null, type: null },
+    buildNotificationContext({
+      swimmability: {
+        status: "good",
+        summary: "Water is currently suitable for swimming."
+      },
+      chemistryFreshnessState: "stale"
+    })
+  );
+
+  const notification = inbox.notifications.find((item) => item.type === "provenance_contradiction");
+  assert.ok(notification);
+  assert.match(notification.title, /chemistry data is stale/i);
 });
 
 test("notifications API routes return inbox data and read mutations", async () => {
@@ -152,7 +193,10 @@ function buildNotificationContext(overrides: {
     status: "good" | "caution" | "poor" | "unknown";
     summary: string;
   };
-} = {}) {
+  swimmabilityConfidence?: "high" | "medium" | "low" | "unknown";
+  chemistryFreshnessState?: "fresh" | "aging" | "stale" | "missing" | "unavailable" | "estimated";
+  waterTemperatureFreshnessState?: "fresh" | "aging" | "stale" | "missing" | "unavailable" | "estimated";
+} = {}): NotificationsContext {
   const swimmability = buildUnknownSwimmabilityView();
 
   return {
@@ -176,7 +220,7 @@ function buildNotificationContext(overrides: {
       score: overrides.swimmability?.status === "good" ? 85 : 68,
       summary: overrides.swimmability?.summary ?? "Water is currently suitable for swimming.",
       headline: "Safe for Swimming",
-      confidence: "high" as const,
+      confidence: overrides.swimmabilityConfidence ?? "high",
       last_chemistry_age_label: "7 days ago",
       updated_at: "2026-06-04T21:00:00.000Z",
       inputs: {
@@ -184,6 +228,58 @@ function buildNotificationContext(overrides: {
         cover_latest_at: "2026-06-04T17:30:00.000Z",
         forecast_fetched_at: "2026-06-04T19:00:00.000Z",
         telemetry_latest_at: "2026-06-04T19:18:00.000Z"
+      },
+      input_provenance: {
+        chemistry: {
+          value_kind: "measured",
+          source_type: "manual_test",
+          source_detail: "manual",
+          freshness_state: overrides.chemistryFreshnessState ?? "stale",
+          confidence_band: overrides.chemistryFreshnessState === "fresh" ? "high" : "medium",
+          measured_at: "2026-05-28T18:45:00.000Z",
+          evaluated_at: "2026-06-04T21:00:00.000Z",
+          reasons: ["Chemistry data is older than the preferred window."]
+        },
+        cover: {
+          value_kind: "observed",
+          source_type: "manual_log",
+          source_detail: "manual",
+          freshness_state: "fresh",
+          confidence_band: "high",
+          measured_at: "2026-06-04T17:30:00.000Z",
+          evaluated_at: "2026-06-04T21:00:00.000Z",
+          reasons: ["Recent cover event is available."]
+        },
+        weather_forecast: {
+          value_kind: "predicted",
+          source_type: "weather_provider",
+          source_detail: "openmeteo",
+          freshness_state: "fresh",
+          confidence_band: "high",
+          measured_at: "2026-06-04T19:00:00.000Z",
+          evaluated_at: "2026-06-04T21:00:00.000Z",
+          reasons: ["Forecast is current."]
+        },
+        water_temperature: {
+          value_kind: "measured",
+          source_type: "controller",
+          source_detail: "easytouch.water_temperature",
+          freshness_state: overrides.waterTemperatureFreshnessState ?? "fresh",
+          confidence_band: (overrides.waterTemperatureFreshnessState ?? "fresh") === "fresh" ? "high" : "medium",
+          measured_at: "2026-06-04T19:18:00.000Z",
+          evaluated_at: "2026-06-04T21:00:00.000Z",
+          reasons: ["Controller telemetry is recent."]
+        },
+        rainfall_since_chemistry: {
+          value_kind: "derived",
+          source_type: "derived_calculation",
+          source_detail: "weather.rainfall_since_chemistry",
+          freshness_state: "fresh",
+          confidence_band: "medium",
+          measured_at: "2026-06-04T21:00:00.000Z",
+          evaluated_at: "2026-06-04T21:00:00.000Z",
+          reasons: ["Rainfall context is derived from weather history."]
+        }
       }
     },
     rainfallSinceChemistryInches: overrides.rainfallSinceChemistryInches ?? 0,

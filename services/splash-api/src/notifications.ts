@@ -13,7 +13,11 @@ export type NotificationType =
   | "swimmability_poor"
   | "rain_since_test"
   | "chemistry_value_stale"
-  | "chemistry_value_unavailable";
+  | "chemistry_value_unavailable"
+  | "swimmability_low_confidence"
+  | "critical_input_missing"
+  | "critical_input_stale"
+  | "provenance_contradiction";
 
 export type NotificationSeverity = "info" | "warning" | "critical";
 export type NotificationStatusFilter = "unread" | "all";
@@ -91,7 +95,11 @@ const NOTIFICATION_TYPES: readonly NotificationType[] = [
   "swimmability_poor",
   "rain_since_test",
   "chemistry_value_stale",
-  "chemistry_value_unavailable"
+  "chemistry_value_unavailable",
+  "swimmability_low_confidence",
+  "critical_input_missing",
+  "critical_input_stale",
+  "provenance_contradiction"
 ];
 
 const SIGNIFICANT_RAINFALL_INCHES = 0.25;
@@ -440,6 +448,106 @@ function buildNotificationTemplates(context: NotificationsContext): Notification
     });
   }
 
+  notifications.push(...buildProvenanceNotificationTemplates(context));
+
+  return notifications;
+}
+
+function buildProvenanceNotificationTemplates(context: NotificationsContext): NotificationTemplate[] {
+  const notifications: NotificationTemplate[] = [];
+  const provenance = context.swimmability.input_provenance;
+
+  if (context.swimmability.confidence === "low" || context.swimmability.confidence === "unknown") {
+    const reasons = uniqueReasons([
+      ...provenance.chemistry.reasons,
+      ...provenance.water_temperature.reasons
+    ]);
+    notifications.push({
+      type: "swimmability_low_confidence",
+      severity: "warning",
+      title: "Swimmability confidence is low",
+      body:
+        reasons.length > 0
+          ? `Splash has limited confidence in the current swimmability result. ${reasons.join(" ")}`
+          : "Splash has limited confidence in the current swimmability result because one or more critical inputs are stale, missing, or unavailable.",
+      relatedEntityType: "swimmability",
+      relatedEntityId: buildSwimmabilitySignature(context)
+    });
+  }
+
+  notifications.push(...buildCriticalInputNotifications(context, "chemistry", "Chemistry"));
+  notifications.push(...buildCriticalInputNotifications(context, "water_temperature", "Water temperature"));
+
+  if (context.swimmability.status === "good" && isFreshnessProblem(provenance.chemistry.freshness_state)) {
+    notifications.push({
+      type: "provenance_contradiction",
+      severity: "warning",
+      title: "Swimmability is marked good, but chemistry data is stale",
+      body: provenanceBody("Chemistry", provenance.chemistry, "The current swimmability result looks positive, but the supporting chemistry provenance is not fresh."),
+      relatedEntityType: "swimmability",
+      relatedEntityId: "chemistry:good-with-stale-support"
+    });
+  }
+
+  if (
+    context.latestTemperatures.last_updated
+    && isFreshnessProblem(provenance.water_temperature.freshness_state)
+  ) {
+    notifications.push({
+      type: "provenance_contradiction",
+      severity: "warning",
+      title: "Water temperature telemetry is unavailable for current context",
+      body: provenanceBody("Water temperature", provenance.water_temperature, "Water temperature is being presented as current context, but the supporting telemetry is not fresh enough to trust."),
+      relatedEntityType: "swimmability",
+      relatedEntityId: "water_temperature:context-contradiction"
+    });
+  }
+
+  if (
+    (context.rainfallSinceChemistryInches ?? 0) >= SIGNIFICANT_RAINFALL_INCHES
+    && isFreshnessProblem(provenance.weather_forecast.freshness_state)
+  ) {
+    notifications.push({
+      type: "provenance_contradiction",
+      severity: "warning",
+      title: "Rainfall context is not strongly supported",
+      body: provenanceBody("Weather", provenance.weather_forecast, "Rainfall context is affecting confidence, but the supporting weather provenance is stale or unavailable."),
+      relatedEntityType: "swimmability",
+      relatedEntityId: "weather:rain-context-contradiction"
+    });
+  }
+
+  return notifications;
+}
+
+function buildCriticalInputNotifications(
+  context: NotificationsContext,
+  key: "chemistry" | "water_temperature",
+  label: string
+): NotificationTemplate[] {
+  const provenance = context.swimmability.input_provenance[key];
+  const notifications: NotificationTemplate[] = [];
+
+  if (provenance.freshness_state === "missing" || provenance.freshness_state === "unavailable") {
+    notifications.push({
+      type: "critical_input_missing",
+      severity: key === "chemistry" && context.swimmability.status === "unknown" ? "critical" : "warning",
+      title: `${label} input is unavailable`,
+      body: provenanceBody(label, provenance, `${label} is missing or unavailable, which limits how strongly Splash can support the current swimmability conclusion.`),
+      relatedEntityType: "provenance",
+      relatedEntityId: `${key}:${provenance.freshness_state}`
+    });
+  } else if (provenance.freshness_state === "stale") {
+    notifications.push({
+      type: "critical_input_stale",
+      severity: "warning",
+      title: `${label} input is stale`,
+      body: provenanceBody(label, provenance, `${label} is stale, which reduces trust in the current swimmability conclusion.`),
+      relatedEntityType: "provenance",
+      relatedEntityId: `${key}:stale`
+    });
+  }
+
   return notifications;
 }
 
@@ -516,4 +624,85 @@ function formatRainfall(value: number | null): string {
     return "recent";
   }
   return `${value.toFixed(value >= 1 ? 1 : 2)} in`;
+}
+
+function provenanceBody(
+  label: string,
+  provenance: SwimmabilityView["input_provenance"][keyof SwimmabilityView["input_provenance"]],
+  fallback: string
+): string {
+  const reasonText = uniqueReasons(provenance.reasons).join(" ");
+  const prefix = `${label} source: ${formatSourceType(provenance.source_type)}. Freshness: ${formatFreshnessState(provenance.freshness_state)}. Confidence: ${formatConfidenceBand(provenance.confidence_band)}.`;
+  return [fallback, prefix, reasonText].filter((part) => part.length > 0).join(" ");
+}
+
+function uniqueReasons(reasons: readonly string[]): string[] {
+  return [...new Set(reasons.filter((reason) => reason.trim().length > 0))];
+}
+
+function isFreshnessProblem(value: SwimmabilityView["input_provenance"][keyof SwimmabilityView["input_provenance"]]["freshness_state"]): boolean {
+  return value === "stale" || value === "missing" || value === "unavailable";
+}
+
+function formatSourceType(value: SwimmabilityView["input_provenance"][keyof SwimmabilityView["input_provenance"]]["source_type"]): string {
+  switch (value) {
+    case "manual_test":
+      return "manual test";
+    case "manual_observation":
+      return "manual observation";
+    case "manual_log":
+      return "manual log";
+    case "sensor":
+      return "sensor";
+    case "weather_provider":
+      return "weather provider";
+    case "controller":
+      return "controller";
+    case "direct_device":
+      return "direct device";
+    case "derived_calculation":
+      return "derived calculation";
+    case "prediction_model":
+      return "prediction model";
+    case "user_estimate":
+      return "user estimate";
+    case "default":
+      return "default";
+    default:
+      return "unknown";
+  }
+}
+
+function formatFreshnessState(value: SwimmabilityView["input_provenance"][keyof SwimmabilityView["input_provenance"]]["freshness_state"]): string {
+  switch (value) {
+    case "fresh":
+      return "fresh";
+    case "aging":
+      return "aging";
+    case "stale":
+      return "stale";
+    case "missing":
+      return "missing";
+    case "unavailable":
+      return "unavailable";
+    case "estimated":
+      return "estimated";
+    default:
+      return "unknown";
+  }
+}
+
+function formatConfidenceBand(value: SwimmabilityView["input_provenance"][keyof SwimmabilityView["input_provenance"]]["confidence_band"]): string {
+  switch (value) {
+    case "high":
+      return "high";
+    case "medium":
+      return "medium";
+    case "low":
+      return "low";
+    case "unknown":
+      return "unknown";
+    default:
+      return "unknown";
+  }
 }

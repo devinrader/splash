@@ -936,7 +936,11 @@ export type NotificationType =
   | "swimmability_poor"
   | "rain_since_test"
   | "chemistry_value_stale"
-  | "chemistry_value_unavailable";
+  | "chemistry_value_unavailable"
+  | "swimmability_low_confidence"
+  | "critical_input_missing"
+  | "critical_input_stale"
+  | "provenance_contradiction";
 
 export type NotificationSeverity = "info" | "warning" | "critical";
 export type NotificationStatusFilter = "unread" | "all";
