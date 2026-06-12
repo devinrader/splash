@@ -736,6 +736,21 @@ export function getHardwareDetailStatus(detail: SystemHardwareDetailId, pumpRunn
   return detail === "intellichlor" ? "Producing" : "Heating";
 }
 
+export function formatChlorinatorRunState(value: unknown): string {
+  switch (value) {
+    case "producing":
+      return "Producing";
+    case "idle":
+      return "Idle";
+    case "off":
+      return "Off";
+    case "unknown":
+      return "Unknown";
+    default:
+      return "Unknown";
+  }
+}
+
 export function getHardwareDetailTone(_: SystemHardwareDetailId): "good" | "muted" {
   return "good";
 }
@@ -764,6 +779,8 @@ export function getHardwareDetailFacts(
     controllerTime: string;
     waterTemp: string;
     saltLevel: string;
+    chlorinatorOutput: string;
+    chlorinatorRunState: string;
     pumpRpm: string;
   }
 ): Array<{ label: string; value: string }> {
@@ -793,9 +810,9 @@ export function getHardwareDetailFacts(
         { label: "Model", value: "IntelliChlor IC40" },
         { label: "Salt Level", value: input.saltLevel },
         { label: "Firmware Version", value: "1.07" },
-        { label: "Output Level", value: "40%" },
+        { label: "Output Level", value: input.chlorinatorOutput },
         { label: "Protocol", value: "Pentair RS485" },
-        { label: "Cell Status", value: "Generating" },
+        { label: "Cell Status", value: input.chlorinatorRunState },
         { label: "Address", value: "0x30" },
         { label: "Last Message", value: "2s ago" }
       ];

@@ -3073,12 +3073,19 @@ test("merges SSE updates into the equipment cards", async () => {
   source.emit("equipment.state", {
     salt_ppm: 3450
   });
+  source.emit("equipment.state", {
+    output_percent: 55,
+    run_state: "idle",
+    status: "ok"
+  });
 
   await openSystemTab("Hardware");
 
   await waitFor(() => {
     assert.ok(screen.getByText(/2900 RPM/));
     assert.ok(screen.getByText(/3450 ppm/));
+    assert.ok(screen.getByText(/55 %/));
+    assert.ok(screen.getByText("Idle"));
   });
 
   await openSystemTab("Control");

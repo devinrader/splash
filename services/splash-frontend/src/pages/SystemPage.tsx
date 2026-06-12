@@ -33,6 +33,7 @@ import {
   formatCircuitStatePill,
   formatControllerDatetimeReply,
   formatControllerTime,
+  formatChlorinatorRunState,
   formatHexByte,
   formatLabel,
   formatMetric,
@@ -510,6 +511,8 @@ function HardwareDetailTab({
                 controllerTime: formatControllerTime(controller?.latest_state.controller_hour_24, controller?.latest_state.controller_minute),
                 waterTemp: formatMetric(readMetric(controller?.latest_state.water_temp_f), "°F"),
                 saltLevel: formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm"),
+                chlorinatorOutput: formatMetric(readMetric(chlorinator?.latest_state.output_percent), "%"),
+                chlorinatorRunState: formatChlorinatorRunState(chlorinator?.latest_state.run_state),
                 pumpRpm: formatMetric(readMetric(pump?.latest_state.rpm), "RPM")
               }).map((fact) => (
                 <div key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong></div>
@@ -890,6 +893,8 @@ function SensorsTab({ controller, chlorinator }: SystemPageProps) {
         <MetricCard label="Water Temperature" value={formatMetric(readMetric(controller?.latest_state.water_temp_f), "°F")} accent="water" icon="temperature" />
         <MetricCard label="Air Temperature" value={formatMetric(readMetric(controller?.latest_state.air_temp_f), "°F")} accent="sky" icon="air-temperature" />
         <MetricCard label="Salt Level" value={formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")} accent="sand" icon="salt" />
+        <MetricCard label="SWG Output" value={formatMetric(readMetric(chlorinator?.latest_state.output_percent), "%")} accent="pump" icon="chlorinator" />
+        <MetricCard label="SWG State" value={formatChlorinatorRunState(chlorinator?.latest_state.run_state)} accent="sand" icon="good" />
       </section>
       <Card title="Sensor Readings" status="Current values">
         <table className="system-data-table">
@@ -898,6 +903,15 @@ function SensorsTab({ controller, chlorinator }: SystemPageProps) {
             <tr><td>Pool Temp</td><td>Temperature</td><td>Pool</td><td>{formatMetric(readMetric(controller?.latest_state.water_temp_f), "°F")}</td><td><span className="system-status-chip system-status-chip-good">Good</span></td></tr>
             <tr><td>Air Temp</td><td>Temperature</td><td>Pad</td><td>{formatMetric(readMetric(controller?.latest_state.air_temp_f), "°F")}</td><td><span className="system-status-chip system-status-chip-good">Good</span></td></tr>
             <tr><td>Salt Reading</td><td>Chemistry</td><td>Cell</td><td>{formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")}</td><td><span className="system-status-chip system-status-chip-watch">Watch</span></td></tr>
+            <tr><td>SWG Output</td><td>Chlorinator</td><td>Cell</td><td>{formatMetric(readMetric(chlorinator?.latest_state.output_percent), "%")}</td><td><span className="system-status-chip system-status-chip-good">Configured</span></td></tr>
+            <tr><td>SWG Run State</td><td>Chlorinator</td><td>Cell</td><td>{formatChlorinatorRunState(chlorinator?.latest_state.run_state)}</td><td><span className="system-status-chip system-status-chip-good">{formatValueWithLabel(chlorinator?.latest_state.status, {
+              ok: "OK",
+              low_salt: "Low Salt",
+              high_salt: "High Salt",
+              fault: "Fault",
+              offline: "Offline",
+              unknown: "Unknown"
+            })}</span></td></tr>
           </tbody>
         </table>
       </Card>
@@ -1101,6 +1115,10 @@ function PlatformTab({ healthStatus, sseStatus, controller, healthData }: System
 }
 
 function getHardwareRows(controller: EquipmentRecord | undefined, pump: EquipmentRecord | undefined, chlorinator: EquipmentRecord | undefined) {
+  const chlorinatorOutput = formatMetric(readMetric(chlorinator?.latest_state.output_percent), "%");
+  const chlorinatorSalt = formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm");
+  const chlorinatorRunState = formatChlorinatorRunState(chlorinator?.latest_state.run_state);
+
   return [
     {
       id: "easytouch8" as const,
@@ -1127,8 +1145,8 @@ function getHardwareRows(controller: EquipmentRecord | undefined, pump: Equipmen
       id: "intellichlor" as const,
       shortCode: "CL",
       title: chlorinator?.display_name ?? "Salt Chlorinator",
-      summary: `Output 40% · salt ${formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")}`,
-      status: readMetric(chlorinator?.latest_state.salt_ppm) != null ? "Producing" : "Online"
+      summary: `${chlorinatorOutput} · salt ${chlorinatorSalt}`,
+      status: chlorinatorRunState
     }
   ];
 }

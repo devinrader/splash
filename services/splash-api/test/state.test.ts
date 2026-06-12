@@ -61,6 +61,9 @@ test("projection exposes initial milestone equipment values through the bridge",
   });
   projection.updateChlorinator({
     salt_ppm: 3100,
+    output_percent: 45,
+    run_state: "producing",
+    status: "ok",
     occurred_at: "2026-03-30T00:00:02Z"
   });
 
@@ -102,7 +105,14 @@ test("projection exposes initial milestone equipment values through the bridge",
     control_circuit_keys: string[];
     default_control_circuit_key: string | null;
   };
-  const chlorinator = equipment[2] as { latest_state: { salt_ppm: number } };
+  const chlorinator = equipment[2] as {
+    latest_state: {
+      salt_ppm: number;
+      output_percent: number;
+      run_state: string;
+      status: string;
+    };
+  };
 
   assert.equal(equipment.length, 3);
   assert.equal(controller.latest_state.controller_hour_24, 14);
@@ -154,6 +164,33 @@ test("projection exposes initial milestone equipment values through the bridge",
   assert.deepEqual(pump.control_circuit_keys, ["pool", "pool_low", "pool_high", "cleaner"]);
   assert.equal(pump.default_control_circuit_key, "pool");
   assert.equal(chlorinator.latest_state.salt_ppm, 3100);
+  assert.equal(chlorinator.latest_state.output_percent, 45);
+  assert.equal(chlorinator.latest_state.run_state, "producing");
+  assert.equal(chlorinator.latest_state.status, "ok");
+});
+
+test("projection normalizes unknown chlorinator state values conservatively", () => {
+  const bridge = new EquipmentBridge();
+  const projection = new LatestStateProjection();
+
+  projection.updateChlorinator({
+    salt_ppm: 2950,
+    output_percent: 20,
+    run_state: "spinning_up",
+    status: "warningish",
+    occurred_at: "2026-03-30T00:10:00Z"
+  });
+
+  const equipment = projection.getEquipmentView(bridge.all());
+  const chlorinator = equipment[2] as {
+    latest_state: {
+      run_state: string;
+      status: string;
+    };
+  };
+
+  assert.equal(chlorinator.latest_state.run_state, "unknown");
+  assert.equal(chlorinator.latest_state.status, "unknown");
 });
 
 test("projection exposes controller schedule visibility as unavailable until fields are validated", () => {

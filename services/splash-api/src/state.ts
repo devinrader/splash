@@ -291,6 +291,9 @@ export interface PumpLatestState {
 
 export interface ChlorinatorLatestState {
   saltPpm: number | null;
+  outputPercent: number | null;
+  runState: string | null;
+  status: string | null;
   updatedAt: string | null;
 }
 
@@ -341,6 +344,9 @@ export class LatestStateProjection {
 
   private chlorinator: ChlorinatorLatestState = {
     saltPpm: null,
+    outputPercent: null,
+    runState: null,
+    status: null,
     updatedAt: null
   };
 
@@ -642,6 +648,9 @@ export class LatestStateProjection {
   updateChlorinator(payload: Record<string, unknown>): void {
     this.chlorinator = {
       saltPpm: readNumber(payload, "salt_ppm"),
+      outputPercent: readNumber(payload, "output_percent"),
+      runState: normalizeChlorinatorRunState(readString(payload, "run_state")),
+      status: normalizeChlorinatorStatus(readString(payload, "status")),
       updatedAt: readString(payload, "occurred_at")
     };
   }
@@ -748,6 +757,9 @@ export class LatestStateProjection {
             protocol_name: entry.protocolName,
             latest_state: {
               salt_ppm: this.chlorinator.saltPpm,
+              output_percent: this.chlorinator.outputPercent,
+              run_state: this.chlorinator.runState,
+              status: this.chlorinator.status,
               updated_at: this.chlorinator.updatedAt
             }
           };
@@ -1023,6 +1035,32 @@ export class LatestStateProjection {
     }
 
     return view;
+  }
+}
+
+function normalizeChlorinatorRunState(value: string | null): string | null {
+  switch (value) {
+    case "producing":
+    case "idle":
+    case "off":
+    case "unknown":
+      return value;
+    default:
+      return value == null ? null : "unknown";
+  }
+}
+
+function normalizeChlorinatorStatus(value: string | null): string | null {
+  switch (value) {
+    case "ok":
+    case "low_salt":
+    case "high_salt":
+    case "fault":
+    case "offline":
+    case "unknown":
+      return value;
+    default:
+      return value == null ? null : "unknown";
   }
 }
 

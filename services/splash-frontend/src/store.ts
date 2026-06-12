@@ -94,7 +94,12 @@ export const useFrontendStore = create<FrontendState>((set) => ({
   },
   applyEquipmentStateEvent(payload) {
     set((state) => {
-      if ("salt_ppm" in payload) {
+      if (
+        "salt_ppm" in payload
+        || "output_percent" in payload
+        || "run_state" in payload
+        || "status" in payload
+      ) {
         return mergeLatestState(state, "chlorinator-main", payload);
       }
 
