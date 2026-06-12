@@ -106,6 +106,8 @@ import {
   SqlitePoolCoverEventsRepository,
   type PoolCoverCurrentView,
   type PoolCoverEventRecord,
+  type PoolCoverExposureSummaryQueryInput,
+  type PoolCoverExposureSummaryView,
   type PoolCoverHistoryQueryInput,
   type PoolCoverHistoryView
 } from "./pool-cover-events.js";
@@ -304,7 +306,8 @@ export class App {
       options.poolCoverEvents ??
       new PoolCoverEventsService(
         this.config.poolId,
-        this.sqliteDatabase ? new SqlitePoolCoverEventsRepository(this.sqliteDatabase) : null
+        this.sqliteDatabase ? new SqlitePoolCoverEventsRepository(this.sqliteDatabase) : null,
+        this.config.timezone
       );
     this.notifications =
       options.notifications ??
@@ -581,6 +584,10 @@ export class App {
 
   async getPoolCoverHistory(input: PoolCoverHistoryQueryInput): Promise<PoolCoverHistoryView> {
     return this.poolCoverEvents.getPoolCoverHistory(input);
+  }
+
+  async getPoolCoverExposureSummary(input: PoolCoverExposureSummaryQueryInput): Promise<PoolCoverExposureSummaryView> {
+    return this.poolCoverEvents.getPoolCoverExposureSummary(input);
   }
 
   async createPoolCoverEvent(input: unknown): Promise<PoolCoverEventRecord> {
@@ -1580,6 +1587,7 @@ export class App {
         createChemicalAddition: async (input) => this.createChemicalAddition(input),
         getCurrentPoolCover: async () => this.getCurrentPoolCover(),
         getPoolCoverHistory: async (query) => this.getPoolCoverHistory(query),
+        getPoolCoverExposureSummary: async (query) => this.getPoolCoverExposureSummary(query),
         createPoolCoverEvent: async (input) => this.createPoolCoverEvent(input),
         getSwimmability: async () => this.getSwimmability(),
         getNotifications: async (query) => this.getNotifications(query),

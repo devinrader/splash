@@ -48,6 +48,7 @@ import {
   PoolCoverEventsValidationError,
   type PoolCoverCurrentView,
   type PoolCoverEventRecord,
+  type PoolCoverExposureSummaryView,
   type PoolCoverHistoryView
 } from "./pool-cover-events.js";
 import {
@@ -160,6 +161,9 @@ export interface HttpHandlers {
     end: string | null;
     limit: string | null;
   }): Promise<PoolCoverHistoryView>;
+  getPoolCoverExposureSummary(input: {
+    window: string | null;
+  }): Promise<PoolCoverExposureSummaryView>;
   createPoolCoverEvent(input: Record<string, unknown>): Promise<PoolCoverEventRecord>;
   getSwimmability(): Promise<SwimmabilityView>;
   getNotifications(input: {
@@ -617,6 +621,16 @@ export class LocalHttpServer implements HttpServer {
             start: url.searchParams.get("start"),
             end: url.searchParams.get("end"),
             limit: url.searchParams.get("limit")
+          }),
+          error: null
+        });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/pool/cover/exposure-summary")) {
+        const url = new URL(req.url, "http://localhost");
+        return json(req, res, 200, {
+          data: await this.handlers.getPoolCoverExposureSummary({
+            window: url.searchParams.get("window")
           }),
           error: null
         });

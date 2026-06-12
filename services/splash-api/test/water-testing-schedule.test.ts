@@ -351,6 +351,7 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
     }),
     getCurrentPoolCover: async () => ({ current: null }),
     getPoolCoverHistory: async () => ({ start: null, end: null, limit: 5, events: [] }),
+    getPoolCoverExposureSummary: async () => ({ generated_at: new Date().toISOString(), summaries: [] }),
     createPoolCoverEvent: async () => ({
       id: "cover-1",
       pool_id: "pool-1",

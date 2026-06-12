@@ -1067,6 +1067,47 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
         });
       }
 
+      if (input.includes("/pool/cover/exposure-summary")) {
+        return response({
+          data: {
+            generated_at: "2026-05-12T12:00:00.000Z",
+            summaries: [
+              {
+                window: "24h",
+                covered_minutes: 840,
+                uncovered_minutes: 600,
+                covered_percent: 58.3,
+                uncovered_percent: 41.7,
+                daylight_uncovered_minutes: 300,
+                last_cover_change_at: "2026-05-12T08:00:00.000Z",
+                status: "available"
+              },
+              {
+                window: "72h",
+                covered_minutes: 2460,
+                uncovered_minutes: 1860,
+                covered_percent: 56.9,
+                uncovered_percent: 43.1,
+                daylight_uncovered_minutes: 960,
+                last_cover_change_at: "2026-05-12T08:00:00.000Z",
+                status: "available"
+              },
+              {
+                window: "7d",
+                covered_minutes: 6120,
+                uncovered_minutes: 3960,
+                covered_percent: 60.7,
+                uncovered_percent: 39.3,
+                daylight_uncovered_minutes: 1800,
+                last_cover_change_at: "2026-05-12T08:00:00.000Z",
+                status: "partial"
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
       return platformStatusResponse();
     })
   );
@@ -1176,6 +1217,8 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
 
   await waitFor(() => {
     assert.ok(screen.getByRole("tab", { name: "Chemistry", selected: true }));
+    assert.ok(screen.getByText("Cover Exposure Summary"));
+    assert.ok(screen.getByText("14h covered · 41.7% uncovered · 5h daylight uncovered · Available"));
     assert.ok(screen.getByRole("img", { name: "pH history chart" }));
     assert.ok(screen.getByRole("img", { name: "Free Chlorine history chart" }));
     assert.ok(screen.getByRole("img", { name: "Total Chlorine history chart" }));
@@ -1191,6 +1234,8 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
   assert.ok(coverHistoryRequest);
   const coverHistoryUrl = new URL(coverHistoryRequest as string, "http://127.0.0.1:8080");
   assert.equal(coverHistoryUrl.searchParams.get("limit"), "100");
+  const coverExposureSummaryRequest = requests.find((entry) => entry.includes("/pool/cover/exposure-summary"));
+  assert.ok(coverExposureSummaryRequest);
 });
 
 test("renders Pool on from the bitmask state even when mode disagrees", async () => {

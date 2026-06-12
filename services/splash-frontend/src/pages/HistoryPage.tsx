@@ -1,10 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { Line } from "@nivo/line";
-import { fetchChemistryHistory, fetchPoolCoverHistory, fetchPumpCirculationSummary, fetchPumpTelemetryHistory, fetchTemperatureTelemetryHistory, fetchWeatherHistory } from "../api";
+import {
+  fetchChemistryHistory,
+  fetchPoolCoverExposureSummary,
+  fetchPoolCoverHistory,
+  fetchPumpCirculationSummary,
+  fetchPumpTelemetryHistory,
+  fetchTemperatureTelemetryHistory,
+  fetchWeatherHistory
+} from "../api";
 import { Card } from "../components/mockUi";
 import type {
   ChemistryHistoryData,
   ChemistryHistoryMetric,
+  PoolCoverExposureSummaryData,
+  PoolCoverExposureSummaryItem,
   PoolCoverEventRecord,
   PumpCirculationSummaryData,
   PumpCirculationSummaryItem,
@@ -85,7 +95,9 @@ export function HistoryPage() {
   const [chemistryHistoryByRange, setChemistryHistoryByRange] = useState<Partial<Record<HistoryRangeId, ChemistryHistoryData>>>({});
   const [chemistryErrorByRange, setChemistryErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
   const [coverHistoryByRange, setCoverHistoryByRange] = useState<Partial<Record<HistoryRangeId, PoolCoverEventRecord[]>>>({});
+  const [coverExposureSummary, setCoverExposureSummary] = useState<PoolCoverExposureSummaryData | null>(null);
   const [coverErrorByRange, setCoverErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
+  const [coverExposureError, setCoverExposureError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,9 +190,10 @@ export function HistoryPage() {
 
       if (activeTab === "chemistry") {
         const chemistryInterval = selectedRange.interval === "5m" ? "raw" : "1d";
-        const [chemistryResult, coverResult] = await Promise.allSettled([
+        const [chemistryResult, coverResult, coverExposureResult] = await Promise.allSettled([
           fetchChemistryHistory({ start, end, interval: chemistryInterval }),
-          fetchPoolCoverHistory({ start, end, limit: 100 })
+          fetchPoolCoverHistory({ start, end, limit: 100 }),
+          fetchPoolCoverExposureSummary()
         ]);
 
         if (cancelled) {
@@ -205,6 +218,15 @@ export function HistoryPage() {
             ...current,
             [selectedRangeId]: coverResult.reason instanceof Error ? coverResult.reason.message : String(coverResult.reason)
           }));
+        }
+
+        if (coverExposureResult.status === "fulfilled") {
+          setCoverExposureSummary(coverExposureResult.value.data);
+          setCoverExposureError(null);
+        } else {
+          setCoverExposureError(
+            coverExposureResult.reason instanceof Error ? coverExposureResult.reason.message : String(coverExposureResult.reason)
+          );
         }
       }
 
@@ -238,7 +260,7 @@ export function HistoryPage() {
         ? (pumpError ?? pumpSummaryError)
         : activeTab === "weather"
           ? weatherError
-          : (chemistryError ?? coverError);
+          : (chemistryError ?? coverError ?? coverExposureError);
   const selectedRange = resolveHistoryRange(selectedRangeId);
   const currentLoadKey = `${activeTab}:${selectedRangeId}`;
 
@@ -403,6 +425,20 @@ export function HistoryPage() {
 
         {activeTab === "chemistry" ? (
           <div className="automation-grid automation-grid-two-column">
+            <Card title="Cover Exposure Summary">
+              {coverExposureSummary?.summaries.length ? (
+                <div className="automation-record-list">
+                  {coverExposureSummary.summaries.map((summary) => (
+                    <div className="automation-record-row" key={summary.window}>
+                      <strong>{formatCoverExposureWindow(summary.window)}</strong>
+                      <span>{formatCoverExposureSummary(summary)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="chart-empty-state">Cover exposure summary is not available yet.</p>
+              )}
+            </Card>
             <Card title="Cover Overlay Legend" className="automation-card-table">
               <div className="history-cover-legend" aria-label="Cover overlay legend">
                 <span className="history-cover-legend-item">
@@ -804,6 +840,34 @@ function formatCirculationSummary(summary: PumpCirculationSummaryItem): string {
 }
 
 function formatCirculationStatus(status: PumpCirculationSummaryItem["status"]): string {
+  switch (status) {
+    case "available":
+      return "Available";
+    case "partial":
+      return "Partial";
+    case "insufficient_data":
+      return "Insufficient data";
+  }
+}
+
+function formatCoverExposureWindow(window: PoolCoverExposureSummaryItem["window"]): string {
+  switch (window) {
+    case "24h":
+      return "Last 24h";
+    case "72h":
+      return "Last 72h";
+    case "7d":
+      return "Last 7d";
+  }
+}
+
+function formatCoverExposureSummary(summary: PoolCoverExposureSummaryItem): string {
+  const coveredHours = roundSingleDecimal(summary.covered_minutes / 60);
+  const daylightHours = roundSingleDecimal(summary.daylight_uncovered_minutes / 60);
+  return `${coveredHours}h covered · ${roundSingleDecimal(summary.uncovered_percent)}% uncovered · ${daylightHours}h daylight uncovered · ${formatCoverExposureStatus(summary.status)}`;
+}
+
+function formatCoverExposureStatus(status: PoolCoverExposureSummaryItem["status"]): string {
   switch (status) {
     case "available":
       return "Available";

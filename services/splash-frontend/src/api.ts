@@ -13,6 +13,7 @@ import type {
   ChemistryReadingCreateInput,
   ChemistryReadingCreateResponse,
   PoolCoverCurrentResponse,
+  PoolCoverExposureSummaryResponse,
   PoolCoverEventCreateInput,
   PoolCoverEventCreateResponse,
   PoolCoverHistoryResponse,
@@ -540,6 +541,23 @@ export async function fetchPoolCoverHistory(input: {
     throw await buildApiError(response, "Pool cover history request failed.");
   }
   return (await response.json()) as PoolCoverHistoryResponse;
+}
+
+export async function fetchPoolCoverExposureSummary(input?: {
+  window?: "24h" | "72h" | "7d";
+}): Promise<PoolCoverExposureSummaryResponse> {
+  const params = new URLSearchParams();
+  if (input?.window) {
+    params.set("window", input.window);
+  }
+  const suffix = params.toString();
+  const response = await fetch(
+    buildApiUrl(suffix ? `/pool/cover/exposure-summary?${suffix}` : "/pool/cover/exposure-summary")
+  );
+  if (!response.ok) {
+    throw await buildApiError(response, "Pool cover exposure summary request failed.");
+  }
+  return (await response.json()) as PoolCoverExposureSummaryResponse;
 }
 
 export async function createPoolCoverEvent(input: PoolCoverEventCreateInput): Promise<PoolCoverEventCreateResponse> {

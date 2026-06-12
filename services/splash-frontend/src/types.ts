@@ -369,6 +369,29 @@ export interface PumpCirculationSummaryResponse {
   error: unknown;
 }
 
+export type PoolCoverExposureSummaryStatus = "available" | "partial" | "insufficient_data";
+
+export interface PoolCoverExposureSummaryItem {
+  window: "24h" | "72h" | "7d";
+  covered_minutes: number;
+  uncovered_minutes: number;
+  covered_percent: number;
+  uncovered_percent: number;
+  daylight_uncovered_minutes: number;
+  last_cover_change_at: string | null;
+  status: PoolCoverExposureSummaryStatus;
+}
+
+export interface PoolCoverExposureSummaryData {
+  generated_at: string;
+  summaries: PoolCoverExposureSummaryItem[];
+}
+
+export interface PoolCoverExposureSummaryResponse {
+  data: PoolCoverExposureSummaryData;
+  error: unknown;
+}
+
 export interface WeatherForecastDailyEntry {
   date: string;
   weather_code: number | null;

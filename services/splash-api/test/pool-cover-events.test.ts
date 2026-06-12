@@ -45,10 +45,16 @@ test("service requires cover type when recording cover on", async () => {
     async getLatest() {
       return null;
     },
+    async getLatestBefore() {
+      return null;
+    },
     async create() {
       throw new Error("should not be called");
     },
     async list() {
+      return [];
+    },
+    async listRange() {
       return [];
     }
   });
@@ -73,6 +79,69 @@ test("service throws unavailable when pool cover repository is missing", async (
       return true;
     }
   );
+});
+
+test("service derives cover exposure summaries from cover history", async () => {
+  const service = new PoolCoverEventsService(
+    "pool-1",
+    {
+      async getLatest() {
+        return null;
+      },
+      async getLatestBefore() {
+        return {
+          id: "cover-seed",
+          pool_id: "pool-1",
+          state: "on",
+          cover_type: "solar",
+          source: "manual",
+          recorded_at: "2026-06-04T00:00:00.000Z",
+          created_at: "2026-06-04T00:00:01.000Z"
+        };
+      },
+      async create() {
+        throw new Error("should not be called");
+      },
+      async list() {
+        return [];
+      },
+      async listRange() {
+        return [
+          {
+            id: "cover-1",
+            pool_id: "pool-1",
+            state: "off",
+            cover_type: "unknown",
+            source: "manual",
+            recorded_at: "2026-06-04T12:00:00.000Z",
+            created_at: "2026-06-04T12:00:01.000Z"
+          },
+          {
+            id: "cover-2",
+            pool_id: "pool-1",
+            state: "on",
+            cover_type: "solar",
+            source: "manual",
+            recorded_at: "2026-06-05T00:00:00.000Z",
+            created_at: "2026-06-05T00:00:01.000Z"
+          }
+        ];
+      }
+    },
+    "America/New_York"
+  );
+
+  const summary = await service.getPoolCoverExposureSummary({
+    window: "24h",
+    now: "2026-06-05T12:00:00.000Z"
+  });
+
+  assert.equal(summary.summaries.length, 1);
+  assert.equal(summary.summaries[0]?.window, "24h");
+  assert.equal(summary.summaries[0]?.status, "available");
+  assert.equal(summary.summaries[0]?.covered_minutes, 720);
+  assert.equal(summary.summaries[0]?.uncovered_minutes, 720);
+  assert.equal(summary.summaries[0]?.daylight_uncovered_minutes, 600);
 });
 
 test("pool cover API current, history, and create routes work", async () => {
@@ -109,6 +178,24 @@ test("pool cover API current, history, and create routes work", async () => {
         ]
       };
     },
+    async getPoolCoverExposureSummary(input) {
+      assert.equal(input.window, "24h");
+      return {
+        generated_at: "2026-06-05T12:00:00.000Z",
+        summaries: [
+          {
+            window: "24h",
+            covered_minutes: 720,
+            uncovered_minutes: 720,
+            covered_percent: 50,
+            uncovered_percent: 50,
+            daylight_uncovered_minutes: 480,
+            last_cover_change_at: "2026-06-05T00:00:00.000Z",
+            status: "available"
+          }
+        ]
+      };
+    },
     async createPoolCoverEvent(input) {
       assert.equal(input.state, "off");
       return {
@@ -130,6 +217,10 @@ test("pool cover API current, history, and create routes work", async () => {
   const historyResponse = await invokeRoute(server, "GET", "/pool/cover/history?limit=5");
   assert.equal(historyResponse.statusCode, 200);
   assert.equal(historyResponse.body.data.limit, 5);
+
+  const exposureResponse = await invokeRoute(server, "GET", "/pool/cover/exposure-summary?window=24h");
+  assert.equal(exposureResponse.statusCode, 200);
+  assert.equal(exposureResponse.body.data.summaries[0].daylight_uncovered_minutes, 480);
 
   const createResponse = await invokeRoute(server, "POST", "/pool/cover", {
     state: "off"
@@ -238,6 +329,7 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
     }),
     getCurrentPoolCover: async () => ({ current: null }),
     getPoolCoverHistory: async () => ({ start: null, end: null, limit: 100, events: [] }),
+    getPoolCoverExposureSummary: async () => ({ generated_at: new Date().toISOString(), summaries: [] }),
     createPoolCoverEvent: async () => ({
       id: "cover-1",
       pool_id: "pool-1",
