@@ -751,6 +751,21 @@ export function formatChlorinatorRunState(value: unknown): string {
   }
 }
 
+export function formatFilterCondition(value: unknown): string {
+  switch (value) {
+    case "clean":
+      return "Clean";
+    case "watch":
+      return "Watch";
+    case "dirty":
+      return "Dirty";
+    case "unknown":
+      return "Unknown";
+    default:
+      return "Unknown";
+  }
+}
+
 export function getHardwareDetailTone(_: SystemHardwareDetailId): "good" | "muted" {
   return "good";
 }
@@ -782,6 +797,9 @@ export function getHardwareDetailFacts(
     chlorinatorOutput: string;
     chlorinatorRunState: string;
     pumpRpm: string;
+    flowRate: string;
+    filterPressure: string;
+    filterCondition: string;
   }
 ): Array<{ label: string; value: string }> {
   switch (detail) {
@@ -801,7 +819,9 @@ export function getHardwareDetailFacts(
         { label: "Firmware Version", value: "3.04" },
         { label: "Power Usage", value: "740 W" },
         { label: "Protocol", value: "Pentair RS485" },
-        { label: "Flow Rate", value: "48 GPM" },
+        { label: "Flow Rate", value: input.flowRate },
+        { label: "Filter Pressure", value: input.filterPressure },
+        { label: "Filter Condition", value: input.filterCondition },
         { label: "Address", value: readNullableString(input.pump?.bus_address) ?? "0x60" },
         { label: "Last Message", value: "1s ago" }
       ];

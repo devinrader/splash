@@ -286,6 +286,9 @@ export interface ControllerCustomNameView {
 export interface PumpLatestState {
   rpm: number | null;
   running: boolean | null;
+  flowGpm: number | null;
+  filterPressurePsi: number | null;
+  filterCondition: string | null;
   updatedAt: string | null;
 }
 
@@ -339,6 +342,9 @@ export class LatestStateProjection {
   private pump: PumpLatestState = {
     rpm: null,
     running: null,
+    flowGpm: null,
+    filterPressurePsi: null,
+    filterCondition: null,
     updatedAt: null
   };
 
@@ -641,6 +647,9 @@ export class LatestStateProjection {
     this.pump = {
       rpm: readNumber(payload, "rpm"),
       running: readBoolean(payload, "running"),
+      flowGpm: readNumber(payload, "flow_gpm"),
+      filterPressurePsi: readNumber(payload, "filter_pressure_psi"),
+      filterCondition: normalizeFilterCondition(readString(payload, "filter_condition")),
       updatedAt: readString(payload, "occurred_at")
     };
   }
@@ -746,6 +755,9 @@ export class LatestStateProjection {
             latest_state: {
               rpm: this.pump.rpm,
               running: this.pump.running,
+              flow_gpm: this.pump.flowGpm,
+              filter_pressure_psi: this.pump.filterPressurePsi,
+              filter_condition: this.pump.filterCondition,
               updated_at: this.pump.updatedAt
             }
           };
@@ -1057,6 +1069,18 @@ function normalizeChlorinatorStatus(value: string | null): string | null {
     case "high_salt":
     case "fault":
     case "offline":
+    case "unknown":
+      return value;
+    default:
+      return value == null ? null : "unknown";
+  }
+}
+
+function normalizeFilterCondition(value: string | null): string | null {
+  switch (value) {
+    case "clean":
+    case "watch":
+    case "dirty":
     case "unknown":
       return value;
     default:

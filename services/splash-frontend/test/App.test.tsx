@@ -3052,7 +3052,10 @@ test("merges SSE updates into the equipment cards", async () => {
   const source = FakeEventSource.instances[0];
   source.emit("pump.state", {
     rpm: 2900,
-    running: true
+    running: true,
+    flow_gpm: 48,
+    filter_pressure_psi: 18,
+    filter_condition: "watch"
   });
   source.emit("equipment.state", {
     controller_hour_24: 14,
@@ -3083,9 +3086,17 @@ test("merges SSE updates into the equipment cards", async () => {
 
   await waitFor(() => {
     assert.ok(screen.getByText(/2900 RPM/));
+    assert.ok(screen.getByText(/48 GPM/));
     assert.ok(screen.getByText(/3450 ppm/));
     assert.ok(screen.getByText(/55 %/));
     assert.ok(screen.getByText("Idle"));
+  });
+
+  await openSystemTab("Sensors");
+
+  await waitFor(() => {
+    assert.ok(screen.getAllByText(/18 psi/).length > 0);
+    assert.ok(screen.getAllByText("Watch").length > 0);
   });
 
   await openSystemTab("Control");

@@ -34,6 +34,7 @@ import {
   formatControllerDatetimeReply,
   formatControllerTime,
   formatChlorinatorRunState,
+  formatFilterCondition,
   formatHexByte,
   formatLabel,
   formatMetric,
@@ -513,7 +514,10 @@ function HardwareDetailTab({
                 saltLevel: formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm"),
                 chlorinatorOutput: formatMetric(readMetric(chlorinator?.latest_state.output_percent), "%"),
                 chlorinatorRunState: formatChlorinatorRunState(chlorinator?.latest_state.run_state),
-                pumpRpm: formatMetric(readMetric(pump?.latest_state.rpm), "RPM")
+                pumpRpm: formatMetric(readMetric(pump?.latest_state.rpm), "RPM"),
+                flowRate: formatMetric(readMetric(pump?.latest_state.flow_gpm), "GPM"),
+                filterPressure: formatMetric(readMetric(pump?.latest_state.filter_pressure_psi), "psi"),
+                filterCondition: formatFilterCondition(pump?.latest_state.filter_condition)
               }).map((fact) => (
                 <div key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong></div>
               ))}
@@ -883,7 +887,7 @@ function HardwareDetailTab({
   );
 }
 
-function SensorsTab({ controller, chlorinator }: SystemPageProps) {
+function SensorsTab({ controller, pump, chlorinator }: SystemPageProps) {
   return (
     <section className="mock-system-page">
       <Card title="Sensors">
@@ -895,6 +899,9 @@ function SensorsTab({ controller, chlorinator }: SystemPageProps) {
         <MetricCard label="Salt Level" value={formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")} accent="sand" icon="salt" />
         <MetricCard label="SWG Output" value={formatMetric(readMetric(chlorinator?.latest_state.output_percent), "%")} accent="pump" icon="chlorinator" />
         <MetricCard label="SWG State" value={formatChlorinatorRunState(chlorinator?.latest_state.run_state)} accent="sand" icon="good" />
+        <MetricCard label="Flow Rate" value={formatMetric(readMetric(pump?.latest_state.flow_gpm), "GPM")} accent="pump" icon="pump" />
+        <MetricCard label="Filter Pressure" value={formatMetric(readMetric(pump?.latest_state.filter_pressure_psi), "psi")} accent="water" icon="system" />
+        <MetricCard label="Filter Condition" value={formatFilterCondition(pump?.latest_state.filter_condition)} accent="sand" icon="diagnostics" />
       </section>
       <Card title="Sensor Readings" status="Current values">
         <table className="system-data-table">
@@ -912,6 +919,8 @@ function SensorsTab({ controller, chlorinator }: SystemPageProps) {
               offline: "Offline",
               unknown: "Unknown"
             })}</span></td></tr>
+            <tr><td>Flow Rate</td><td>Hydraulics</td><td>Pump</td><td>{formatMetric(readMetric(pump?.latest_state.flow_gpm), "GPM")}</td><td><span className="system-status-chip system-status-chip-good">Current</span></td></tr>
+            <tr><td>Filter Pressure</td><td>Hydraulics</td><td>Filter</td><td>{formatMetric(readMetric(pump?.latest_state.filter_pressure_psi), "psi")}</td><td><span className="system-status-chip system-status-chip-good">{formatFilterCondition(pump?.latest_state.filter_condition)}</span></td></tr>
           </tbody>
         </table>
       </Card>
@@ -1118,6 +1127,8 @@ function getHardwareRows(controller: EquipmentRecord | undefined, pump: Equipmen
   const chlorinatorOutput = formatMetric(readMetric(chlorinator?.latest_state.output_percent), "%");
   const chlorinatorSalt = formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm");
   const chlorinatorRunState = formatChlorinatorRunState(chlorinator?.latest_state.run_state);
+  const flowRate = formatMetric(readMetric(pump?.latest_state.flow_gpm), "GPM");
+  const filterCondition = formatFilterCondition(pump?.latest_state.filter_condition);
 
   return [
     {
@@ -1131,7 +1142,7 @@ function getHardwareRows(controller: EquipmentRecord | undefined, pump: Equipmen
       id: "intelliflo" as const,
       shortCode: "PMP",
       title: pump?.display_name ?? "IntelliFlo Pump",
-      summary: `${formatMetric(readMetric(pump?.latest_state.rpm), "RPM")} · ${typeof pump?.latest_state.running === "boolean" && pump.latest_state.running ? "Running" : "Idle"}`,
+      summary: `${flowRate} · ${formatMetric(readMetric(pump?.latest_state.rpm), "RPM")} · ${filterCondition}`,
       status: typeof pump?.latest_state.running === "boolean" && pump.latest_state.running ? "Running" : "Idle"
     },
     {

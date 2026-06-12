@@ -57,6 +57,9 @@ test("projection exposes initial milestone equipment values through the bridge",
   projection.updatePump({
     rpm: 2800,
     running: true,
+    flow_gpm: 48,
+    filter_pressure_psi: 18,
+    filter_condition: "watch",
     occurred_at: "2026-03-30T00:00:01Z"
   });
   projection.updateChlorinator({
@@ -101,7 +104,12 @@ test("projection exposes initial milestone equipment values through the bridge",
     };
   };
   const pump = equipment[1] as {
-    latest_state: { rpm: number };
+    latest_state: {
+      rpm: number;
+      flow_gpm: number;
+      filter_pressure_psi: number;
+      filter_condition: string;
+    };
     control_circuit_keys: string[];
     default_control_circuit_key: string | null;
   };
@@ -161,12 +169,38 @@ test("projection exposes initial milestone equipment values through the bridge",
     write_circuit_id: null
   });
   assert.equal(pump.latest_state.rpm, 2800);
+  assert.equal(pump.latest_state.flow_gpm, 48);
+  assert.equal(pump.latest_state.filter_pressure_psi, 18);
+  assert.equal(pump.latest_state.filter_condition, "watch");
   assert.deepEqual(pump.control_circuit_keys, ["pool", "pool_low", "pool_high", "cleaner"]);
   assert.equal(pump.default_control_circuit_key, "pool");
   assert.equal(chlorinator.latest_state.salt_ppm, 3100);
   assert.equal(chlorinator.latest_state.output_percent, 45);
   assert.equal(chlorinator.latest_state.run_state, "producing");
   assert.equal(chlorinator.latest_state.status, "ok");
+});
+
+test("projection normalizes unknown filter condition values conservatively", () => {
+  const bridge = new EquipmentBridge();
+  const projection = new LatestStateProjection();
+
+  projection.updatePump({
+    rpm: 2400,
+    running: true,
+    flow_gpm: 42,
+    filter_pressure_psi: 16,
+    filter_condition: "needs_service",
+    occurred_at: "2026-03-30T00:10:00Z"
+  });
+
+  const equipment = projection.getEquipmentView(bridge.all());
+  const pump = equipment[1] as {
+    latest_state: {
+      filter_condition: string;
+    };
+  };
+
+  assert.equal(pump.latest_state.filter_condition, "unknown");
 });
 
 test("projection normalizes unknown chlorinator state values conservatively", () => {
