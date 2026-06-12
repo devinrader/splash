@@ -106,6 +106,10 @@ export interface HttpHandlers {
     end: string | null;
     interval: string | null;
   }): Promise<Record<string, unknown>>;
+  getPumpCirculationSummary?(input: {
+    pumpId: string | null;
+    window: string | null;
+  }): Promise<Record<string, unknown>>;
   getWeatherForecast(): Promise<Record<string, unknown>>;
   getWeatherHistory(input: {
     metric: string | null;
@@ -363,6 +367,17 @@ export class LocalHttpServer implements HttpServer {
             end: url.searchParams.get("end"),
             interval: url.searchParams.get("interval")
           }),
+          error: null
+        });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/telemetry/pumps/circulation-summary")) {
+        const url = new URL(req.url, "http://localhost");
+        return json(req, res, 200, {
+          data: await (this.handlers.getPumpCirculationSummary?.({
+            pumpId: url.searchParams.get("pumpId"),
+            window: url.searchParams.get("window")
+          }) ?? Promise.resolve({})),
           error: null
         });
       }

@@ -950,6 +950,42 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
         });
       }
 
+      if (input.includes("/telemetry/pumps/circulation-summary")) {
+        return response({
+          data: {
+            generated_at: "2026-05-12T12:00:00.000Z",
+            pump_id: "pump-main",
+            summaries: [
+              {
+                window: "24h",
+                runtime_minutes: 570,
+                runtime_percent: 39.6,
+                sample_coverage_percent: 82.4,
+                last_running_at: "2026-05-12T11:45:00.000Z",
+                status: "available"
+              },
+              {
+                window: "72h",
+                runtime_minutes: 1280,
+                runtime_percent: 29.6,
+                sample_coverage_percent: 61.2,
+                last_running_at: "2026-05-12T11:45:00.000Z",
+                status: "partial"
+              },
+              {
+                window: "7d",
+                runtime_minutes: 0,
+                runtime_percent: 0,
+                sample_coverage_percent: 8.5,
+                last_running_at: null,
+                status: "insufficient_data"
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
       if (input.includes("/weather/history")) {
         const url = new URL(input);
         const metric = url.searchParams.get("metric");
@@ -1103,6 +1139,9 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
 
   await waitFor(() => {
     assert.ok(screen.getByRole("tab", { name: "Pump", selected: true }));
+    assert.ok(screen.getByText("Circulation Summary"));
+    assert.ok(screen.getByText("Last 24h"));
+    assert.ok(screen.getByText("9.5h runtime · 39.6% of window · 82.4% coverage · Available"));
     assert.ok(screen.getByRole("img", { name: "Pump RPM history chart" }));
     assert.ok(screen.getByRole("img", { name: "Pump watt history chart" }));
   });
@@ -1112,6 +1151,8 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
   const pumpHistoryUrl = new URL(pumpHistoryRequest as string, "http://127.0.0.1:8080");
   assert.equal(pumpHistoryUrl.searchParams.get("pumpId"), "pump-main");
   assert.equal(pumpHistoryUrl.searchParams.get("interval"), "4h");
+  const pumpSummaryRequest = requests.find((entry) => entry.includes("/telemetry/pumps/circulation-summary"));
+  assert.ok(pumpSummaryRequest);
 
   fireEvent.click(screen.getByRole("tab", { name: "Weather" }));
 

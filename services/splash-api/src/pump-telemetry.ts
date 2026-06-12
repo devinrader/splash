@@ -4,6 +4,10 @@ import { queryInfluxRows } from "./temperature-telemetry.js";
 const DEFAULT_SAMPLE_INTERVAL_MS = 60 * 1000;
 const DEFAULT_HISTORY_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_CONTROLLER_ID = "default";
+const CIRCULATION_WINDOWS = ["24h", "72h", "7d"] as const;
+const MAX_CIRCULATION_GAP_MS = 5 * 60 * 1000;
+const AVAILABLE_COVERAGE_PERCENT = 80;
+const PARTIAL_COVERAGE_PERCENT = 20;
 
 export interface EasyTouchPumpTelemetryEvent {
   occurred_at: string;
@@ -77,6 +81,30 @@ export interface PumpHistoryView {
   };
   interval: string | null;
   series: PumpHistorySeriesView[];
+}
+
+export type CirculationSummaryWindow = (typeof CIRCULATION_WINDOWS)[number];
+export type CirculationSummaryStatus = "available" | "partial" | "insufficient_data";
+
+export interface PumpCirculationSummaryItemView {
+  window: CirculationSummaryWindow;
+  runtime_minutes: number;
+  runtime_percent: number;
+  sample_coverage_percent: number;
+  last_running_at: string | null;
+  status: CirculationSummaryStatus;
+}
+
+export interface PumpCirculationSummaryView {
+  generated_at: string;
+  pump_id: string | null;
+  summaries: PumpCirculationSummaryItemView[];
+}
+
+export interface PumpCirculationSummaryQuery {
+  pumpId?: string | null;
+  window?: string | null;
+  now?: string | null;
 }
 
 export interface PumpHistoryQuery {
@@ -211,6 +239,27 @@ export class PumpTelemetryService {
         series: []
       };
     }
+  }
+
+  async getCirculationSummary(query: PumpCirculationSummaryQuery): Promise<PumpCirculationSummaryView> {
+    const now = query.now ?? new Date().toISOString();
+    const requestedWindows = normalizeCirculationWindows(query.window);
+    const lookbackMs = Math.max(...requestedWindows.map(windowLookbackMs));
+    const start = new Date(Date.parse(now) - lookbackMs).toISOString();
+
+    const history = await this.getHistory({
+      pumpId: query.pumpId ?? null,
+      start,
+      end: now,
+      interval: null
+    });
+
+    return buildCirculationSummaryView({
+      pumpId: query.pumpId ?? null,
+      generatedAt: now,
+      windows: requestedWindows,
+      history
+    });
   }
 
   private shouldWrite(point: PumpTelemetryPoint): boolean {
@@ -422,6 +471,79 @@ export function formatPumpLineProtocolPoint(point: PumpTelemetryPoint): string {
   return `easy_touch_pump,${tags} ${fields} ${toInfluxTimestamp(point.packetTimestamp)}`;
 }
 
+export function buildCirculationSummaryView(input: {
+  pumpId: string | null;
+  generatedAt: string;
+  windows: readonly CirculationSummaryWindow[];
+  history: PumpHistoryView;
+}): PumpCirculationSummaryView {
+  const generatedAtMs = Date.parse(input.generatedAt);
+  const series = input.pumpId
+    ? input.history.series.filter((entry) => entry.pump_id === input.pumpId)
+    : input.history.series;
+
+  return {
+    generated_at: input.generatedAt,
+    pump_id: input.pumpId ?? null,
+    summaries: input.windows.map((window) => summarizeCirculationWindow(series, generatedAtMs, window))
+  };
+}
+
+function summarizeCirculationWindow(
+  series: PumpHistorySeriesView[],
+  generatedAtMs: number,
+  window: CirculationSummaryWindow
+): PumpCirculationSummaryItemView {
+  const windowMs = windowLookbackMs(window);
+  const windowStartMs = generatedAtMs - windowMs;
+  let runtimeMs = 0;
+  let coverageMs = 0;
+  let lastRunningAt: string | null = null;
+
+  for (const entry of series) {
+    const points = entry.points
+      .map((point) => ({ ...point, timestampMs: Date.parse(point.timestamp) }))
+      .filter((point) => Number.isFinite(point.timestampMs) && point.timestampMs >= windowStartMs && point.timestampMs <= generatedAtMs)
+      .sort((left, right) => left.timestampMs - right.timestampMs);
+
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const current = points[index];
+      const next = points[index + 1];
+      if (!current || !next) {
+        continue;
+      }
+      const deltaMs = next.timestampMs - current.timestampMs;
+      if (!Number.isFinite(deltaMs) || deltaMs <= 0) {
+        continue;
+      }
+      const effectiveMs = Math.min(deltaMs, MAX_CIRCULATION_GAP_MS);
+      coverageMs += effectiveMs;
+      if (current.running || current.rpm > 0) {
+        runtimeMs += effectiveMs;
+        lastRunningAt = latestIsoTimestamp(lastRunningAt, current.timestamp);
+      }
+    }
+
+    const finalPoint = points.at(-1);
+    if (finalPoint && (finalPoint.running || finalPoint.rpm > 0)) {
+      lastRunningAt = latestIsoTimestamp(lastRunningAt, finalPoint.timestamp);
+    }
+  }
+
+  const runtimeMinutes = roundToSingleDecimal(runtimeMs / (60 * 1000));
+  const runtimePercent = roundToSingleDecimal((runtimeMs / windowMs) * 100);
+  const coveragePercent = roundToSingleDecimal(Math.min(100, (coverageMs / windowMs) * 100));
+
+  return {
+    window,
+    runtime_minutes: runtimeMinutes,
+    runtime_percent: runtimePercent,
+    sample_coverage_percent: coveragePercent,
+    last_running_at: lastRunningAt,
+    status: circulationStatus(coveragePercent)
+  };
+}
+
 function buildLatestFluxQuery(bucket: string, pumpId: string | null): string {
   const pumpFilter = pumpId ? `\n  |> filter(fn: (r) => r.pump_id == "${escapeFluxString(pumpId)}")` : "";
   return `
@@ -484,6 +606,52 @@ function emptyLatestView(message: string): PumpLatestView {
 
 function pointKey(pumpId: string): string {
   return pumpId;
+}
+
+function normalizeCirculationWindows(value: string | null | undefined): CirculationSummaryWindow[] {
+  if (!value) {
+    return [...CIRCULATION_WINDOWS];
+  }
+  return isCirculationWindow(value) ? [value] : [...CIRCULATION_WINDOWS];
+}
+
+function isCirculationWindow(value: string): value is CirculationSummaryWindow {
+  return (CIRCULATION_WINDOWS as readonly string[]).includes(value);
+}
+
+function windowLookbackMs(window: CirculationSummaryWindow): number {
+  switch (window) {
+    case "24h":
+      return 24 * 60 * 60 * 1000;
+    case "72h":
+      return 72 * 60 * 60 * 1000;
+    case "7d":
+      return 7 * 24 * 60 * 60 * 1000;
+  }
+}
+
+function circulationStatus(coveragePercent: number): CirculationSummaryStatus {
+  if (coveragePercent >= AVAILABLE_COVERAGE_PERCENT) {
+    return "available";
+  }
+  if (coveragePercent >= PARTIAL_COVERAGE_PERCENT) {
+    return "partial";
+  }
+  return "insufficient_data";
+}
+
+function roundToSingleDecimal(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.round(value * 10) / 10;
+}
+
+function latestIsoTimestamp(current: string | null, next: string): string {
+  if (!current) {
+    return next;
+  }
+  return next > current ? next : current;
 }
 
 function errorMessage(error: unknown, fallback: string): string {

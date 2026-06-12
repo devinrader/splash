@@ -347,6 +347,28 @@ export interface PumpTelemetryHistoryResponse {
   error: unknown;
 }
 
+export type PumpCirculationSummaryStatus = "available" | "partial" | "insufficient_data";
+
+export interface PumpCirculationSummaryItem {
+  window: "24h" | "72h" | "7d";
+  runtime_minutes: number;
+  runtime_percent: number;
+  sample_coverage_percent: number;
+  last_running_at: string | null;
+  status: PumpCirculationSummaryStatus;
+}
+
+export interface PumpCirculationSummaryData {
+  generated_at: string;
+  pump_id: string | null;
+  summaries: PumpCirculationSummaryItem[];
+}
+
+export interface PumpCirculationSummaryResponse {
+  data: PumpCirculationSummaryData;
+  error: unknown;
+}
+
 export interface WeatherForecastDailyEntry {
   date: string;
   weather_code: number | null;

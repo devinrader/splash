@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { App } from "../src/app.js";
 import type { MessagingSession } from "../src/messaging.js";
 import {
+  buildCirculationSummaryView,
   formatPumpLineProtocolPoint,
   mapPumpTelemetryEvent,
   PumpTelemetryService,
@@ -224,6 +225,56 @@ test("pump telemetry service degrades gracefully when telemetry persistence is u
   assert.deepEqual(history.series, []);
 });
 
+test("buildCirculationSummaryView derives runtime and coverage from persisted pump telemetry history", () => {
+  const summary = buildCirculationSummaryView({
+    pumpId: "pump-main",
+    generatedAt: "2026-05-18T01:00:00.000Z",
+    windows: ["24h"],
+    history: {
+      range: {
+        start: "2026-05-17T01:00:00.000Z",
+        end: "2026-05-18T01:00:00.000Z"
+      },
+      interval: null,
+      series: [
+        {
+          pump_id: "pump-main",
+          controller_id: "default",
+          controller_type: "easytouch",
+          bus_address: "0x60",
+          points: [
+            {
+              timestamp: "2026-05-18T00:00:00.000Z",
+              running: true,
+              rpm: 1500,
+              watts: 500
+            },
+            {
+              timestamp: "2026-05-18T00:03:00.000Z",
+              running: true,
+              rpm: 1500,
+              watts: 500
+            },
+            {
+              timestamp: "2026-05-18T00:10:00.000Z",
+              running: false,
+              rpm: 0,
+              watts: 0
+            }
+          ]
+        }
+      ]
+    }
+  });
+
+  assert.equal(summary.summaries.length, 1);
+  assert.equal(summary.summaries[0]?.window, "24h");
+  assert.equal(summary.summaries[0]?.runtime_minutes, 8);
+  assert.equal(summary.summaries[0]?.sample_coverage_percent, 0.6);
+  assert.equal(summary.summaries[0]?.status, "insufficient_data");
+  assert.equal(summary.summaries[0]?.last_running_at, "2026-05-18T00:03:00.000Z");
+});
+
 test("app persists normalized EasyTouch pump events and exposes latest and history views", async () => {
   const repository = new FakePumpTelemetryRepository();
   repository.latest = {
@@ -288,6 +339,10 @@ test("app persists normalized EasyTouch pump events and exposes latest and histo
       end: string | null;
       interval: string | null;
     }): Promise<Record<string, unknown>>;
+    getPumpCirculationSummary(input: {
+      pumpId: string | null;
+      window: string | null;
+    }): Promise<Record<string, unknown>>;
   };
 
   const handlers = new Map<string, Array<(payload: Record<string, unknown>) => Promise<void> | void>>();
@@ -330,6 +385,10 @@ test("app persists normalized EasyTouch pump events and exposes latest and histo
     end: "2026-05-18T01:00:00.000Z",
     interval: "5m"
   });
+  const circulation = await app.getPumpCirculationSummary({
+    pumpId: "pump-main",
+    window: "24h"
+  });
 
   controller.abort();
   await running;
@@ -338,4 +397,5 @@ test("app persists normalized EasyTouch pump events and exposes latest and histo
   assert.equal(repository.writes[0]?.[0]?.pumpId, "pump-main");
   assert.equal((latest.pumps as Array<Record<string, unknown>>).length, 1);
   assert.equal((history.series as Array<Record<string, unknown>>).length, 1);
+  assert.equal((circulation.summaries as Array<Record<string, unknown>>).length, 1);
 });

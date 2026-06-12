@@ -32,6 +32,7 @@ import type {
   ControllerScheduleUpdateResponse,
   ControllerSchedulesResponse,
   PumpTelemetryHistoryResponse,
+  PumpCirculationSummaryResponse,
   TemperatureTelemetryHistoryResponse,
   TemperatureTelemetryLatestResponse,
   WeatherHistoryMetric,
@@ -310,6 +311,25 @@ export async function fetchPumpTelemetryHistory(input: {
     throw new Error(`Pump history request failed with HTTP ${response.status}.`);
   }
   return (await response.json()) as PumpTelemetryHistoryResponse;
+}
+
+export async function fetchPumpCirculationSummary(input: {
+  pumpId?: string;
+  window?: "24h" | "72h" | "7d";
+} = {}): Promise<PumpCirculationSummaryResponse> {
+  const params = new URLSearchParams();
+  if (input.pumpId) {
+    params.set("pumpId", input.pumpId);
+  }
+  if (input.window) {
+    params.set("window", input.window);
+  }
+  const query = params.toString();
+  const response = await fetch(buildApiUrl(`/telemetry/pumps/circulation-summary${query ? `?${query}` : ""}`));
+  if (!response.ok) {
+    throw new Error(`Pump circulation summary request failed with HTTP ${response.status}.`);
+  }
+  return (await response.json()) as PumpCirculationSummaryResponse;
 }
 
 export async function fetchChemistryLatest(): Promise<ChemistryLatestResponse> {

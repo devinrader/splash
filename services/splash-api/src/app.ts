@@ -402,6 +402,16 @@ export class App {
     } satisfies PumpHistoryQuery) as unknown as Record<string, unknown>;
   }
 
+  async getPumpCirculationSummary(query: {
+    pumpId: string | null;
+    window: string | null;
+  }): Promise<Record<string, unknown>> {
+    return this.pumpTelemetry.getCirculationSummary({
+      pumpId: query.pumpId,
+      window: query.window
+    }) as unknown as Record<string, unknown>;
+  }
+
   async getWeatherForecast(): Promise<Record<string, unknown>> {
     return this.weatherForecast.getLatest() as unknown as Record<string, unknown>;
   }
@@ -1542,6 +1552,7 @@ export class App {
         getTemperatureTelemetryHistory: async (query) => this.getTemperatureTelemetryHistory(query),
         getPumpTelemetryLatest: async (query) => this.getPumpTelemetryLatest(query),
         getPumpTelemetryHistory: async (query) => this.getPumpTelemetryHistory(query),
+        getPumpCirculationSummary: async (query) => this.getPumpCirculationSummary(query),
         getWeatherForecast: async () => this.getWeatherForecast(),
         getWeatherHistory: async (query) => this.getWeatherHistory(query),
         refreshWeatherForecast: async () => this.refreshWeatherForecast(),

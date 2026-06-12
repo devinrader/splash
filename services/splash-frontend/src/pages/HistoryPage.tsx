@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Line } from "@nivo/line";
-import { fetchChemistryHistory, fetchPoolCoverHistory, fetchPumpTelemetryHistory, fetchTemperatureTelemetryHistory, fetchWeatherHistory } from "../api";
+import { fetchChemistryHistory, fetchPoolCoverHistory, fetchPumpCirculationSummary, fetchPumpTelemetryHistory, fetchTemperatureTelemetryHistory, fetchWeatherHistory } from "../api";
 import { Card } from "../components/mockUi";
 import type {
   ChemistryHistoryData,
   ChemistryHistoryMetric,
   PoolCoverEventRecord,
+  PumpCirculationSummaryData,
+  PumpCirculationSummaryItem,
   PumpTelemetryHistoryData,
   PumpTelemetryHistorySeries,
   TemperatureTelemetryHistoryData,
@@ -75,7 +77,9 @@ export function HistoryPage() {
   const [temperatureHistoryByRange, setTemperatureHistoryByRange] = useState<Partial<Record<HistoryRangeId, TemperatureTelemetryHistoryData>>>({});
   const [temperatureErrorByRange, setTemperatureErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
   const [pumpHistoryByRange, setPumpHistoryByRange] = useState<Partial<Record<HistoryRangeId, PumpTelemetryHistoryData>>>({});
+  const [pumpCirculationSummary, setPumpCirculationSummary] = useState<PumpCirculationSummaryData | null>(null);
   const [pumpErrorByRange, setPumpErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
+  const [pumpSummaryError, setPumpSummaryError] = useState<string | null>(null);
   const [weatherHistoryByRange, setWeatherHistoryByRange] = useState<Partial<Record<HistoryRangeId, Record<WeatherHistoryMetric, WeatherHistoryData>>>>({});
   const [weatherErrorByRange, setWeatherErrorByRange] = useState<Partial<Record<HistoryRangeId, string | null>>>({});
   const [chemistryHistoryByRange, setChemistryHistoryByRange] = useState<Partial<Record<HistoryRangeId, ChemistryHistoryData>>>({});
@@ -118,22 +122,34 @@ export function HistoryPage() {
       }
 
       if (activeTab === "pump") {
-        const result = await fetchPumpTelemetryHistory({ pumpId: DEFAULT_PUMP_ID, start, end, interval: selectedRange.interval })
-          .then((value) => ({ status: "fulfilled" as const, value }))
-          .catch((reason) => ({ status: "rejected" as const, reason }));
+        const [historyResult, summaryResult] = await Promise.all([
+          fetchPumpTelemetryHistory({ pumpId: DEFAULT_PUMP_ID, start, end, interval: selectedRange.interval })
+            .then((value) => ({ status: "fulfilled" as const, value }))
+            .catch((reason) => ({ status: "rejected" as const, reason })),
+          fetchPumpCirculationSummary({ pumpId: DEFAULT_PUMP_ID })
+            .then((value) => ({ status: "fulfilled" as const, value }))
+            .catch((reason) => ({ status: "rejected" as const, reason }))
+        ]);
 
         if (cancelled) {
           return;
         }
 
-        if (result.status === "fulfilled") {
-          setPumpHistoryByRange((current) => ({ ...current, [selectedRangeId]: result.value.data }));
+        if (historyResult.status === "fulfilled") {
+          setPumpHistoryByRange((current) => ({ ...current, [selectedRangeId]: historyResult.value.data }));
           setPumpErrorByRange((current) => ({ ...current, [selectedRangeId]: null }));
         } else {
           setPumpErrorByRange((current) => ({
             ...current,
-            [selectedRangeId]: result.reason instanceof Error ? result.reason.message : String(result.reason)
+            [selectedRangeId]: historyResult.reason instanceof Error ? historyResult.reason.message : String(historyResult.reason)
           }));
+        }
+
+        if (summaryResult.status === "fulfilled") {
+          setPumpCirculationSummary(summaryResult.value.data);
+          setPumpSummaryError(null);
+        } else {
+          setPumpSummaryError(summaryResult.reason instanceof Error ? summaryResult.reason.message : String(summaryResult.reason));
         }
       }
 
@@ -219,7 +235,7 @@ export function HistoryPage() {
     activeTab === "temperature"
       ? temperatureError
       : activeTab === "pump"
-        ? pumpError
+        ? (pumpError ?? pumpSummaryError)
         : activeTab === "weather"
           ? weatherError
           : (chemistryError ?? coverError);
@@ -318,6 +334,20 @@ export function HistoryPage() {
               const wattSeries = buildPumpMetricChartSeries(pumpHistory?.series ?? [], DEFAULT_PUMP_ID, "watts");
               return (
                 <>
+                  <Card title="Circulation Summary">
+                    {pumpCirculationSummary?.summaries.length ? (
+                      <div className="automation-record-list">
+                        {pumpCirculationSummary.summaries.map((summary) => (
+                          <div className="automation-record-row" key={summary.window}>
+                            <strong>{formatCirculationWindow(summary.window)}</strong>
+                            <span>{formatCirculationSummary(summary)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="chart-empty-state">Circulation summary is not available yet.</p>
+                    )}
+                  </Card>
                   <Card title="Pump RPM" className="automation-card-table">
                     {rpmSeries.length ? (
                       <HistoryTrendChart
@@ -753,4 +783,37 @@ function summarizeWeatherFreshness(history: Partial<Record<WeatherHistoryMetric,
 
 function hasPumpHistoryPoints(history: PumpTelemetryHistoryData | null, pumpId: string): boolean {
   return (history?.series ?? []).some((entry) => entry.pump_id === pumpId && entry.points.length > 0);
+}
+
+function formatCirculationWindow(window: PumpCirculationSummaryItem["window"]): string {
+  switch (window) {
+    case "24h":
+      return "Last 24h";
+    case "72h":
+      return "Last 72h";
+    case "7d":
+      return "Last 7d";
+  }
+}
+
+function formatCirculationSummary(summary: PumpCirculationSummaryItem): string {
+  const runtimeHours = roundSingleDecimal(summary.runtime_minutes / 60);
+  const status = formatCirculationStatus(summary.status);
+  const coverage = `${roundSingleDecimal(summary.sample_coverage_percent)}% coverage`;
+  return `${runtimeHours}h runtime · ${roundSingleDecimal(summary.runtime_percent)}% of window · ${coverage} · ${status}`;
+}
+
+function formatCirculationStatus(status: PumpCirculationSummaryItem["status"]): string {
+  switch (status) {
+    case "available":
+      return "Available";
+    case "partial":
+      return "Partial";
+    case "insufficient_data":
+      return "Insufficient data";
+  }
+}
+
+function roundSingleDecimal(value: number): number {
+  return Math.round(value * 10) / 10;
 }
