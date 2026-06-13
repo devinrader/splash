@@ -51,6 +51,9 @@ import type {
   NotificationsResponse,
   NotificationStatusFilter,
   NotificationType,
+  MaintenanceRecommendationCategory,
+  MaintenanceRecommendationPriority,
+  MaintenanceRecommendationsResponse,
   PredictedSwimmabilityResponse,
   SwimmabilityResponse,
   WaterTestingScheduleResponse,
@@ -592,6 +595,30 @@ export async function fetchPredictedSwimmability(): Promise<PredictedSwimmabilit
     throw await buildApiError(response, "Predicted swimmability request failed.");
   }
   return (await response.json()) as PredictedSwimmabilityResponse;
+}
+
+export async function fetchMaintenanceRecommendations(input: {
+  limit?: number;
+  category?: MaintenanceRecommendationCategory;
+  priority?: MaintenanceRecommendationPriority;
+} = {}): Promise<MaintenanceRecommendationsResponse> {
+  const params = new URLSearchParams();
+  if (typeof input.limit === "number") {
+    params.set("limit", String(input.limit));
+  }
+  if (input.category) {
+    params.set("category", input.category);
+  }
+  if (input.priority) {
+    params.set("priority", input.priority);
+  }
+
+  const suffix = params.toString();
+  const response = await fetch(buildApiUrl(suffix ? `/maintenance/recommendations?${suffix}` : "/maintenance/recommendations"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Maintenance recommendations request failed.");
+  }
+  return (await response.json()) as MaintenanceRecommendationsResponse;
 }
 
 export async function fetchNotifications(input: {

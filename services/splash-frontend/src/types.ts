@@ -1025,6 +1025,64 @@ export interface PredictedSwimmabilityResponse {
   error: unknown;
 }
 
+export type MaintenanceRecommendationCategory =
+  | "retest"
+  | "chemistry_adjustment"
+  | "circulation"
+  | "cover_usage"
+  | "cleaning"
+  | "inspection"
+  | "wait";
+
+export type MaintenanceRecommendationPriority = "now" | "soon" | "monitor";
+
+export interface MaintenanceRecommendationSupportingInputData {
+  key: string;
+  label: string;
+  detail: string;
+}
+
+export interface MaintenanceRecommendationItemData {
+  id: string;
+  category: MaintenanceRecommendationCategory;
+  priority: MaintenanceRecommendationPriority;
+  title: string;
+  summary: string;
+  recommended_action: string;
+  why: string[];
+  confidence: SwimmabilityConfidence;
+  blocking_factors: string[];
+  supporting_inputs: MaintenanceRecommendationSupportingInputData[];
+  related_alert_types: NotificationType[];
+}
+
+export interface MaintenanceRecommendationsData {
+  generated_at: string;
+  current: {
+    swimmability: {
+      status: SwimmabilityStatus;
+      score: number;
+      confidence: SwimmabilityConfidence;
+      headline: string;
+      updated_at: string;
+    };
+    predicted: {
+      horizon: "24h" | "48h" | "72h" | "7d";
+      status: SwimmabilityStatus;
+      score: number;
+      confidence: SwimmabilityConfidence;
+      trend: PredictedSwimmabilityTrend;
+      headline: string;
+    } | null;
+  };
+  recommendations: MaintenanceRecommendationItemData[];
+}
+
+export interface MaintenanceRecommendationsResponse {
+  data: MaintenanceRecommendationsData;
+  error: unknown;
+}
+
 export type NotificationType =
   | "chemistry_test_due"
   | "swimmability_caution"

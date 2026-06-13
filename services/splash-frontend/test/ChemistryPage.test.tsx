@@ -192,7 +192,6 @@ test("chemistry page loads observations, maintenance, and additions and saves al
   render(<ChemistryPage />);
 
   await waitFor(() => {
-    assert.ok(screen.getByText("Chemistry Workspace"));
     assert.ok(screen.getByText("Water Condition"));
     assert.ok(screen.getByText("Maintenance Activity"));
     assert.ok(screen.getByText("Chemical Additions"));

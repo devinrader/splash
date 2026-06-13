@@ -170,7 +170,8 @@ function getScheduleDayValues(row: ControllerScheduleRecord | null): number[] {
     return [1, 3, 5];
   }
 
-  return DAY_OPTIONS.filter((option) => (row.schedule_days & (1 << option.value)) !== 0).map((option) => option.value);
+  const daysMask = row.schedule_days;
+  return DAY_OPTIONS.filter((option) => (daysMask & (1 << option.value)) !== 0).map((option) => option.value);
 }
 
 function findDefaultEditorSchedule(rows: ControllerScheduleRecord[]): ControllerScheduleRecord | null {
@@ -477,7 +478,23 @@ function AutomationSchedulesTab({
 
     setScheduleSavePending(true);
     try {
-      await updateControllerSchedule(payload);
+      if (payload.mode === "repeat") {
+        await updateControllerSchedule({
+          scheduleId: payload.scheduleId,
+          mode: payload.mode,
+          circuitId: payload.circuitId,
+          startTimeMinutes: payload.startTimeMinutes ?? undefined,
+          endTimeMinutes: payload.endTimeMinutes ?? undefined,
+          daysMask: payload.daysMask
+        });
+      } else {
+        await updateControllerSchedule({
+          scheduleId: payload.scheduleId,
+          mode: payload.mode,
+          circuitId: payload.circuitId,
+          runtimeMinutes: payload.runtimeMinutes ?? undefined
+        });
+      }
       await onSchedulesUpdated();
       setUseDefaultEditorSeed(true);
       setScheduleSaveMessage(`Program ${selectedScheduleId} saved to the controller.`);

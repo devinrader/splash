@@ -68,6 +68,7 @@ import {
   WaterTestingScheduleValidationError
 } from "./water-testing-schedule.js";
 import type { PredictedSwimmabilityView } from "./predicted-swimmability.js";
+import type { MaintenanceRecommendationsView } from "./maintenance-recommendations.js";
 
 export interface HttpServer {
   start(signal: AbortSignal): Promise<void>;
@@ -168,6 +169,11 @@ export interface HttpHandlers {
   createPoolCoverEvent(input: Record<string, unknown>): Promise<PoolCoverEventRecord>;
   getSwimmability(): Promise<SwimmabilityView>;
   getPredictedSwimmability?(input: { horizon: string | null }): Promise<PredictedSwimmabilityView | Record<string, unknown>>;
+  getMaintenanceRecommendations?(input: {
+    limit: string | null;
+    category: string | null;
+    priority: string | null;
+  }): Promise<MaintenanceRecommendationsView | Record<string, unknown>>;
   getNotifications(input: {
     status: string | null;
     limit: string | null;
@@ -652,6 +658,18 @@ export class LocalHttpServer implements HttpServer {
         return json(req, res, 200, {
           data: await this.handlers.getPredictedSwimmability({
             horizon: url.searchParams.get("horizon")
+          }),
+          error: null
+        });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/maintenance/recommendations") && this.handlers.getMaintenanceRecommendations) {
+        const url = new URL(req.url, "http://localhost");
+        return json(req, res, 200, {
+          data: await this.handlers.getMaintenanceRecommendations({
+            limit: url.searchParams.get("limit"),
+            category: url.searchParams.get("category"),
+            priority: url.searchParams.get("priority")
           }),
           error: null
         });

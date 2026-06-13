@@ -328,7 +328,7 @@ test("redirects legacy alerts route into Routines", async () => {
 
   await waitFor(() => {
     assert.ok(screen.getByText("Routines - Alerts & guided processes"));
-    assert.ok(screen.getByText("Routines Overview"));
+    assert.ok(screen.getByText("Recommended Next Steps"));
     assert.ok(screen.getByText("Alert Filters"));
   });
 });
@@ -359,7 +359,8 @@ test("redirects legacy water test log route into Chemistry", async () => {
 
   await waitFor(() => {
     assert.ok(screen.getByText("Chemistry - Water testing & treatment"));
-    assert.ok(screen.getByText("Chemistry Workspace"));
+    assert.ok(screen.getByText("Water Condition"));
+    assert.ok(screen.getByText("Chemical Additions"));
     assert.ok(screen.getByText("Prior Logs"));
   });
 });
@@ -628,7 +629,6 @@ test("renders working Automation tabs from the approved mockup slice", async () 
     assert.ok(screen.getByRole("tab", { name: "Scenes" }));
     assert.ok(screen.getByRole("tab", { name: "Triggers" }));
     assert.ok(screen.getByRole("tab", { name: "Logs" }));
-    assert.ok(screen.getByText("Automation Overview"));
     assert.ok(screen.getByText("Upcoming Automation"));
     assert.ok(screen.getByText("Recent Activity"));
   });
@@ -744,6 +744,101 @@ test("renders an explicit unavailable state when controller schedules are not ye
     );
     assert.ok(screen.getByText("Observed raw schedule payloads"));
     assert.ok(screen.getByText("1 schedule payload sample captured, but not yet field-decoded."));
+  });
+});
+
+test("renders maintenance recommendations in Routines above the alerts inbox", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment")) {
+        return response({
+          data: [
+            {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {}
+            }
+          ],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/maintenance/recommendations")) {
+        return response({
+          data: {
+            generated_at: "2026-06-12T22:00:00.000Z",
+            current: {
+              swimmability: {
+                status: "caution",
+                score: 62,
+                confidence: "medium",
+                headline: "Needs Attention",
+                updated_at: "2026-06-12T22:00:00.000Z"
+              },
+              predicted: {
+                horizon: "24h",
+                status: "poor",
+                score: 44,
+                confidence: "medium",
+                trend: "declining",
+                headline: "Declining tomorrow"
+              }
+            },
+            recommendations: [
+              {
+                id: "recommendation-1",
+                category: "retest",
+                priority: "now",
+                title: "Retest free chlorine and pH",
+                summary: "Refresh the chemistry baseline before relying on corrective guidance.",
+                recommended_action: "Run a manual free chlorine and pH test and log the result.",
+                why: ["Free chlorine freshness is stale or unavailable."],
+                confidence: "high",
+                blocking_factors: [],
+                supporting_inputs: [
+                  {
+                    key: "chemistry_freshness",
+                    label: "Chemistry freshness",
+                    detail: "stale"
+                  }
+                ],
+                related_alert_types: ["chemistry_test_due"]
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
+      if (input.includes("/notifications")) {
+        return response({
+          data: {
+            status: "unread",
+            limit: 50,
+            notifications: []
+          },
+          error: null
+        });
+      }
+
+      return platformStatusResponse();
+    })
+  );
+
+  renderApp(["/routines"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Recommended Next Steps"));
+    assert.ok(screen.getByText("Retest free chlorine and pH"));
+    assert.ok(screen.getByText("Run a manual free chlorine and pH test and log the result."));
+    assert.ok(screen.getByRole("button", { name: "Mark all read" }));
   });
 });
 
@@ -1685,7 +1780,7 @@ test("renders EasyTouch circuit configuration rows from full controller circuit 
       }
 
       if (input.endsWith("/health")) {
-        return healthResponse();
+        return platformStatusResponse();
       }
 
       if (input.endsWith("/controller/heater")) {
@@ -3977,10 +4072,10 @@ test("renders and filters the live message log component", async () => {
   });
 });
 
-function response(payload: unknown): Response {
+function response(payload: unknown, status = 200): Response {
   return {
-    ok: true,
-    status: 200,
+    ok: status >= 200 && status < 300,
+    status,
     json: async () => payload
   } as Response;
 }

@@ -117,6 +117,10 @@ import {
   type NotificationsReadAllResult,
   type NotificationsView
 } from "./notifications.js";
+import {
+  buildMaintenanceRecommendationsView,
+  type MaintenanceRecommendationsView
+} from "./maintenance-recommendations.js";
 import { buildPredictedSwimmabilityView, type PredictedSwimmabilityView } from "./predicted-swimmability.js";
 import { buildSwimmabilityView, type SwimmabilityView } from "./swimmability.js";
 import {
@@ -630,6 +634,38 @@ export class App {
       chlorinator: snapshot.chlorinator,
       chemicalAdditions: chemicalAdditions.additions,
       horizon: input.horizon
+    });
+  }
+
+  async getMaintenanceRecommendations(input: {
+    limit: string | null;
+    category: string | null;
+    priority: string | null;
+  }): Promise<MaintenanceRecommendationsView> {
+    const swimmabilityInput = await this.getSwimmabilityInputs();
+    const swimmability = buildSwimmabilityView(swimmabilityInput);
+    const [predicted, observations, maintenanceActivities, chemicalAdditions, coverExposure, circulation] = await Promise.all([
+      this.getPredictedSwimmability({ horizon: null }),
+      this.chemistryObservations.getChemistryObservations({ start: null, end: null, limit: "10" }),
+      this.maintenanceActivities.getMaintenanceActivities({ start: null, end: null, limit: "20" }),
+      this.chemicalAdditions.getChemicalAdditions({ start: null, end: null, limit: "20" }),
+      this.poolCoverEvents.getPoolCoverExposureSummary({ window: null }),
+      this.pumpTelemetry.getCirculationSummary({ pumpId: null, window: null })
+    ]);
+    const snapshot = this.projection.getSnapshot();
+
+    return buildMaintenanceRecommendationsView({
+      swimmability,
+      predicted,
+      freshness: swimmabilityInput.freshness,
+      observations: observations.observations,
+      maintenanceActivities: maintenanceActivities.activities,
+      chemicalAdditions: chemicalAdditions.additions,
+      coverExposure,
+      circulation,
+      pump: snapshot.pump,
+      chlorinator: snapshot.chlorinator,
+      query: input
     });
   }
 
@@ -1613,6 +1649,7 @@ export class App {
         createPoolCoverEvent: async (input) => this.createPoolCoverEvent(input),
         getSwimmability: async () => this.getSwimmability(),
         getPredictedSwimmability: async (query) => this.getPredictedSwimmability(query) as unknown as Record<string, unknown>,
+        getMaintenanceRecommendations: async (query) => this.getMaintenanceRecommendations(query) as unknown as Record<string, unknown>,
         getNotifications: async (query) => this.getNotifications(query),
         markNotificationRead: async (id) => this.markNotificationRead(id),
         markAllNotificationsRead: async () => this.markAllNotificationsRead(),

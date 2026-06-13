@@ -513,6 +513,20 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
     }),
     getSwimmability: async () => buildUnknownSwimmabilityView(),
     getPredictedSwimmability: async () => buildUnknownPredictedSwimmabilityView(),
+    getMaintenanceRecommendations: async () => ({
+      generated_at: "2026-01-01T00:00:00.000Z",
+      current: {
+        swimmability: {
+          status: "unknown",
+          score: 0,
+          confidence: "unknown",
+          headline: "No data",
+          updated_at: "2026-01-01T00:00:00.000Z"
+        },
+        predicted: null
+      },
+      recommendations: []
+    }),
     getNotifications: async () => ({ status: "unread", limit: 50, notifications: [] }),
     markNotificationRead: async () => null,
     markAllNotificationsRead: async () => ({ updated_count: 0 }),
