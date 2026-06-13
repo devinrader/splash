@@ -896,6 +896,7 @@ export interface PoolCoverHistoryResponse {
 export interface PoolCoverEventCreateInput {
   state: PoolCoverState;
   coverType?: PoolCoverType;
+  recordedAt?: string;
 }
 
 export interface PoolCoverEventCreateResponse {

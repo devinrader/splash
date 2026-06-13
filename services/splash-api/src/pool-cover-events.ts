@@ -53,6 +53,7 @@ export interface PoolCoverExposureSummaryView {
 export interface PoolCoverEventCreateInput {
   state?: PoolCoverState;
   cover_type?: PoolCoverType | null;
+  recorded_at?: string | null;
 }
 
 export interface PoolCoverHistoryQueryInput {
@@ -79,6 +80,7 @@ interface ValidatedPoolCoverEventCreateInput {
   cover_type: PoolCoverType;
   source: PoolCoverEventSource;
   recorded_at: string;
+  explicit_recorded_at: boolean;
 }
 
 interface ValidatedPoolCoverHistoryQuery {
@@ -95,6 +97,7 @@ interface ValidatedPoolCoverExposureSummaryQuery {
 export interface PoolCoverEventsRepository {
   getLatest(poolId: string): Promise<PoolCoverEventRecord | null>;
   getLatestBefore(poolId: string, before: string): Promise<PoolCoverEventRecord | null>;
+  getEarliestAfter(poolId: string, after: string): Promise<PoolCoverEventRecord | null>;
   create(record: PoolCoverEventStoredRecord): Promise<PoolCoverEventRecord>;
   list(poolId: string, query: ValidatedPoolCoverHistoryQuery): Promise<PoolCoverEventRecord[]>;
   listRange(poolId: string, range: { start: string; end: string }): Promise<PoolCoverEventRecord[]>;
@@ -164,7 +167,9 @@ export class PoolCoverEventsService {
 
   async createPoolCoverEvent(input: unknown): Promise<PoolCoverEventRecord> {
     const validated = validatePoolCoverEventCreateInput(input);
-    return this.requireRepository().create({
+    const repository = this.requireRepository();
+    await this.ensureEventSequenceIsValid(repository, validated);
+    return repository.create({
       poolId: this.poolId,
       state: validated.state,
       coverType: validated.cover_type,
@@ -178,6 +183,49 @@ export class PoolCoverEventsService {
       throw new PoolCoverEventsUnavailableError("SQLite-backed pool cover events are not configured.");
     }
     return this.repository;
+  }
+
+  private async ensureEventSequenceIsValid(
+    repository: PoolCoverEventsRepository,
+    input: ValidatedPoolCoverEventCreateInput
+  ): Promise<void> {
+    const [previous, next] = await Promise.all([
+      repository.getLatestBefore(this.poolId, input.recorded_at),
+      repository.getEarliestAfter(this.poolId, input.recorded_at)
+    ]);
+
+    if (previous && previous.recorded_at === input.recorded_at && previous.state === input.state) {
+      throw new PoolCoverEventsValidationError("Pool cover event validation failed.", {
+        recorded_at: "A cover event with the same state already exists at this time."
+      });
+    }
+
+    if (next && next.recorded_at === input.recorded_at && next.state === input.state) {
+      throw new PoolCoverEventsValidationError("Pool cover event validation failed.", {
+        recorded_at: "A cover event with the same state already exists at this time."
+      });
+    }
+
+    if (!input.explicit_recorded_at) {
+      if (previous?.state === input.state) {
+        throw new PoolCoverEventsValidationError("Pool cover event validation failed.", {
+          state: "Pool cover events must represent a state change."
+        });
+      }
+      return;
+    }
+
+    if (previous?.state === input.state) {
+      throw new PoolCoverEventsValidationError("Pool cover event validation failed.", {
+        recorded_at: "Backfilled cover events must represent a state change from the prior event."
+      });
+    }
+
+    if (next?.state === input.state) {
+      throw new PoolCoverEventsValidationError("Pool cover event validation failed.", {
+        recorded_at: "Backfilled cover event creates an ambiguous sequence because the next event has the same state."
+      });
+    }
   }
 }
 
@@ -223,6 +271,28 @@ export class SqlitePoolCoverEventsRepository implements PoolCoverEventsRepositor
         LIMIT 1
       `,
       [poolId, before]
+    );
+    return row ? mapPoolCoverEventRow(row) : null;
+  }
+
+  async getEarliestAfter(poolId: string, after: string): Promise<PoolCoverEventRecord | null> {
+    const row = this.database.get<PoolCoverEventRow>(
+      `
+        SELECT
+          id,
+          pool_id,
+          state,
+          cover_type,
+          source,
+          recorded_at,
+          created_at
+        FROM pool_cover_events
+        WHERE pool_id = ?
+          AND recorded_at >= ?
+        ORDER BY recorded_at ASC, created_at ASC
+        LIMIT 1
+      `,
+      [poolId, after]
     );
     return row ? mapPoolCoverEventRow(row) : null;
   }
@@ -353,11 +423,17 @@ function validatePoolCoverEventCreateInput(input: unknown): ValidatedPoolCoverEv
     });
   }
 
+  const explicitRecordedAt = typeof payload.recorded_at === "string" && payload.recorded_at.trim().length > 0;
+  const recordedAt = explicitRecordedAt
+    ? requireIsoDateTime(payload.recorded_at as string, "recorded_at")
+    : new Date().toISOString();
+
   return {
     state,
     cover_type: coverType ?? "unknown",
     source: "manual",
-    recorded_at: new Date().toISOString()
+    recorded_at: recordedAt,
+    explicit_recorded_at: explicitRecordedAt
   };
 }
 

@@ -23,6 +23,9 @@ export function HomePage() {
   const [coverCurrent, setCoverCurrent] = useState<PoolCoverCurrentData | null>(null);
   const [coverHistory, setCoverHistory] = useState<PoolCoverEventRecord[]>([]);
   const [coverTypeDraft, setCoverTypeDraft] = useState<PoolCoverType>("solar");
+  const [retroactiveCoverState, setRetroactiveCoverState] = useState<"on" | "off">("on");
+  const [retroactiveCoverType, setRetroactiveCoverType] = useState<PoolCoverType>("solar");
+  const [retroactiveRecordedAt, setRetroactiveRecordedAt] = useState("");
   const [coverPending, setCoverPending] = useState(false);
   const [coverMessage, setCoverMessage] = useState<string | null>(null);
   const [coverError, setCoverError] = useState<string | null>(null);
@@ -115,6 +118,31 @@ export function HomePage() {
       });
       await refreshCoverData();
       setCoverMessage(state === "on" ? "Cover marked on." : "Cover marked off.");
+    } catch (nextError) {
+      setCoverError(nextError instanceof Error ? nextError.message : String(nextError));
+    } finally {
+      setCoverPending(false);
+    }
+  }
+
+  async function handleRetroactiveCoverSave(): Promise<void> {
+    if (!retroactiveRecordedAt) {
+      setCoverError("Choose the effective cover date and time.");
+      return;
+    }
+
+    setCoverPending(true);
+    setCoverMessage(null);
+    setCoverError(null);
+    try {
+      await createPoolCoverEvent({
+        state: retroactiveCoverState,
+        coverType: retroactiveCoverState === "on" ? retroactiveCoverType : undefined,
+        recordedAt: convertDatetimeLocalToIso(retroactiveRecordedAt)
+      });
+      await refreshCoverData();
+      setCoverMessage("Retroactive cover event saved.");
+      setRetroactiveRecordedAt("");
     } catch (nextError) {
       setCoverError(nextError instanceof Error ? nextError.message : String(nextError));
     } finally {
@@ -224,7 +252,7 @@ export function HomePage() {
 
           <div className="settings-form-grid" style={{ marginTop: "1rem" }}>
             <label htmlFor="home-cover-type">
-              <span>Cover Type</span>
+              <span>Real-Time Cover Type</span>
               <select
                 id="home-cover-type"
                 value={coverTypeDraft}
@@ -249,6 +277,52 @@ export function HomePage() {
             </button>
           </div>
 
+          <div className="settings-form-grid" style={{ marginTop: "1rem" }}>
+            <label htmlFor="home-retroactive-cover-state">
+              <span>Retroactive State</span>
+              <select
+                id="home-retroactive-cover-state"
+                value={retroactiveCoverState}
+                onChange={(event) => setRetroactiveCoverState(event.target.value as "on" | "off")}
+                disabled={coverPending}
+              >
+                <option value="on">Cover On</option>
+                <option value="off">Cover Off</option>
+              </select>
+            </label>
+            <label htmlFor="home-retroactive-cover-type">
+              <span>Retroactive Cover Type</span>
+              <select
+                id="home-retroactive-cover-type"
+                value={retroactiveCoverType}
+                onChange={(event) => setRetroactiveCoverType(event.target.value as PoolCoverType)}
+                disabled={coverPending || retroactiveCoverState === "off"}
+              >
+                <option value="solar">Solar</option>
+                <option value="winter">Winter</option>
+                <option value="safety">Safety</option>
+                <option value="automatic">Automatic</option>
+                <option value="unknown">Unknown</option>
+              </select>
+            </label>
+            <label htmlFor="home-retroactive-recorded-at">
+              <span>Effective Date and Time</span>
+              <input
+                id="home-retroactive-recorded-at"
+                type="datetime-local"
+                value={retroactiveRecordedAt}
+                onChange={(event) => setRetroactiveRecordedAt(event.target.value)}
+                disabled={coverPending}
+              />
+            </label>
+          </div>
+
+          <div className="form-action-row">
+            <button type="button" className="secondary-button" onClick={() => void handleRetroactiveCoverSave()} disabled={coverPending}>
+              {coverPending ? "Saving..." : "Save Retroactive Event"}
+            </button>
+          </div>
+
           {coverMessage ? <p className="form-caption">{coverMessage}</p> : null}
           {coverError ? <p className="form-error">{coverError}</p> : null}
 
@@ -268,6 +342,14 @@ export function HomePage() {
       </div>
     </section>
   );
+}
+
+function convertDatetimeLocalToIso(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Cover date and time must be valid.");
+  }
+  return parsed.toISOString();
 }
 
 function WeatherImpactCard({ forecast }: { forecast: WeatherForecastData }) {

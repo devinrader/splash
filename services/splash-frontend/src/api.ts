@@ -572,7 +572,8 @@ export async function createPoolCoverEvent(input: PoolCoverEventCreateInput): Pr
     },
     body: JSON.stringify({
       state: input.state,
-      cover_type: input.coverType
+      cover_type: input.coverType,
+      recorded_at: input.recordedAt
     })
   });
   if (!response.ok) {

@@ -2444,7 +2444,7 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
     assert.ok(provenance.getByText("Weather"));
     assert.ok(provenance.getByText("Weather provider · Fresh · High confidence"));
     assert.ok(screen.getByRole("button", { name: "Cover On" }));
-    assert.ok(screen.getByLabelText("Cover Type"));
+    assert.ok(screen.getByLabelText("Real-Time Cover Type"));
   });
 
   fireEvent.click(screen.getByRole("link", { name: /Diagnostics/ }));
@@ -2795,12 +2795,145 @@ test("records a pool cover event from the Home page", async () => {
     assert.ok(screen.getByText("No cover event has been recorded yet."));
   });
 
-  fireEvent.change(screen.getByLabelText("Cover Type"), { target: { value: "safety" } });
+  fireEvent.change(screen.getByLabelText("Real-Time Cover Type"), { target: { value: "safety" } });
   fireEvent.click(screen.getByRole("button", { name: "Cover On" }));
 
   await waitFor(() => {
     assert.ok(screen.getByText("Cover marked on."));
-    assert.ok(screen.getByText("Safety"));
+  });
+});
+
+test("records a retroactive pool cover event from the Home page", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+      if (input.endsWith("/equipment")) {
+        return response({ data: [], error: null });
+      }
+      if (input.endsWith("/weather/forecast")) {
+        return response({
+          data: {
+            pool_id: "pool-1",
+            provider: "openmeteo",
+            status: "empty",
+            message: "No weather forecast has been captured yet.",
+            stale: false,
+            fetched_at: null,
+            location: null,
+            daily: [],
+            hourly: []
+          },
+          error: null
+        });
+      }
+      if (input.endsWith("/pool/cover") && (!init || !init.method)) {
+        return response({
+          data: {
+            current: null
+          },
+          error: null
+        });
+      }
+      if (input.endsWith("/pool/cover") && init?.method === "POST") {
+        const parsed = JSON.parse(init.body as string) as Record<string, unknown>;
+        assert.equal(parsed.state, "off");
+        assert.equal(parsed.recorded_at, "2026-05-10T14:30:00.000Z");
+        return response(
+          {
+            data: {
+              id: "cover-3",
+              pool_id: "pool-1",
+              state: "off",
+              cover_type: "unknown",
+              source: "manual",
+              recorded_at: "2026-05-10T14:30:00.000Z",
+              created_at: "2026-05-12T12:15:03.000Z"
+            },
+            error: null
+          },
+          201
+        );
+      }
+      if (input.includes("/pool/cover/history")) {
+        return response({
+          data: {
+            start: null,
+            end: null,
+            limit: 5,
+            events: [
+              {
+                id: "cover-3",
+                pool_id: "pool-1",
+                state: "off",
+                cover_type: "unknown",
+                source: "manual",
+                recorded_at: "2026-05-10T14:30:00.000Z",
+                created_at: "2026-05-12T12:15:03.000Z"
+              }
+            ]
+          },
+          error: null
+        });
+      }
+      if (input.endsWith("/swimmability")) {
+        return response({
+          data: {
+            status: "unknown",
+            score: 0,
+            summary: "Swimmability is unknown because no chemistry reading has been logged yet.",
+            headline: "Assessment Unavailable",
+            confidence: "unknown",
+            highlights: [],
+            updated_at: "2026-05-12T12:00:00.000Z",
+            drivers: [],
+            inputs: {
+              chemistry_latest_at: null,
+              cover_latest_at: null,
+              forecast_fetched_at: null,
+              telemetry_latest_at: null
+            }
+          },
+          error: null
+        });
+      }
+      if (input.endsWith("/swimmability/predicted")) {
+        return response({
+          data: {
+            generated_at: "2026-05-12T12:00:00.000Z",
+            current: {
+              status: "unknown",
+              score: 0,
+              confidence: "unknown",
+              headline: "Assessment Unavailable",
+              updated_at: "2026-05-12T12:00:00.000Z"
+            },
+            predictions: []
+          },
+          error: null
+        });
+      }
+
+      return platformStatusResponse();
+    })
+  );
+
+  renderApp(["/"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Pool Cover"));
+  });
+
+  fireEvent.change(screen.getByLabelText("Retroactive State"), { target: { value: "off" } });
+  fireEvent.change(screen.getByLabelText("Effective Date and Time"), {
+    target: { value: "2026-05-10T10:30" }
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save Retroactive Event" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Retroactive cover event saved."));
   });
 });
 

@@ -48,6 +48,9 @@ test("service requires cover type when recording cover on", async () => {
     async getLatestBefore() {
       return null;
     },
+    async getEarliestAfter() {
+      return null;
+    },
     async create() {
       throw new Error("should not be called");
     },
@@ -99,6 +102,9 @@ test("service derives cover exposure summaries from cover history", async () => 
           created_at: "2026-06-04T00:00:01.000Z"
         };
       },
+      async getEarliestAfter() {
+        return null;
+      },
       async create() {
         throw new Error("should not be called");
       },
@@ -142,6 +148,119 @@ test("service derives cover exposure summaries from cover history", async () => 
   assert.equal(summary.summaries[0]?.covered_minutes, 720);
   assert.equal(summary.summaries[0]?.uncovered_minutes, 720);
   assert.equal(summary.summaries[0]?.daylight_uncovered_minutes, 600);
+});
+
+test("service accepts retroactive cover events with explicit recorded_at", async () => {
+  let createdRecordedAt: string | null = null;
+  const service = new PoolCoverEventsService("pool-1", {
+    async getLatest() {
+      return null;
+    },
+    async getLatestBefore() {
+      return {
+        id: "cover-1",
+        pool_id: "pool-1",
+        state: "off",
+        cover_type: "unknown",
+        source: "manual",
+        recorded_at: "2026-06-04T17:00:00.000Z",
+        created_at: "2026-06-04T17:00:01.000Z"
+      };
+    },
+    async getEarliestAfter() {
+      return {
+        id: "cover-3",
+        pool_id: "pool-1",
+        state: "off",
+        cover_type: "unknown",
+        source: "manual",
+        recorded_at: "2026-06-04T20:00:00.000Z",
+        created_at: "2026-06-04T20:00:01.000Z"
+      };
+    },
+    async create(record) {
+      createdRecordedAt = record.recordedAt;
+      return {
+        id: "cover-2",
+        pool_id: "pool-1",
+        state: record.state,
+        cover_type: record.coverType,
+        source: record.source,
+        recorded_at: record.recordedAt,
+        created_at: "2026-06-12T18:00:00.000Z"
+      };
+    },
+    async list() {
+      return [];
+    },
+    async listRange() {
+      return [];
+    }
+  });
+
+  const result = await service.createPoolCoverEvent({
+    state: "on",
+    cover_type: "solar",
+    recorded_at: "2026-06-04T18:30:00.000Z"
+  });
+
+  assert.equal(result.recorded_at, "2026-06-04T18:30:00.000Z");
+  assert.equal(createdRecordedAt, "2026-06-04T18:30:00.000Z");
+});
+
+test("service rejects ambiguous retroactive cover events", async () => {
+  const service = new PoolCoverEventsService("pool-1", {
+    async getLatest() {
+      return null;
+    },
+    async getLatestBefore() {
+      return {
+        id: "cover-1",
+        pool_id: "pool-1",
+        state: "off",
+        cover_type: "unknown",
+        source: "manual",
+        recorded_at: "2026-06-04T17:00:00.000Z",
+        created_at: "2026-06-04T17:00:01.000Z"
+      };
+    },
+    async getEarliestAfter() {
+      return {
+        id: "cover-3",
+        pool_id: "pool-1",
+        state: "off",
+        cover_type: "unknown",
+        source: "manual",
+        recorded_at: "2026-06-04T20:00:00.000Z",
+        created_at: "2026-06-04T20:00:01.000Z"
+      };
+    },
+    async create() {
+      throw new Error("should not be called");
+    },
+    async list() {
+      return [];
+    },
+    async listRange() {
+      return [];
+    }
+  });
+
+  await assert.rejects(
+    () =>
+      service.createPoolCoverEvent({
+        state: "off",
+        recorded_at: "2026-06-04T18:30:00.000Z"
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof PoolCoverEventsValidationError);
+      assert.equal(
+        error.details.recorded_at,
+        "Backfilled cover events must represent a state change from the prior event."
+      );
+      return true;
+    }
+  );
 });
 
 test("pool cover API current, history, and create routes work", async () => {
@@ -198,6 +317,7 @@ test("pool cover API current, history, and create routes work", async () => {
     },
     async createPoolCoverEvent(input) {
       assert.equal(input.state, "off");
+      assert.equal(input.recorded_at, "2026-06-04T20:00:00.000Z");
       return {
         id: "cover-2",
         pool_id: "pool-1",
@@ -223,7 +343,8 @@ test("pool cover API current, history, and create routes work", async () => {
   assert.equal(exposureResponse.body.data.summaries[0].daylight_uncovered_minutes, 480);
 
   const createResponse = await invokeRoute(server, "POST", "/pool/cover", {
-    state: "off"
+    state: "off",
+    recorded_at: "2026-06-04T20:00:00.000Z"
   });
   assert.equal(createResponse.statusCode, 201);
   assert.equal(createResponse.body.data.id, "cover-2");
