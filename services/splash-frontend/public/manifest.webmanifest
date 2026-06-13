@@ -1,0 +1,16 @@
+{
+  "name": "Splash Mobile",
+  "short_name": "Splash",
+  "start_url": "/mobile",
+  "display": "standalone",
+  "background_color": "#f4fbff",
+  "theme_color": "#082132",
+  "icons": [
+    {
+      "src": "/splash-mobile-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

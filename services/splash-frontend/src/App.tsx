@@ -28,6 +28,7 @@ import { ChemistryPage } from "./pages/ChemistryPage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { HomePage } from "./pages/HomePage";
+import { MobileApp } from "./mobile/MobileApp";
 import { RoutinesPage } from "./pages/RoutinesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SystemPage } from "./pages/SystemPage";
@@ -84,6 +85,17 @@ interface CircuitConfigLookupResult {
 }
 
 export default function App() {
+  const location = useLocation();
+
+  if (location.pathname.startsWith("/mobile")) {
+    return <MobileApp />;
+  }
+
+  return <DesktopApp />;
+}
+
+function DesktopApp() {
+  const location = useLocation();
   const equipment = useFrontendStore((state) => state.equipment);
   const healthStatus = useFrontendStore((state) => state.healthStatus);
   const healthData = useFrontendStore((state) => state.healthData);
@@ -579,6 +591,7 @@ export default function App() {
   }
 
   return <AppLayout
+    pathname={location.pathname}
     controller={controller}
     healthStatus={healthStatus}
     healthData={healthData}
@@ -691,6 +704,7 @@ export default function App() {
 }
 
 function AppLayout({
+      pathname,
       controller,
       healthStatus,
       healthData,
@@ -701,6 +715,7 @@ function AppLayout({
   systemPageProps,
   diagnosticsPageProps
 }: {
+  pathname: string;
   controller: EquipmentRecord | undefined;
   healthStatus: "healthy" | "degraded" | "unhealthy" | "down" | "unknown";
   healthData: PlatformStatusResponse | null;
@@ -711,8 +726,7 @@ function AppLayout({
   systemPageProps: React.ComponentProps<typeof SystemPage>;
   diagnosticsPageProps: React.ComponentProps<typeof DiagnosticsPage>;
 }) {
-  const location = useLocation();
-  const activeNavItem = getActiveNavItem(location.pathname);
+  const activeNavItem = getActiveNavItem(pathname);
   const sidebarStatus = getSidebarStatus({
     healthStatus,
     sseStatus,
@@ -737,7 +751,7 @@ function AppLayout({
                 <NavLink
                   key={item.id}
                   to={item.path}
-                  className={({ isActive }) => `sidebar-link ${isActive || (item.id === activeNavItem.id && item.path === "/" ? location.pathname === "/" : false) ? "sidebar-link-active" : ""}`}
+                  className={({ isActive }) => `sidebar-link ${isActive || (item.id === activeNavItem.id && item.path === "/" ? pathname === "/" : false) ? "sidebar-link-active" : ""}`}
                   aria-current={activeNavItem.id === item.id ? "page" : undefined}
                 >
                   <SplashIcon name={item.icon} size={22} />
