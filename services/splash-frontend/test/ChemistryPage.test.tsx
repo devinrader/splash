@@ -192,9 +192,10 @@ test("chemistry page loads observations, maintenance, and additions and saves al
   render(<ChemistryPage />);
 
   await waitFor(() => {
-    assert.ok(screen.getByText("Water Condition"));
-    assert.ok(screen.getByText("Maintenance Activity"));
-    assert.ok(screen.getByText("Chemical Additions"));
+    assert.ok(screen.getByRole("tab", { name: "Water Test Log" }));
+    assert.ok(screen.getByRole("tab", { name: "Water Condition" }));
+    assert.ok(screen.getByRole("tab", { name: "Chemical Additions" }));
+    assert.ok(screen.getByRole("tab", { name: "Maintenance Activity" }));
   });
 
   await waitFor(() => {
@@ -203,6 +204,7 @@ test("chemistry page loads observations, maintenance, and additions and saves al
     assert.ok(requests.some((entry) => entry.includes("/chemistry/additions")));
   });
 
+  fireEvent.click(screen.getByRole("tab", { name: "Water Condition" }));
   fireEvent.change(screen.getByLabelText("Water Clarity"), { target: { value: "clear" } });
   fireEvent.change(screen.getByLabelText("Algae Presence"), { target: { value: "absent" } });
   fireEvent.change(screen.getByLabelText("Debris Level"), { target: { value: "light" } });
@@ -214,6 +216,7 @@ test("chemistry page loads observations, maintenance, and additions and saves al
     assert.ok(screen.getByText("Water condition saved."));
   });
 
+  fireEvent.click(screen.getByRole("tab", { name: "Maintenance Activity" }));
   fireEvent.change(screen.getByLabelText("Maintenance Notes"), { target: { value: "Brushed after windy day" } });
   fireEvent.click(screen.getByRole("button", { name: "Save maintenance activity" }));
 
@@ -221,6 +224,7 @@ test("chemistry page loads observations, maintenance, and additions and saves al
     assert.ok(screen.getByText("Maintenance activity saved."));
   });
 
+  fireEvent.click(screen.getByRole("tab", { name: "Chemical Additions" }));
   fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "1.5" } });
   fireEvent.change(screen.getByLabelText("Addition Notes"), { target: { value: "After storm" } });
   fireEvent.click(screen.getByRole("button", { name: "Save chemical addition" }));

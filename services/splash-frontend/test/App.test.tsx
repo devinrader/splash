@@ -359,8 +359,10 @@ test("redirects legacy water test log route into Chemistry", async () => {
 
   await waitFor(() => {
     assert.ok(screen.getByText("Chemistry - Water testing & treatment"));
-    assert.ok(screen.getByText("Water Condition"));
-    assert.ok(screen.getByText("Chemical Additions"));
+    assert.ok(screen.getByRole("tab", { name: "Water Test Log" }));
+    assert.ok(screen.getByRole("tab", { name: "Water Condition" }));
+    assert.ok(screen.getByRole("tab", { name: "Chemical Additions" }));
+    assert.ok(screen.getByRole("tab", { name: "Maintenance Activity" }));
     assert.ok(screen.getByText("Prior Logs"));
   });
 });

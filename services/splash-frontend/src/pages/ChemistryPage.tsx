@@ -117,7 +117,17 @@ const EMPTY_MAINTENANCE_FORM: MaintenanceActivityFormState = {
   notes: ""
 };
 
+const CHEMISTRY_TABS = [
+  { id: "water-test-log", label: "Water Test Log" },
+  { id: "water-condition", label: "Water Condition" },
+  { id: "chemical-additions", label: "Chemical Additions" },
+  { id: "maintenance-activity", label: "Maintenance Activity" }
+] as const;
+
+type ChemistryTabId = (typeof CHEMISTRY_TABS)[number]["id"];
+
 export function ChemistryPage() {
+  const [activeTab, setActiveTab] = useState<ChemistryTabId>("water-test-log");
   const [observations, setObservations] = useState<ChemistryObservationsData | null>(null);
   const [observationsLoading, setObservationsLoading] = useState(true);
   const [observationSaving, setObservationSaving] = useState(false);
@@ -245,265 +255,299 @@ export function ChemistryPage() {
   }
 
   return (
-    <>
-      <section className="automation-shell">
-        <div className="automation-grid">
-          <Card title="Water Condition" className="automation-card-table">
-            <form className="control-form" onSubmit={handleObservationSubmit}>
-              <label htmlFor="chemistry-observation-clarity">Water Clarity</label>
-              <select
-                id="chemistry-observation-clarity"
-                value={observationFormState.clarity}
-                onChange={(event) => setObservationFormState((current) => ({ ...current, clarity: event.target.value }))}
-              >
-                <option value="">Not recorded</option>
-                {CLARITY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+    <section className="automation-shell">
+      <div className="automation-tabs" role="tablist" aria-label="Chemistry tabs">
+        {CHEMISTRY_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            id={`chemistry-tab-${tab.id}`}
+            className={`automation-tab ${activeTab === tab.id ? "automation-tab-active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`chemistry-panel-${tab.id}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-              <label htmlFor="chemistry-observation-algae">Algae Presence</label>
-              <select
-                id="chemistry-observation-algae"
-                value={observationFormState.algaePresence}
-                onChange={(event) => setObservationFormState((current) => ({ ...current, algaePresence: event.target.value }))}
-              >
-                <option value="">Not recorded</option>
-                {ALGAE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+      <div
+        id={`chemistry-panel-${activeTab}`}
+        className="automation-tab-panel"
+        role="tabpanel"
+        aria-labelledby={`chemistry-tab-${activeTab}`}
+      >
+        {activeTab === "water-test-log" ? <WaterTestLogPage /> : null}
 
-              <label htmlFor="chemistry-observation-debris">Debris Level</label>
-              <select
-                id="chemistry-observation-debris"
-                value={observationFormState.debrisLevel}
-                onChange={(event) => setObservationFormState((current) => ({ ...current, debrisLevel: event.target.value }))}
-              >
-                <option value="">Not recorded</option>
-                {LEVEL_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+        {activeTab === "water-condition" ? (
+          <div className="automation-grid">
+            <Card title="Water Condition" className="automation-card-table">
+              <form className="control-form" onSubmit={handleObservationSubmit}>
+                <label htmlFor="chemistry-observation-clarity">Water Clarity</label>
+                <select
+                  id="chemistry-observation-clarity"
+                  value={observationFormState.clarity}
+                  onChange={(event) => setObservationFormState((current) => ({ ...current, clarity: event.target.value }))}
+                >
+                  <option value="">Not recorded</option>
+                  {CLARITY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
 
-              <label htmlFor="chemistry-observation-bather-load">Bather Load Estimate</label>
-              <select
-                id="chemistry-observation-bather-load"
-                value={observationFormState.batherLoadEstimate}
-                onChange={(event) => setObservationFormState((current) => ({ ...current, batherLoadEstimate: event.target.value }))}
-              >
-                <option value="">Not recorded</option>
-                {LEVEL_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                <label htmlFor="chemistry-observation-algae">Algae Presence</label>
+                <select
+                  id="chemistry-observation-algae"
+                  value={observationFormState.algaePresence}
+                  onChange={(event) => setObservationFormState((current) => ({ ...current, algaePresence: event.target.value }))}
+                >
+                  <option value="">Not recorded</option>
+                  {ALGAE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
 
-              <label htmlFor="chemistry-observation-notes">Condition Notes</label>
-              <textarea
-                id="chemistry-observation-notes"
-                value={observationFormState.notes}
-                onChange={(event) => setObservationFormState((current) => ({ ...current, notes: event.target.value }))}
-                rows={3}
-              />
+                <label htmlFor="chemistry-observation-debris">Debris Level</label>
+                <select
+                  id="chemistry-observation-debris"
+                  value={observationFormState.debrisLevel}
+                  onChange={(event) => setObservationFormState((current) => ({ ...current, debrisLevel: event.target.value }))}
+                >
+                  <option value="">Not recorded</option>
+                  {LEVEL_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
 
-              <button type="submit" disabled={observationSaving}>
-                {observationSaving ? "Saving…" : "Save water condition"}
-              </button>
-            </form>
+                <label htmlFor="chemistry-observation-bather-load">Bather Load Estimate</label>
+                <select
+                  id="chemistry-observation-bather-load"
+                  value={observationFormState.batherLoadEstimate}
+                  onChange={(event) => setObservationFormState((current) => ({ ...current, batherLoadEstimate: event.target.value }))}
+                >
+                  <option value="">Not recorded</option>
+                  {LEVEL_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
 
-            {observationSuccessMessage ? <p className="inline-success-message">{observationSuccessMessage}</p> : null}
-            {observationErrorMessage ? <p className="inline-error-message">{observationErrorMessage}</p> : null}
-            {observationsLoading ? <p className="chart-empty-state">Loading water conditions…</p> : null}
-            {!observationsLoading && observations?.observations.length ? (
-              <div className="settings-chemistry-table-shell">
-                <table className="system-data-table" aria-label="recent water conditions">
-                  <thead>
-                    <tr>
-                      <th>Recorded</th>
-                      <th>Clarity</th>
-                      <th>Algae</th>
-                      <th>Debris</th>
-                      <th>Bather Load</th>
-                      <th>Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {observations.observations.map((observation) => (
-                      <tr key={observation.id}>
-                        <td>{formatTimestamp(observation.recorded_at)}</td>
-                        <td>{formatObservationClarity(observation.clarity)}</td>
-                        <td>{formatObservationAlgae(observation.algae_presence)}</td>
-                        <td>{formatObservationLevel(observation.debris_level)}</td>
-                        <td>{formatObservationLevel(observation.bather_load_estimate)}</td>
-                        <td>{observation.notes || "—"}</td>
+                <label htmlFor="chemistry-observation-notes">Condition Notes</label>
+                <textarea
+                  id="chemistry-observation-notes"
+                  value={observationFormState.notes}
+                  onChange={(event) => setObservationFormState((current) => ({ ...current, notes: event.target.value }))}
+                  rows={3}
+                />
+
+                <button type="submit" disabled={observationSaving}>
+                  {observationSaving ? "Saving…" : "Save water condition"}
+                </button>
+              </form>
+
+              {observationSuccessMessage ? <p className="inline-success-message">{observationSuccessMessage}</p> : null}
+              {observationErrorMessage ? <p className="inline-error-message">{observationErrorMessage}</p> : null}
+              {observationsLoading ? <p className="chart-empty-state">Loading water conditions…</p> : null}
+              {!observationsLoading && observations?.observations.length ? (
+                <div className="settings-chemistry-table-shell">
+                  <table className="system-data-table" aria-label="recent water conditions">
+                    <thead>
+                      <tr>
+                        <th>Recorded</th>
+                        <th>Clarity</th>
+                        <th>Algae</th>
+                        <th>Debris</th>
+                        <th>Bather Load</th>
+                        <th>Notes</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-            {!observationsLoading && !observations?.observations.length ? (
-              <p className="chart-empty-state">No water conditions have been logged yet.</p>
-            ) : null}
-          </Card>
+                    </thead>
+                    <tbody>
+                      {observations.observations.map((observation) => (
+                        <tr key={observation.id}>
+                          <td>{formatTimestamp(observation.recorded_at)}</td>
+                          <td>{formatObservationClarity(observation.clarity)}</td>
+                          <td>{formatObservationAlgae(observation.algae_presence)}</td>
+                          <td>{formatObservationLevel(observation.debris_level)}</td>
+                          <td>{formatObservationLevel(observation.bather_load_estimate)}</td>
+                          <td>{observation.notes || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              {!observationsLoading && !observations?.observations.length ? (
+                <p className="chart-empty-state">No water conditions have been logged yet.</p>
+              ) : null}
+            </Card>
+          </div>
+        ) : null}
 
-          <Card title="Maintenance Activity" className="automation-card-table">
-            <form className="control-form" onSubmit={handleMaintenanceSubmit}>
-              <label htmlFor="chemistry-maintenance-type">Activity Type</label>
-              <select
-                id="chemistry-maintenance-type"
-                value={maintenanceFormState.activityType}
-                onChange={(event) =>
-                  setMaintenanceFormState((current) => ({ ...current, activityType: event.target.value as MaintenanceActivityType }))
-                }
-              >
-                {MAINTENANCE_ACTIVITY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+        {activeTab === "maintenance-activity" ? (
+          <div className="automation-grid">
+            <Card title="Maintenance Activity" className="automation-card-table">
+              <form className="control-form" onSubmit={handleMaintenanceSubmit}>
+                <label htmlFor="chemistry-maintenance-type">Activity Type</label>
+                <select
+                  id="chemistry-maintenance-type"
+                  value={maintenanceFormState.activityType}
+                  onChange={(event) =>
+                    setMaintenanceFormState((current) => ({ ...current, activityType: event.target.value as MaintenanceActivityType }))
+                  }
+                >
+                  {MAINTENANCE_ACTIVITY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
 
-              <label htmlFor="chemistry-maintenance-notes">Maintenance Notes</label>
-              <textarea
-                id="chemistry-maintenance-notes"
-                value={maintenanceFormState.notes}
-                onChange={(event) => setMaintenanceFormState((current) => ({ ...current, notes: event.target.value }))}
-                rows={3}
-              />
+                <label htmlFor="chemistry-maintenance-notes">Maintenance Notes</label>
+                <textarea
+                  id="chemistry-maintenance-notes"
+                  value={maintenanceFormState.notes}
+                  onChange={(event) => setMaintenanceFormState((current) => ({ ...current, notes: event.target.value }))}
+                  rows={3}
+                />
 
-              <button type="submit" disabled={maintenanceSaving}>
-                {maintenanceSaving ? "Saving…" : "Save maintenance activity"}
-              </button>
-            </form>
+                <button type="submit" disabled={maintenanceSaving}>
+                  {maintenanceSaving ? "Saving…" : "Save maintenance activity"}
+                </button>
+              </form>
 
-            {maintenanceSuccessMessage ? <p className="inline-success-message">{maintenanceSuccessMessage}</p> : null}
-            {maintenanceErrorMessage ? <p className="inline-error-message">{maintenanceErrorMessage}</p> : null}
-            {maintenanceLoading ? <p className="chart-empty-state">Loading maintenance history…</p> : null}
-            {!maintenanceLoading && maintenance?.activities.length ? (
-              <div className="settings-chemistry-table-shell">
-                <table className="system-data-table" aria-label="recent maintenance activities">
-                  <thead>
-                    <tr>
-                      <th>Recorded</th>
-                      <th>Activity</th>
-                      <th>Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {maintenance.activities.map((activity) => (
-                      <tr key={activity.id}>
-                        <td>{formatTimestamp(activity.recorded_at)}</td>
-                        <td>{formatMaintenanceActivityType(activity.activity_type)}</td>
-                        <td>{activity.notes || "—"}</td>
+              {maintenanceSuccessMessage ? <p className="inline-success-message">{maintenanceSuccessMessage}</p> : null}
+              {maintenanceErrorMessage ? <p className="inline-error-message">{maintenanceErrorMessage}</p> : null}
+              {maintenanceLoading ? <p className="chart-empty-state">Loading maintenance history…</p> : null}
+              {!maintenanceLoading && maintenance?.activities.length ? (
+                <div className="settings-chemistry-table-shell">
+                  <table className="system-data-table" aria-label="recent maintenance activities">
+                    <thead>
+                      <tr>
+                        <th>Recorded</th>
+                        <th>Activity</th>
+                        <th>Notes</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-            {!maintenanceLoading && !maintenance?.activities.length ? (
-              <p className="chart-empty-state">No maintenance activities have been logged yet.</p>
-            ) : null}
-          </Card>
+                    </thead>
+                    <tbody>
+                      {maintenance.activities.map((activity) => (
+                        <tr key={activity.id}>
+                          <td>{formatTimestamp(activity.recorded_at)}</td>
+                          <td>{formatMaintenanceActivityType(activity.activity_type)}</td>
+                          <td>{activity.notes || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              {!maintenanceLoading && !maintenance?.activities.length ? (
+                <p className="chart-empty-state">No maintenance activities have been logged yet.</p>
+              ) : null}
+            </Card>
+          </div>
+        ) : null}
 
-          <Card title="Chemical Additions" className="automation-card-table">
-            <form className="control-form" onSubmit={handleAdditionSubmit}>
-              <label htmlFor="chemical-addition-type">Chemical Type</label>
-              <select
-                id="chemical-addition-type"
-                value={additionFormState.chemicalType}
-                onChange={(event) =>
-                  setAdditionFormState((current) => ({ ...current, chemicalType: event.target.value as ChemicalAdditionType }))
-                }
-              >
-                {CHEMICAL_TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+        {activeTab === "chemical-additions" ? (
+          <div className="automation-grid">
+            <Card title="Chemical Additions" className="automation-card-table">
+              <form className="control-form" onSubmit={handleAdditionSubmit}>
+                <label htmlFor="chemical-addition-type">Chemical Type</label>
+                <select
+                  id="chemical-addition-type"
+                  value={additionFormState.chemicalType}
+                  onChange={(event) =>
+                    setAdditionFormState((current) => ({ ...current, chemicalType: event.target.value as ChemicalAdditionType }))
+                  }
+                >
+                  {CHEMICAL_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
 
-              <label htmlFor="chemical-addition-amount">Amount</label>
-              <input
-                id="chemical-addition-amount"
-                type="number"
-                step="0.1"
-                value={additionFormState.amount}
-                onChange={(event) => setAdditionFormState((current) => ({ ...current, amount: event.target.value }))}
-              />
+                <label htmlFor="chemical-addition-amount">Amount</label>
+                <input
+                  id="chemical-addition-amount"
+                  type="number"
+                  step="0.1"
+                  value={additionFormState.amount}
+                  onChange={(event) => setAdditionFormState((current) => ({ ...current, amount: event.target.value }))}
+                />
 
-              <label htmlFor="chemical-addition-unit">Unit</label>
-              <select
-                id="chemical-addition-unit"
-                value={additionFormState.unit}
-                onChange={(event) =>
-                  setAdditionFormState((current) => ({ ...current, unit: event.target.value as ChemicalAdditionUnit }))
-                }
-              >
-                {CHEMICAL_UNIT_OPTIONS.map((unit) => (
-                  <option key={unit} value={unit}>
-                    {unit}
-                  </option>
-                ))}
-              </select>
+                <label htmlFor="chemical-addition-unit">Unit</label>
+                <select
+                  id="chemical-addition-unit"
+                  value={additionFormState.unit}
+                  onChange={(event) =>
+                    setAdditionFormState((current) => ({ ...current, unit: event.target.value as ChemicalAdditionUnit }))
+                  }
+                >
+                  {CHEMICAL_UNIT_OPTIONS.map((unit) => (
+                    <option key={unit} value={unit}>
+                      {unit}
+                    </option>
+                  ))}
+                </select>
 
-              <label htmlFor="chemical-addition-notes">Addition Notes</label>
-              <textarea
-                id="chemical-addition-notes"
-                value={additionFormState.notes}
-                onChange={(event) => setAdditionFormState((current) => ({ ...current, notes: event.target.value }))}
-                rows={3}
-              />
+                <label htmlFor="chemical-addition-notes">Addition Notes</label>
+                <textarea
+                  id="chemical-addition-notes"
+                  value={additionFormState.notes}
+                  onChange={(event) => setAdditionFormState((current) => ({ ...current, notes: event.target.value }))}
+                  rows={3}
+                />
 
-              <button type="submit" disabled={additionSaving}>
-                {additionSaving ? "Saving…" : "Save chemical addition"}
-              </button>
-            </form>
+                <button type="submit" disabled={additionSaving}>
+                  {additionSaving ? "Saving…" : "Save chemical addition"}
+                </button>
+              </form>
 
-            {additionSuccessMessage ? <p className="inline-success-message">{additionSuccessMessage}</p> : null}
-            {additionErrorMessage ? <p className="inline-error-message">{additionErrorMessage}</p> : null}
-            {additionsLoading ? <p className="chart-empty-state">Loading chemical additions…</p> : null}
-            {!additionsLoading && additions?.additions.length ? (
-              <div className="settings-chemistry-table-shell">
-                <table className="system-data-table" aria-label="recent chemical additions">
-                  <thead>
-                    <tr>
-                      <th>Recorded</th>
-                      <th>Chemical</th>
-                      <th>Amount</th>
-                      <th>Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {additions.additions.map((addition) => (
-                      <tr key={addition.id}>
-                        <td>{formatTimestamp(addition.recorded_at)}</td>
-                        <td>{formatChemicalType(addition.chemical_type)}</td>
-                        <td>{`${addition.amount} ${addition.unit}`}</td>
-                        <td>{addition.notes || "—"}</td>
+              {additionSuccessMessage ? <p className="inline-success-message">{additionSuccessMessage}</p> : null}
+              {additionErrorMessage ? <p className="inline-error-message">{additionErrorMessage}</p> : null}
+              {additionsLoading ? <p className="chart-empty-state">Loading chemical additions…</p> : null}
+              {!additionsLoading && additions?.additions.length ? (
+                <div className="settings-chemistry-table-shell">
+                  <table className="system-data-table" aria-label="recent chemical additions">
+                    <thead>
+                      <tr>
+                        <th>Recorded</th>
+                        <th>Chemical</th>
+                        <th>Amount</th>
+                        <th>Notes</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-            {!additionsLoading && !additions?.additions.length ? (
-              <p className="chart-empty-state">No chemical additions have been logged yet.</p>
-            ) : null}
-          </Card>
-        </div>
-      </section>
-      <WaterTestLogPage />
-    </>
+                    </thead>
+                    <tbody>
+                      {additions.additions.map((addition) => (
+                        <tr key={addition.id}>
+                          <td>{formatTimestamp(addition.recorded_at)}</td>
+                          <td>{formatChemicalType(addition.chemical_type)}</td>
+                          <td>{`${addition.amount} ${addition.unit}`}</td>
+                          <td>{addition.notes || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              {!additionsLoading && !additions?.additions.length ? (
+                <p className="chart-empty-state">No chemical additions have been logged yet.</p>
+              ) : null}
+            </Card>
+          </div>
+        ) : null}
+
+      </div>
+    </section>
   );
 }
 
