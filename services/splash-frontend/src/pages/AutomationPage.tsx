@@ -268,22 +268,6 @@ export function AutomationPage() {
 function AutomationOverviewTab() {
   return (
     <section className="automation-shell">
-      <div className="automation-grid automation-grid-overview">
-        <Card title="Automation Overview" status="Seeded milestone slice" className="automation-card-hero">
-          <p className="panel-copy">
-            The Overview tab gives the operator a fast read on how Splash automation is currently structured. It summarizes schedules, rules,
-            scenes, and triggers while surfacing the next planned activity and the most recent notable changes.
-          </p>
-        </Card>
-        <Card title="Summary">
-          <div className="mock-summary-grid">
-            <div><strong>{AUTOMATION_SUMMARY.schedules}</strong><span>Schedules</span></div>
-            <div><strong>{AUTOMATION_SUMMARY.rules}</strong><span>Rules</span></div>
-            <div><strong>{AUTOMATION_SUMMARY.scenes}</strong><span>Scenes</span></div>
-            <div><strong>{AUTOMATION_SUMMARY.triggers}</strong><span>Triggers</span></div>
-          </div>
-        </Card>
-      </div>
 
       <div className="automation-grid automation-grid-two-column">
         <Card title="Upcoming Automation">

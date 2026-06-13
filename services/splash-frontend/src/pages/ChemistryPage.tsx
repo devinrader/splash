@@ -248,14 +248,6 @@ export function ChemistryPage() {
     <>
       <section className="automation-shell">
         <div className="automation-grid">
-          <Card title="Chemistry Workspace">
-            <p className="panel-copy">
-              Chemistry owns manual water testing now. Later slices will add
-              chemistry status, chemical additions, and SLAM workflows here
-              without splitting them back into separate top-level destinations.
-            </p>
-          </Card>
-
           <Card title="Water Condition" className="automation-card-table">
             <form className="control-form" onSubmit={handleObservationSubmit}>
               <label htmlFor="chemistry-observation-clarity">Water Clarity</label>
