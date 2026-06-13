@@ -975,6 +975,56 @@ export interface SwimmabilityResponse {
   error: unknown;
 }
 
+export type PredictedSwimmabilityTrend = "stable" | "improving" | "declining" | "unknown";
+
+export interface PredictedSwimmabilityReferenceData {
+  status: SwimmabilityStatus;
+  score: number;
+  confidence: SwimmabilityConfidence;
+  headline: string;
+  updated_at: string;
+}
+
+export interface PredictedSwimmabilityInputSummaryData {
+  key: string;
+  label: string;
+  value: string;
+  provenance: ValueProvenanceData;
+}
+
+export interface PredictedSwimmabilityItemData {
+  horizon: "24h" | "48h" | "72h" | "7d";
+  status: SwimmabilityStatus;
+  score: number;
+  trend: PredictedSwimmabilityTrend;
+  confidence: SwimmabilityConfidence;
+  headline: string;
+  summary: string;
+  drivers: string[];
+  assumptions: string[];
+  predicted_inputs: PredictedSwimmabilityInputSummaryData[];
+  provenance: {
+    prediction: ValueProvenanceData;
+    chemistry: ValueProvenanceData;
+    weather_forecast: ValueProvenanceData;
+    cover_exposure: ValueProvenanceData;
+    circulation: ValueProvenanceData;
+    chlorinator: ValueProvenanceData;
+    chemical_additions: ValueProvenanceData;
+  };
+}
+
+export interface PredictedSwimmabilityData {
+  generated_at: string;
+  current: PredictedSwimmabilityReferenceData;
+  predictions: PredictedSwimmabilityItemData[];
+}
+
+export interface PredictedSwimmabilityResponse {
+  data: PredictedSwimmabilityData;
+  error: unknown;
+}
+
 export type NotificationType =
   | "chemistry_test_due"
   | "swimmability_caution"

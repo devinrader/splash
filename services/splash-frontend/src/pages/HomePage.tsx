@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   createPoolCoverEvent,
   fetchCurrentPoolCover,
+  fetchPredictedSwimmability,
   fetchPoolCoverHistory,
   fetchSwimmability,
   fetchWeatherForecast
@@ -11,6 +12,7 @@ import type {
   PoolCoverCurrentData,
   PoolCoverEventRecord,
   PoolCoverType,
+  PredictedSwimmabilityData,
   SwimmabilityData,
   ValueProvenanceData,
   WeatherForecastData
@@ -26,6 +28,7 @@ export function HomePage() {
   const [coverError, setCoverError] = useState<string | null>(null);
   const [swimmability, setSwimmability] = useState<SwimmabilityData | null>(null);
   const [swimmabilityError, setSwimmabilityError] = useState<string | null>(null);
+  const [predictedSwimmability, setPredictedSwimmability] = useState<PredictedSwimmabilityData | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +53,19 @@ export function HomePage() {
         if (!cancelled) {
           setSwimmability(null);
           setSwimmabilityError(nextError instanceof Error ? nextError.message : String(nextError));
+        }
+      }
+    })();
+
+    void (async () => {
+      try {
+        const predictedResponse = await fetchPredictedSwimmability();
+        if (!cancelled) {
+          setPredictedSwimmability(predictedResponse.data);
+        }
+      } catch {
+        if (!cancelled) {
+          setPredictedSwimmability(null);
         }
       }
     })();
@@ -143,6 +159,17 @@ export function HomePage() {
                     <div className="swim-provenance-item" key={entry.label}>
                       <strong>{entry.label}</strong>
                       <span>{entry.summary}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {predictedSwimmability?.predictions.length ? (
+                <div className="swim-prediction-list" aria-label="Predicted swimmability">
+                  {predictedSwimmability.predictions.slice(0, 3).map((prediction) => (
+                    <div className="swim-prediction-item" key={prediction.horizon}>
+                      <strong>{formatPredictionHorizon(prediction.horizon)}</strong>
+                      <span>{formatSwimmabilityStatus(prediction.status)} · {prediction.score}</span>
+                      <span>{formatSwimmabilityConfidence(prediction.confidence)} confidence</span>
                     </div>
                   ))}
                 </div>
@@ -313,6 +340,19 @@ function formatSwimmabilityConfidence(value: SwimmabilityData["confidence"]): st
       return "Low";
     default:
       return "Unknown";
+  }
+}
+
+function formatPredictionHorizon(value: PredictedSwimmabilityData["predictions"][number]["horizon"]): string {
+  switch (value) {
+    case "24h":
+      return "Tomorrow";
+    case "48h":
+      return "48 Hours";
+    case "72h":
+      return "72 Hours";
+    default:
+      return "7 Days";
   }
 }
 

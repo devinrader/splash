@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventBroker } from "../src/events.js";
-import { buildUnknownSwimmabilityView } from "./swimmability-fixtures.js";
+import { buildUnknownPredictedSwimmabilityView, buildUnknownSwimmabilityView } from "./swimmability-fixtures.js";
 import { LocalHttpServer, type HttpHandlers } from "../src/http.js";
 import { buildSwimmabilityView } from "../src/swimmability.js";
+import { buildPredictedSwimmabilityView } from "../src/predicted-swimmability.js";
 
 test("buildSwimmabilityView returns poor when chemistry hits a do-not-swim condition", () => {
   const result = buildSwimmabilityView({
@@ -138,6 +139,122 @@ test("buildSwimmabilityView returns unknown when chemistry is old and uncovered 
   assert.equal(result.input_provenance.rainfall_since_chemistry.value_kind, "derived");
 });
 
+test("buildPredictedSwimmabilityView projects horizon predictions with show-your-work metadata", () => {
+  const chemistry = {
+    id: "reading-1",
+    pool_id: "pool-1",
+    ph: 7.5,
+    free_chlorine: 4.8,
+    total_chlorine: 5.1,
+    total_alkalinity: 90,
+    calcium_hardness: 260,
+    cyanuric_acid: 60,
+    source: "manual" as const,
+    recorded_at: "2026-06-04T10:00:00.000Z",
+    created_at: "2026-06-04T10:00:00.000Z"
+  };
+  const swimmabilityInput = {
+    chemistry,
+    chemistryBounds: {
+      freeChlorine: { min: 3, target: 5, max: 10, unit: "ppm" },
+      ph: { min: 7.2, target: 7.6, max: 7.8, unit: null }
+    },
+    cover: {
+      current: {
+        id: "cover-1",
+        pool_id: "pool-1",
+        state: "on" as const,
+        cover_type: "solar" as const,
+        source: "manual" as const,
+        recorded_at: "2026-06-04T12:00:00.000Z",
+        created_at: "2026-06-04T12:00:00.000Z"
+      }
+    },
+    forecast: {
+      pool_id: "pool-1",
+      provider: "openmeteo",
+      status: "available" as const,
+      message: "available",
+      stale: false,
+      fetched_at: "2026-06-04T12:00:00.000Z",
+      location: null,
+      daily: [
+        { date: "2026-06-04", weather_code: null, high_temp_f: 88, high_temp_c: null, low_temp_f: 72, low_temp_c: null, precipitation_probability_max: 20, precipitation_amount: 1, precipitation_unit: "mm" as const, uv_index_max: 8, sunrise: null, sunset: null },
+        { date: "2026-06-05", weather_code: null, high_temp_f: 90, high_temp_c: null, low_temp_f: 73, low_temp_c: null, precipitation_probability_max: 35, precipitation_amount: 4, precipitation_unit: "mm" as const, uv_index_max: 7, sunrise: null, sunset: null },
+        { date: "2026-06-06", weather_code: null, high_temp_f: 86, high_temp_c: null, low_temp_f: 70, low_temp_c: null, precipitation_probability_max: 65, precipitation_amount: 9, precipitation_unit: "mm" as const, uv_index_max: 6, sunrise: null, sunset: null }
+      ],
+      hourly: []
+    },
+    latestTemperatures: {
+      controller_id: "default",
+      status: "available" as const,
+      message: "ok",
+      last_updated: "2026-06-04T12:00:00.000Z",
+      readings: {
+        pool_water: {
+          timestamp: "2026-06-04T12:00:00.000Z",
+          original_value: 84,
+          original_unit: "F" as const,
+          normalized_f: 84,
+          normalized_c: 28.9,
+          raw_byte: null,
+          controller_timestamp: null
+        }
+      }
+    },
+    rainfallSinceChemistryInches: 0.1,
+    now: "2026-06-04T12:00:00.000Z"
+  };
+  const current = buildSwimmabilityView(swimmabilityInput);
+  const view = buildPredictedSwimmabilityView({
+    current,
+    swimmabilityInput,
+    coverExposure: {
+      generated_at: "2026-06-04T12:00:00.000Z",
+      summaries: [
+        { window: "24h", covered_minutes: 960, uncovered_minutes: 480, covered_percent: 66.7, uncovered_percent: 33.3, daylight_uncovered_minutes: 180, last_cover_change_at: "2026-06-04T11:00:00.000Z", status: "available" },
+        { window: "72h", covered_minutes: 2700, uncovered_minutes: 1620, covered_percent: 62.5, uncovered_percent: 37.5, daylight_uncovered_minutes: 420, last_cover_change_at: "2026-06-04T11:00:00.000Z", status: "available" },
+        { window: "7d", covered_minutes: 6800, uncovered_minutes: 3280, covered_percent: 67.5, uncovered_percent: 32.5, daylight_uncovered_minutes: 820, last_cover_change_at: "2026-06-04T11:00:00.000Z", status: "partial" }
+      ]
+    },
+    circulation: {
+      generated_at: "2026-06-04T12:00:00.000Z",
+      pump_id: null,
+      summaries: [
+        { window: "24h", runtime_minutes: 540, runtime_percent: 37.5, sample_coverage_percent: 90, last_running_at: "2026-06-04T11:50:00.000Z", status: "available" },
+        { window: "72h", runtime_minutes: 1560, runtime_percent: 36.1, sample_coverage_percent: 88, last_running_at: "2026-06-04T11:50:00.000Z", status: "available" },
+        { window: "7d", runtime_minutes: 3640, runtime_percent: 36.1, sample_coverage_percent: 78, last_running_at: "2026-06-04T11:50:00.000Z", status: "partial" }
+      ]
+    },
+    chlorinator: {
+      saltPpm: 3200,
+      outputPercent: 40,
+      runState: "producing",
+      status: "ok",
+      updatedAt: "2026-06-04T11:59:00.000Z"
+    },
+    chemicalAdditions: [
+      {
+        id: "addition-1",
+        pool_id: "pool-1",
+        chemical_type: "liquid_chlorine",
+        amount: 0.5,
+        unit: "gal",
+        notes: null,
+        source: "manual",
+        recorded_at: "2026-06-04T09:30:00.000Z",
+        created_at: "2026-06-04T09:30:00.000Z"
+      }
+    ],
+    now: "2026-06-04T12:00:00.000Z"
+  });
+
+  assert.equal(view.predictions.length, 4);
+  assert.equal(view.predictions[0].horizon, "24h");
+  assert.ok(view.predictions[0].predicted_inputs.length > 0);
+  assert.equal(view.predictions[0].provenance.prediction.source_type, "prediction_model");
+});
+
 test("swimmability API route returns the assessment", async () => {
   const server = new LocalHttpServer("127.0.0.1:8080", createHttpHandlers({
     async getSwimmability() {
@@ -233,6 +350,61 @@ test("swimmability API route returns the assessment", async () => {
   assert.equal(response.body.data.confidence, "medium");
   assert.equal(response.body.data.input_provenance.chemistry.value_kind, "measured");
   assert.equal(response.body.data.input_provenance.weather_forecast.source_type, "weather_provider");
+});
+
+test("predicted swimmability API route returns horizon projections", async () => {
+  const server = new LocalHttpServer("127.0.0.1:8080", createHttpHandlers({
+    async getPredictedSwimmability() {
+      return {
+        generated_at: "2026-06-04T19:20:00.000Z",
+        current: {
+          status: "good",
+          score: 82,
+          confidence: "high",
+          headline: "Safe for Swimming",
+          updated_at: "2026-06-04T19:20:00.000Z"
+        },
+        predictions: [
+          {
+            horizon: "24h",
+            status: "good",
+            score: 78,
+            trend: "declining",
+            confidence: "medium",
+            headline: "Should Remain Swimmable by Tomorrow",
+            summary: "High UV is forecast before Tomorrow.",
+            drivers: ["High UV is forecast before Tomorrow."],
+            assumptions: ["Recent chemistry is still usable for short-horizon projection."],
+            predicted_inputs: [],
+            provenance: {
+              prediction: {
+                value_kind: "predicted",
+                source_type: "prediction_model",
+                source_detail: "swimmability.predicted.v1",
+                freshness_state: "fresh",
+                confidence_band: "medium",
+                measured_at: "2026-06-04T19:20:00.000Z",
+                evaluated_at: "2026-06-04T19:20:00.000Z",
+                reasons: ["Recent chemistry is still usable for short-horizon projection."]
+              },
+              chemistry: buildUnknownSwimmabilityView().input_provenance.chemistry,
+              weather_forecast: buildUnknownSwimmabilityView().input_provenance.weather_forecast,
+              cover_exposure: buildUnknownSwimmabilityView().input_provenance.cover,
+              circulation: buildUnknownSwimmabilityView().input_provenance.rainfall_since_chemistry,
+              chlorinator: buildUnknownSwimmabilityView().input_provenance.water_temperature,
+              chemical_additions: buildUnknownSwimmabilityView().input_provenance.cover
+            }
+          }
+        ]
+      };
+    }
+  }));
+
+  const response = await invokeRoute(server, "GET", "/swimmability/predicted");
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.predictions[0].horizon, "24h");
+  assert.equal(response.body.data.predictions[0].provenance.prediction.source_type, "prediction_model");
 });
 
 function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
@@ -340,6 +512,7 @@ function createHttpHandlers(overrides: Partial<HttpHandlers>): HttpHandlers {
       created_at: "2026-06-04T18:45:00.000Z"
     }),
     getSwimmability: async () => buildUnknownSwimmabilityView(),
+    getPredictedSwimmability: async () => buildUnknownPredictedSwimmabilityView(),
     getNotifications: async () => ({ status: "unread", limit: 50, notifications: [] }),
     markNotificationRead: async () => null,
     markAllNotificationsRead: async () => ({ updated_count: 0 }),

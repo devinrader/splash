@@ -117,6 +117,7 @@ import {
   type NotificationsReadAllResult,
   type NotificationsView
 } from "./notifications.js";
+import { buildPredictedSwimmabilityView, type PredictedSwimmabilityView } from "./predicted-swimmability.js";
 import { buildSwimmabilityView, type SwimmabilityView } from "./swimmability.js";
 import {
   WaterTestingScheduleService,
@@ -608,6 +609,27 @@ export class App {
       latestTemperatures,
       rainfallSinceChemistryInches,
       freshness
+    });
+  }
+
+  async getPredictedSwimmability(input: { horizon: string | null }): Promise<PredictedSwimmabilityView> {
+    const swimmabilityInput = await this.getSwimmabilityInputs();
+    const current = buildSwimmabilityView(swimmabilityInput);
+    const [coverExposure, circulation, chemicalAdditions] = await Promise.all([
+      this.poolCoverEvents.getPoolCoverExposureSummary({ window: null }),
+      this.pumpTelemetry.getCirculationSummary({ pumpId: null, window: null }),
+      this.chemicalAdditions.getChemicalAdditions({ start: null, end: null, limit: "20" })
+    ]);
+    const snapshot = this.projection.getSnapshot();
+
+    return buildPredictedSwimmabilityView({
+      current,
+      swimmabilityInput,
+      coverExposure,
+      circulation,
+      chlorinator: snapshot.chlorinator,
+      chemicalAdditions: chemicalAdditions.additions,
+      horizon: input.horizon
     });
   }
 
@@ -1590,6 +1612,7 @@ export class App {
         getPoolCoverExposureSummary: async (query) => this.getPoolCoverExposureSummary(query),
         createPoolCoverEvent: async (input) => this.createPoolCoverEvent(input),
         getSwimmability: async () => this.getSwimmability(),
+        getPredictedSwimmability: async (query) => this.getPredictedSwimmability(query) as unknown as Record<string, unknown>,
         getNotifications: async (query) => this.getNotifications(query),
         markNotificationRead: async (id) => this.markNotificationRead(id),
         markAllNotificationsRead: async () => this.markAllNotificationsRead(),

@@ -2220,6 +2220,108 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
         });
       }
 
+      if (input.endsWith("/swimmability/predicted")) {
+        return response({
+          data: {
+            generated_at: "2026-05-12T12:00:00.000Z",
+            current: {
+              status: "good",
+              score: 82,
+              confidence: "high",
+              headline: "Safe for Swimming",
+              updated_at: "2026-05-12T12:00:00.000Z"
+            },
+            predictions: [
+              {
+                horizon: "24h",
+                status: "good",
+                score: 78,
+                trend: "declining",
+                confidence: "medium",
+                headline: "Should Remain Swimmable by Tomorrow",
+                summary: "High UV is forecast before Tomorrow.",
+                drivers: ["High UV is forecast before Tomorrow."],
+                assumptions: ["Recent chemistry is still usable for short-horizon projection."],
+                predicted_inputs: [],
+                provenance: {
+                  prediction: {
+                    value_kind: "predicted",
+                    source_type: "prediction_model",
+                    source_detail: "swimmability.predicted.v1",
+                    freshness_state: "fresh",
+                    confidence_band: "medium",
+                    measured_at: "2026-05-12T12:00:00.000Z",
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["Recent chemistry is still usable for short-horizon projection."]
+                  },
+                  chemistry: {
+                    value_kind: "measured",
+                    source_type: "manual_test",
+                    source_detail: "manual",
+                    freshness_state: "fresh",
+                    confidence_band: "high",
+                    measured_at: "2026-05-12T10:30:00.000Z",
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["Manual chemistry is recent."]
+                  },
+                  weather_forecast: {
+                    value_kind: "predicted",
+                    source_type: "weather_provider",
+                    source_detail: "openmeteo",
+                    freshness_state: "fresh",
+                    confidence_band: "high",
+                    measured_at: "2026-05-12T12:00:00.000Z",
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["Forecast is current."]
+                  },
+                  cover_exposure: {
+                    value_kind: "derived",
+                    source_type: "derived_calculation",
+                    source_detail: "pool_cover.exposure_summary.24h",
+                    freshness_state: "fresh",
+                    confidence_band: "high",
+                    measured_at: "2026-05-12T11:45:00.000Z",
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["Cover history is sufficient for this summary."]
+                  },
+                  circulation: {
+                    value_kind: "derived",
+                    source_type: "derived_calculation",
+                    source_detail: "pump.circulation_summary.24h",
+                    freshness_state: "fresh",
+                    confidence_band: "high",
+                    measured_at: "2026-05-12T11:30:00.000Z",
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["Pump telemetry coverage is sufficient."]
+                  },
+                  chlorinator: {
+                    value_kind: "measured",
+                    source_type: "controller",
+                    source_detail: "chlorinator.latest_state",
+                    freshness_state: "fresh",
+                    confidence_band: "high",
+                    measured_at: "2026-05-12T11:55:00.000Z",
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["Chlorinator telemetry is available."]
+                  },
+                  chemical_additions: {
+                    value_kind: "observed",
+                    source_type: "manual_log",
+                    source_detail: "chemistry.additions",
+                    freshness_state: "aging",
+                    confidence_band: "medium",
+                    measured_at: "2026-05-11T21:30:00.000Z",
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["Recent chemical addition history is available."]
+                  }
+                }
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
       return platformStatusResponse();
     })
   );
@@ -2236,6 +2338,8 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
     assert.ok(screen.getByText("UV 8.6"));
     assert.ok(screen.getByText("Pool Cover"));
     assert.ok(screen.getByText("Safe for Swimming"));
+    assert.ok(screen.getByText("Tomorrow"));
+    assert.ok(screen.getByText("Good · 78"));
     assert.ok(screen.getAllByText("High").length >= 1);
     assert.ok(screen.getByText("Confidence"));
     assert.ok(screen.getByText("Last Chemistry"));
@@ -2337,6 +2441,23 @@ test("renders the Home weather impact empty state when no forecast exists", asyn
               forecast_fetched_at: null,
               telemetry_latest_at: null
             }
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/swimmability/predicted")) {
+        return response({
+          data: {
+            generated_at: "2026-05-12T12:00:00.000Z",
+            current: {
+              status: "unknown",
+              score: 0,
+              confidence: "unknown",
+              headline: "Assessment Unavailable",
+              updated_at: "2026-05-12T12:00:00.000Z"
+            },
+            predictions: []
           },
           error: null
         });
@@ -2461,6 +2582,108 @@ test("records a pool cover event from the Home page", async () => {
               forecast_fetched_at: null,
               telemetry_latest_at: "2026-05-12T11:00:00.000Z"
             }
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/swimmability/predicted")) {
+        return response({
+          data: {
+            generated_at: "2026-05-12T12:00:00.000Z",
+            current: {
+              status: "caution",
+              score: 68,
+              confidence: "medium",
+              headline: "Use Caution",
+              updated_at: "2026-05-12T12:00:00.000Z"
+            },
+            predictions: [
+              {
+                horizon: "24h",
+                status: "caution",
+                score: 60,
+                trend: "declining",
+                confidence: "low",
+                headline: "Swimmability May Slip by Tomorrow",
+                summary: "Chemistry age will be stretching by Tomorrow.",
+                drivers: ["Chemistry age will be stretching by Tomorrow."],
+                assumptions: ["No recent chlorine addition was recorded."],
+                predicted_inputs: [],
+                provenance: {
+                  prediction: {
+                    value_kind: "predicted",
+                    source_type: "prediction_model",
+                    source_detail: "swimmability.predicted.v1",
+                    freshness_state: "fresh",
+                    confidence_band: "low",
+                    measured_at: "2026-05-12T12:00:00.000Z",
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["No recent chlorine addition was recorded."]
+                  },
+                  chemistry: {
+                    value_kind: "measured",
+                    source_type: "manual_test",
+                    source_detail: "manual",
+                    freshness_state: "aging",
+                    confidence_band: "medium",
+                    measured_at: "2026-05-10T12:00:00.000Z",
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["Manual chemistry is aging."]
+                  },
+                  weather_forecast: {
+                    value_kind: "predicted",
+                    source_type: "weather_provider",
+                    source_detail: "openmeteo",
+                    freshness_state: "missing",
+                    confidence_band: "unknown",
+                    measured_at: null,
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["Forecast unavailable."]
+                  },
+                  cover_exposure: {
+                    value_kind: "derived",
+                    source_type: "derived_calculation",
+                    source_detail: "pool_cover.exposure_summary.24h",
+                    freshness_state: "missing",
+                    confidence_band: "unknown",
+                    measured_at: null,
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["No cover exposure summary is available."]
+                  },
+                  circulation: {
+                    value_kind: "derived",
+                    source_type: "derived_calculation",
+                    source_detail: "pump.circulation_summary.24h",
+                    freshness_state: "missing",
+                    confidence_band: "unknown",
+                    measured_at: null,
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["No circulation summary is available."]
+                  },
+                  chlorinator: {
+                    value_kind: "measured",
+                    source_type: "controller",
+                    source_detail: "chlorinator.latest_state",
+                    freshness_state: "missing",
+                    confidence_band: "unknown",
+                    measured_at: null,
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["No chlorinator telemetry is available."]
+                  },
+                  chemical_additions: {
+                    value_kind: "observed",
+                    source_type: "manual_log",
+                    source_detail: "chemistry.additions",
+                    freshness_state: "missing",
+                    confidence_band: "unknown",
+                    measured_at: null,
+                    evaluated_at: "2026-05-12T12:00:00.000Z",
+                    reasons: ["No recent chemical additions were logged."]
+                  }
+                }
+              }
+            ]
           },
           error: null
         });

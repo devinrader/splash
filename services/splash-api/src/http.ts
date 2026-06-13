@@ -67,6 +67,7 @@ import {
   WaterTestingScheduleUnavailableError,
   WaterTestingScheduleValidationError
 } from "./water-testing-schedule.js";
+import type { PredictedSwimmabilityView } from "./predicted-swimmability.js";
 
 export interface HttpServer {
   start(signal: AbortSignal): Promise<void>;
@@ -166,6 +167,7 @@ export interface HttpHandlers {
   }): Promise<PoolCoverExposureSummaryView>;
   createPoolCoverEvent(input: Record<string, unknown>): Promise<PoolCoverEventRecord>;
   getSwimmability(): Promise<SwimmabilityView>;
+  getPredictedSwimmability?(input: { horizon: string | null }): Promise<PredictedSwimmabilityView | Record<string, unknown>>;
   getNotifications(input: {
     status: string | null;
     limit: string | null;
@@ -643,6 +645,16 @@ export class LocalHttpServer implements HttpServer {
 
       if (req.method === "GET" && req.url === "/swimmability") {
         return json(req, res, 200, { data: await this.handlers.getSwimmability(), error: null });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/swimmability/predicted") && this.handlers.getPredictedSwimmability) {
+        const url = new URL(req.url, "http://localhost");
+        return json(req, res, 200, {
+          data: await this.handlers.getPredictedSwimmability({
+            horizon: url.searchParams.get("horizon")
+          }),
+          error: null
+        });
       }
 
       if (req.method === "GET" && req.url?.startsWith("/notifications")) {

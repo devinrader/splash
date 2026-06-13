@@ -51,6 +51,7 @@ import type {
   NotificationsResponse,
   NotificationStatusFilter,
   NotificationType,
+  PredictedSwimmabilityResponse,
   SwimmabilityResponse,
   WaterTestingScheduleResponse,
   WaterTestingScheduleSaveInput,
@@ -583,6 +584,14 @@ export async function fetchSwimmability(): Promise<SwimmabilityResponse> {
     throw await buildApiError(response, "Swimmability request failed.");
   }
   return (await response.json()) as SwimmabilityResponse;
+}
+
+export async function fetchPredictedSwimmability(): Promise<PredictedSwimmabilityResponse> {
+  const response = await fetch(buildApiUrl("/swimmability/predicted"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Predicted swimmability request failed.");
+  }
+  return (await response.json()) as PredictedSwimmabilityResponse;
 }
 
 export async function fetchNotifications(input: {

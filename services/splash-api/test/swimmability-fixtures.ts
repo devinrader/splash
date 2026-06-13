@@ -1,3 +1,4 @@
+import type { PredictedSwimmabilityView } from "../src/predicted-swimmability.js";
 import type { SwimmabilityView } from "../src/swimmability.js";
 
 export function buildUnknownSwimmabilityView(): SwimmabilityView {
@@ -69,5 +70,19 @@ export function buildUnknownSwimmabilityView(): SwimmabilityView {
         reasons: ["Rainfall context cannot be derived without chemistry history."]
       }
     }
+  };
+}
+
+export function buildUnknownPredictedSwimmabilityView(): PredictedSwimmabilityView {
+  return {
+    generated_at: "2026-01-01T00:00:00.000Z",
+    current: {
+      status: "unknown",
+      score: 0,
+      confidence: "unknown",
+      headline: "No data",
+      updated_at: "2026-01-01T00:00:00.000Z"
+    },
+    predictions: []
   };
 }
