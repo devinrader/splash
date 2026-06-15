@@ -198,6 +198,9 @@ export function HomePage() {
                       <strong>{formatPredictionHorizon(prediction.horizon)}</strong>
                       <span>{formatSwimmabilityStatus(prediction.status)} · {prediction.score}</span>
                       <span>{formatSwimmabilityConfidence(prediction.confidence)} confidence</span>
+                      {prediction.confidence_blockers.length > 0 ? (
+                        <span>{prediction.confidence_blockers[0]}</span>
+                      ) : null}
                     </div>
                   ))}
                 </div>

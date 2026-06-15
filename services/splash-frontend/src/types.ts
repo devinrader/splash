@@ -1045,6 +1045,7 @@ export interface PredictedSwimmabilityItemData {
   summary: string;
   drivers: string[];
   assumptions: string[];
+  confidence_blockers: string[];
   predicted_inputs: PredictedSwimmabilityInputSummaryData[];
   provenance: {
     prediction: ValueProvenanceData;

@@ -252,6 +252,7 @@ test("buildPredictedSwimmabilityView projects horizon predictions with show-your
   assert.equal(view.predictions.length, 4);
   assert.equal(view.predictions[0].horizon, "24h");
   assert.ok(view.predictions[0].predicted_inputs.length > 0);
+  assert.ok(Array.isArray(view.predictions[0].confidence_blockers));
   assert.equal(view.predictions[0].provenance.prediction.source_type, "prediction_model");
 });
 
@@ -375,6 +376,7 @@ test("predicted swimmability API route returns horizon projections", async () =>
             summary: "High UV is forecast before Tomorrow.",
             drivers: ["High UV is forecast before Tomorrow."],
             assumptions: ["Recent chemistry is still usable for short-horizon projection."],
+            confidence_blockers: [],
             predicted_inputs: [],
             provenance: {
               prediction: {
@@ -404,6 +406,7 @@ test("predicted swimmability API route returns horizon projections", async () =>
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.data.predictions[0].horizon, "24h");
+  assert.deepEqual(response.body.data.predictions[0].confidence_blockers, []);
   assert.equal(response.body.data.predictions[0].provenance.prediction.source_type, "prediction_model");
 });
 

@@ -180,6 +180,7 @@ test("buildMaintenanceRecommendationsView suggests chlorine adjustment when sani
           summary: "Forecast UV keeps pressure on chlorine.",
           drivers: ["High UV is forecast."],
           assumptions: [],
+          confidence_blockers: [],
           predicted_inputs: [],
           provenance: {
             prediction: {

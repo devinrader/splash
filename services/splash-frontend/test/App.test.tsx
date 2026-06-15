@@ -2341,6 +2341,7 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
                 summary: "High UV is forecast before Tomorrow.",
                 drivers: ["High UV is forecast before Tomorrow."],
                 assumptions: ["Recent chemistry is still usable for short-horizon projection."],
+                confidence_blockers: [],
                 predicted_inputs: [],
                 provenance: {
                   prediction: {
@@ -2705,10 +2706,11 @@ test("records a pool cover event from the Home page", async () => {
                 score: 60,
                 trend: "declining",
                 confidence: "low",
-                headline: "Swimmability May Slip by Tomorrow",
-                summary: "Chemistry age will be stretching by Tomorrow.",
+                headline: "No weather forecast has been captured yet.",
+                summary: "Prediction for Tomorrow is available, but confidence is limited because no weather forecast has been captured yet.",
                 drivers: ["Chemistry age will be stretching by Tomorrow."],
                 assumptions: ["No recent chlorine addition was recorded."],
+                confidence_blockers: ["No weather forecast has been captured yet."],
                 predicted_inputs: [],
                 provenance: {
                   prediction: {
@@ -2798,6 +2800,7 @@ test("records a pool cover event from the Home page", async () => {
   await waitFor(() => {
     assert.ok(screen.getByText("Pool Cover"));
     assert.ok(screen.getByText("No cover event has been recorded yet."));
+    assert.ok(screen.getByText("No weather forecast has been captured yet."));
   });
 
   fireEvent.change(screen.getByLabelText("Real-Time Cover Type"), { target: { value: "safety" } });

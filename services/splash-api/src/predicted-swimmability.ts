@@ -41,6 +41,7 @@ export interface PredictedSwimmabilityItemView {
   summary: string;
   drivers: string[];
   assumptions: string[];
+  confidence_blockers: string[];
   predicted_inputs: PredictedSwimmabilityInputSummary[];
   provenance: {
     prediction: ValueProvenance;
@@ -225,10 +226,18 @@ function buildPredictionForHorizon(
 
   score = clamp(score, 0, 100);
   const confidence = rankToConfidence(confidenceRank);
+  const confidenceBlockers = deriveConfidenceBlockers({
+    confidence,
+    chemistry: chemistryProvenance,
+    weather: weatherProvenance,
+    coverExposure: coverProvenance,
+    circulation: circulationProvenance,
+    chlorinator: chlorinatorProvenance
+  });
   const status = scoreToStatus(score, confidence);
   const trend = deriveTrend(input.current.score, score, status);
-  const headline = derivePredictionHeadline(status, confidence, horizon);
-  const summary = derivePredictionSummary(status, confidence, drivers, horizon);
+  const headline = derivePredictionHeadline(status, confidence, horizon, confidenceBlockers);
+  const summary = derivePredictionSummary(status, confidence, drivers, horizon, confidenceBlockers);
 
   return {
     horizon,
@@ -240,6 +249,7 @@ function buildPredictionForHorizon(
     summary,
     drivers: drivers.slice(0, 4),
     assumptions: assumptions.slice(0, 4),
+    confidence_blockers: confidenceBlockers,
     predicted_inputs: [
       {
         key: "uv_risk",
@@ -313,6 +323,7 @@ function buildUnavailablePrediction(input: {
     summary: "Prediction is unavailable because recent chemistry does not provide a trustworthy current anchor.",
     drivers: ["No trustworthy current chemistry anchor is available for prediction."],
     assumptions: ["Predicted values do not replace measured chemistry."],
+    confidence_blockers: ["A trustworthy current chemistry anchor is not available."],
     predicted_inputs: [],
     provenance: {
       prediction: buildValueProvenance({
@@ -534,6 +545,47 @@ function buildPredictionProvenance(
   });
 }
 
+function deriveConfidenceBlockers(input: {
+  confidence: SwimmabilityConfidence;
+  chemistry: ValueProvenance;
+  weather: ValueProvenance;
+  coverExposure: ValueProvenance;
+  circulation: ValueProvenance;
+  chlorinator: ValueProvenance;
+}): string[] {
+  if (input.confidence === "high") {
+    return [];
+  }
+
+  const blockers: string[] = [];
+
+  if (input.chemistry.freshness_state === "stale" || input.chemistry.freshness_state === "missing") {
+    blockers.push("Recent chemistry is missing or too stale for a strong prediction.");
+  }
+  if (input.weather.freshness_state === "missing" || input.weather.freshness_state === "unavailable") {
+    blockers.push("No weather forecast has been captured yet.");
+  } else if (input.weather.freshness_state === "stale") {
+    blockers.push("The weather forecast is stale.");
+  }
+  if (input.coverExposure.confidence_band === "low" || input.coverExposure.freshness_state === "stale") {
+    blockers.push("Cover history is too sparse for a strong exposure estimate.");
+  } else if (input.coverExposure.confidence_band === "medium" || input.coverExposure.freshness_state === "aging") {
+    blockers.push("Cover exposure history is only partially complete.");
+  }
+  if (input.circulation.confidence_band === "low" || input.circulation.freshness_state === "stale") {
+    blockers.push("Circulation telemetry coverage is too sparse.");
+  } else if (input.circulation.confidence_band === "medium" || input.circulation.freshness_state === "aging") {
+    blockers.push("Circulation telemetry coverage is incomplete.");
+  }
+  if (input.chlorinator.freshness_state === "missing" || input.chlorinator.freshness_state === "unavailable") {
+    blockers.push("Chlorinator telemetry is unavailable.");
+  } else if (input.chlorinator.confidence_band === "medium" || input.chlorinator.confidence_band === "low") {
+    blockers.push("Chlorinator support is incomplete.");
+  }
+
+  return blockers.slice(0, 4);
+}
+
 function confidenceToRank(value: SwimmabilityConfidence): number {
   switch (value) {
     case "high":
@@ -589,10 +641,11 @@ function deriveTrend(currentScore: number, predictedScore: number, status: Swimm
 function derivePredictionHeadline(
   status: SwimmabilityStatus,
   confidence: SwimmabilityConfidence,
-  horizon: PredictedSwimmabilityHorizon
+  horizon: PredictedSwimmabilityHorizon,
+  confidenceBlockers: string[]
 ): string {
   if (status === "unknown") {
-    return `Prediction Uncertain for ${formatHorizonLabel(horizon)}`;
+    return confidenceBlockers[0] ?? `Prediction Uncertain for ${formatHorizonLabel(horizon)}`;
   }
   if (status === "good") {
     return confidence === "low"
@@ -609,16 +662,23 @@ function derivePredictionSummary(
   status: SwimmabilityStatus,
   confidence: SwimmabilityConfidence,
   drivers: string[],
-  horizon: PredictedSwimmabilityHorizon
+  horizon: PredictedSwimmabilityHorizon,
+  confidenceBlockers: string[]
 ): string {
   if (status === "unknown") {
-    return `Prediction for ${formatHorizonLabel(horizon)} is not trustworthy enough with the current inputs.`;
+    return confidenceBlockers.length > 0
+      ? `Prediction for ${formatHorizonLabel(horizon)} is not trustworthy enough because ${lowercaseFirst(confidenceBlockers[0])}`
+      : `Prediction for ${formatHorizonLabel(horizon)} is not trustworthy enough with the current inputs.`;
   }
   if (drivers.length === 0) {
     return `No major forecast or operational risks stand out before ${formatHorizonLabel(horizon)}.`;
   }
   const lead = drivers[0];
-  return confidence === "low" ? `${lead} Prediction confidence is limited.` : lead;
+  return confidence === "low"
+    ? confidenceBlockers.length > 0
+      ? `${lead} Prediction confidence is limited because ${lowercaseFirst(confidenceBlockers[0])}`
+      : `${lead} Prediction confidence is limited.`
+    : lead;
 }
 
 function formatHorizonLabel(horizon: PredictedSwimmabilityHorizon): string {
@@ -649,4 +709,8 @@ function horizonToHours(horizon: PredictedSwimmabilityHorizon): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function lowercaseFirst(value: string): string {
+  return value.length > 0 ? value[0].toLowerCase() + value.slice(1) : value;
 }
