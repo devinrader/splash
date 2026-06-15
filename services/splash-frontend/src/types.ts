@@ -859,6 +859,48 @@ export interface ChemicalAdditionCreateResponse {
   error: unknown;
 }
 
+export type WaterAdditionSourceType = "well" | "municipal" | "truck" | "unknown";
+export type WaterAdditionReason = "top_up" | "post_backwash_refill" | "partial_refill" | "full_refill" | "other";
+export type WaterAdditionUnit = "gal" | "qt" | "oz" | "lb" | "kg" | "g" | "L";
+
+export interface WaterAdditionRecord {
+  id: string;
+  pool_id: string;
+  water_source: WaterAdditionSourceType;
+  amount: number;
+  unit: WaterAdditionUnit;
+  reason: WaterAdditionReason;
+  notes: string | null;
+  source: "manual";
+  recorded_at: string;
+  created_at: string;
+}
+
+export interface WaterAdditionsData {
+  start: string | null;
+  end: string | null;
+  limit: number;
+  additions: WaterAdditionRecord[];
+}
+
+export interface WaterAdditionsResponse {
+  data: WaterAdditionsData;
+  error: unknown;
+}
+
+export interface WaterAdditionCreateInput {
+  waterSource: WaterAdditionSourceType;
+  amount: number;
+  unit: WaterAdditionUnit;
+  reason: WaterAdditionReason;
+  notes?: string | null;
+}
+
+export interface WaterAdditionCreateResponse {
+  data: WaterAdditionRecord;
+  error: unknown;
+}
+
 export type PoolCoverState = "on" | "off";
 export type PoolCoverType = "unknown" | "solar" | "winter" | "safety" | "automatic";
 

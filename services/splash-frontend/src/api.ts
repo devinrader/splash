@@ -10,6 +10,9 @@ import type {
   ChemicalAdditionsResponse,
   ChemicalAdditionCreateInput,
   ChemicalAdditionCreateResponse,
+  WaterAdditionsResponse,
+  WaterAdditionCreateInput,
+  WaterAdditionCreateResponse,
   ChemistryReadingCreateInput,
   ChemistryReadingCreateResponse,
   PoolCoverCurrentResponse,
@@ -513,6 +516,49 @@ export async function createChemicalAddition(input: ChemicalAdditionCreateInput)
     throw await buildApiError(response, "Chemical addition save failed.");
   }
   return (await response.json()) as ChemicalAdditionCreateResponse;
+}
+
+export async function fetchWaterAdditions(input?: {
+  start?: string | null;
+  end?: string | null;
+  limit?: number | null;
+}): Promise<WaterAdditionsResponse> {
+  const params = new URLSearchParams();
+  if (input?.start) {
+    params.set("start", input.start);
+  }
+  if (input?.end) {
+    params.set("end", input.end);
+  }
+  if (typeof input?.limit === "number") {
+    params.set("limit", String(input.limit));
+  }
+  const path = params.size > 0 ? `/chemistry/water-additions?${params.toString()}` : "/chemistry/water-additions";
+  const response = await fetch(buildApiUrl(path));
+  if (!response.ok) {
+    throw await buildApiError(response, "Water additions request failed.");
+  }
+  return (await response.json()) as WaterAdditionsResponse;
+}
+
+export async function createWaterAddition(input: WaterAdditionCreateInput): Promise<WaterAdditionCreateResponse> {
+  const response = await fetch(buildApiUrl("/chemistry/water-additions"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      water_source: input.waterSource,
+      amount: input.amount,
+      unit: input.unit,
+      reason: input.reason,
+      notes: input.notes ?? null
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Water addition save failed.");
+  }
+  return (await response.json()) as WaterAdditionCreateResponse;
 }
 
 export async function fetchCurrentPoolCover(): Promise<PoolCoverCurrentResponse> {

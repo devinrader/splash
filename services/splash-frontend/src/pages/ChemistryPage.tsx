@@ -4,9 +4,11 @@ import {
   createChemicalAddition,
   createChemistryObservation,
   createMaintenanceActivity,
+  createWaterAddition,
   fetchChemicalAdditions,
   fetchChemistryObservations,
-  fetchMaintenanceActivities
+  fetchMaintenanceActivities,
+  fetchWaterAdditions
 } from "../api";
 import { Card } from "../components/mockUi";
 import type {
@@ -24,7 +26,13 @@ import type {
   MaintenanceActivitiesData,
   MaintenanceActivityCreateInput,
   MaintenanceActivityRecord,
-  MaintenanceActivityType
+  MaintenanceActivityType,
+  WaterAdditionCreateInput,
+  WaterAdditionReason,
+  WaterAdditionRecord,
+  WaterAdditionsData,
+  WaterAdditionSourceType,
+  WaterAdditionUnit
 } from "../types";
 import { WaterTestLogPage } from "./WaterTestLogPage";
 
@@ -64,6 +72,20 @@ const CHEMICAL_TYPE_OPTIONS: Array<{ value: ChemicalAdditionType; label: string 
 ];
 
 const CHEMICAL_UNIT_OPTIONS: ChemicalAdditionUnit[] = ["gal", "qt", "oz", "lb", "kg", "g", "L"];
+const WATER_SOURCE_OPTIONS: Array<{ value: WaterAdditionSourceType; label: string }> = [
+  { value: "well", label: "Well" },
+  { value: "municipal", label: "Municipal" },
+  { value: "truck", label: "Truck" },
+  { value: "unknown", label: "Unknown" }
+];
+const WATER_REASON_OPTIONS: Array<{ value: WaterAdditionReason; label: string }> = [
+  { value: "top_up", label: "Top-Up" },
+  { value: "post_backwash_refill", label: "Post-Backwash Refill" },
+  { value: "partial_refill", label: "Partial Refill" },
+  { value: "full_refill", label: "Full Refill" },
+  { value: "other", label: "Other" }
+];
+const WATER_UNIT_OPTIONS: WaterAdditionUnit[] = ["gal", "qt", "oz", "lb", "kg", "g", "L"];
 
 const MAINTENANCE_ACTIVITY_OPTIONS: Array<{ value: MaintenanceActivityType; label: string }> = [
   { value: "brushed", label: "Brushed" },
@@ -97,6 +119,14 @@ interface MaintenanceActivityFormState {
   notes: string;
 }
 
+interface WaterAdditionFormState {
+  waterSource: WaterAdditionSourceType;
+  amount: string;
+  unit: WaterAdditionUnit;
+  reason: WaterAdditionReason;
+  notes: string;
+}
+
 const EMPTY_OBSERVATION_FORM: ObservationFormState = {
   clarity: "",
   algaePresence: "",
@@ -117,10 +147,19 @@ const EMPTY_MAINTENANCE_FORM: MaintenanceActivityFormState = {
   notes: ""
 };
 
+const EMPTY_WATER_ADDITION_FORM: WaterAdditionFormState = {
+  waterSource: "well",
+  amount: "",
+  unit: "gal",
+  reason: "top_up",
+  notes: ""
+};
+
 const CHEMISTRY_TABS = [
   { id: "water-test-log", label: "Water Test Log" },
   { id: "water-condition", label: "Water Condition" },
   { id: "chemical-additions", label: "Chemical Additions" },
+  { id: "water-additions", label: "Water Additions" },
   { id: "maintenance-activity", label: "Maintenance Activity" }
 ] as const;
 
@@ -148,6 +187,12 @@ export function ChemistryPage() {
   const [additionErrorMessage, setAdditionErrorMessage] = useState<string | null>(null);
   const [additionSuccessMessage, setAdditionSuccessMessage] = useState<string | null>(null);
   const [additionFormState, setAdditionFormState] = useState<ChemicalAdditionFormState>(EMPTY_ADDITION_FORM);
+  const [waterAdditions, setWaterAdditions] = useState<WaterAdditionsData | null>(null);
+  const [waterAdditionsLoading, setWaterAdditionsLoading] = useState(true);
+  const [waterAdditionSaving, setWaterAdditionSaving] = useState(false);
+  const [waterAdditionErrorMessage, setWaterAdditionErrorMessage] = useState<string | null>(null);
+  const [waterAdditionSuccessMessage, setWaterAdditionSuccessMessage] = useState<string | null>(null);
+  const [waterAdditionFormState, setWaterAdditionFormState] = useState<WaterAdditionFormState>(EMPTY_WATER_ADDITION_FORM);
 
   useEffect(() => {
     let cancelled = false;
@@ -156,11 +201,13 @@ export function ChemistryPage() {
       setObservationsLoading(true);
       setMaintenanceLoading(true);
       setAdditionsLoading(true);
+      setWaterAdditionsLoading(true);
       try {
-        const [observationsResponse, maintenanceResponse, additionsResponse] = await Promise.all([
+        const [observationsResponse, maintenanceResponse, additionsResponse, waterAdditionsResponse] = await Promise.all([
           fetchChemistryObservations({ limit: 10 }),
           fetchMaintenanceActivities({ limit: 10 }),
-          fetchChemicalAdditions({ limit: 10 })
+          fetchChemicalAdditions({ limit: 10 }),
+          fetchWaterAdditions({ limit: 10 })
         ]);
 
         if (cancelled) {
@@ -170,21 +217,25 @@ export function ChemistryPage() {
         setObservations(observationsResponse.data);
         setMaintenance(maintenanceResponse.data);
         setAdditions(additionsResponse.data);
+        setWaterAdditions(waterAdditionsResponse.data);
         setObservationErrorMessage(null);
         setMaintenanceErrorMessage(null);
         setAdditionErrorMessage(null);
+        setWaterAdditionErrorMessage(null);
       } catch (error) {
         if (!cancelled) {
           const message = error instanceof Error ? error.message : String(error);
           setObservationErrorMessage(message);
           setMaintenanceErrorMessage(message);
           setAdditionErrorMessage(message);
+          setWaterAdditionErrorMessage(message);
         }
       } finally {
         if (!cancelled) {
           setObservationsLoading(false);
           setMaintenanceLoading(false);
           setAdditionsLoading(false);
+          setWaterAdditionsLoading(false);
         }
       }
     })();
@@ -251,6 +302,26 @@ export function ChemistryPage() {
       setAdditionErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setAdditionSaving(false);
+    }
+  }
+
+  async function handleWaterAdditionSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setWaterAdditionSaving(true);
+    setWaterAdditionErrorMessage(null);
+    setWaterAdditionSuccessMessage(null);
+
+    try {
+      const input = buildWaterAdditionCreateInput(waterAdditionFormState);
+      await createWaterAddition(input);
+      const response = await fetchWaterAdditions({ limit: 10 });
+      setWaterAdditions(response.data);
+      setWaterAdditionFormState(EMPTY_WATER_ADDITION_FORM);
+      setWaterAdditionSuccessMessage("Water addition saved.");
+    } catch (error) {
+      setWaterAdditionErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWaterAdditionSaving(false);
     }
   }
 
@@ -546,6 +617,113 @@ export function ChemistryPage() {
           </div>
         ) : null}
 
+        {activeTab === "water-additions" ? (
+          <div className="automation-grid">
+            <Card title="Water Additions" className="automation-card-table">
+              <form className="control-form" onSubmit={handleWaterAdditionSubmit}>
+                <label htmlFor="water-addition-source">Water Source</label>
+                <select
+                  id="water-addition-source"
+                  value={waterAdditionFormState.waterSource}
+                  onChange={(event) =>
+                    setWaterAdditionFormState((current) => ({ ...current, waterSource: event.target.value as WaterAdditionSourceType }))
+                  }
+                >
+                  {WATER_SOURCE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                <label htmlFor="water-addition-amount">Amount</label>
+                <input
+                  id="water-addition-amount"
+                  type="number"
+                  step="0.1"
+                  value={waterAdditionFormState.amount}
+                  onChange={(event) => setWaterAdditionFormState((current) => ({ ...current, amount: event.target.value }))}
+                />
+
+                <label htmlFor="water-addition-unit">Unit</label>
+                <select
+                  id="water-addition-unit"
+                  value={waterAdditionFormState.unit}
+                  onChange={(event) =>
+                    setWaterAdditionFormState((current) => ({ ...current, unit: event.target.value as WaterAdditionUnit }))
+                  }
+                >
+                  {WATER_UNIT_OPTIONS.map((unit) => (
+                    <option key={unit} value={unit}>
+                      {unit}
+                    </option>
+                  ))}
+                </select>
+
+                <label htmlFor="water-addition-reason">Reason</label>
+                <select
+                  id="water-addition-reason"
+                  value={waterAdditionFormState.reason}
+                  onChange={(event) =>
+                    setWaterAdditionFormState((current) => ({ ...current, reason: event.target.value as WaterAdditionReason }))
+                  }
+                >
+                  {WATER_REASON_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                <label htmlFor="water-addition-notes">Water Addition Notes</label>
+                <textarea
+                  id="water-addition-notes"
+                  value={waterAdditionFormState.notes}
+                  onChange={(event) => setWaterAdditionFormState((current) => ({ ...current, notes: event.target.value }))}
+                  rows={3}
+                />
+
+                <button type="submit" disabled={waterAdditionSaving}>
+                  {waterAdditionSaving ? "Saving…" : "Save water addition"}
+                </button>
+              </form>
+
+              {waterAdditionSuccessMessage ? <p className="inline-success-message">{waterAdditionSuccessMessage}</p> : null}
+              {waterAdditionErrorMessage ? <p className="inline-error-message">{waterAdditionErrorMessage}</p> : null}
+              {waterAdditionsLoading ? <p className="chart-empty-state">Loading water additions…</p> : null}
+              {!waterAdditionsLoading && waterAdditions?.additions.length ? (
+                <div className="settings-chemistry-table-shell">
+                  <table className="system-data-table" aria-label="recent water additions">
+                    <thead>
+                      <tr>
+                        <th>Recorded</th>
+                        <th>Source</th>
+                        <th>Amount</th>
+                        <th>Reason</th>
+                        <th>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {waterAdditions.additions.map((addition) => (
+                        <tr key={addition.id}>
+                          <td>{formatTimestamp(addition.recorded_at)}</td>
+                          <td>{formatWaterSource(addition.water_source)}</td>
+                          <td>{`${addition.amount} ${addition.unit}`}</td>
+                          <td>{formatWaterReason(addition.reason)}</td>
+                          <td>{addition.notes || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              {!waterAdditionsLoading && !waterAdditions?.additions.length ? (
+                <p className="chart-empty-state">No water additions have been logged yet.</p>
+              ) : null}
+            </Card>
+          </div>
+        ) : null}
+
       </div>
     </section>
   );
@@ -577,6 +755,16 @@ function buildMaintenanceCreateInput(formState: MaintenanceActivityFormState): M
   };
 }
 
+function buildWaterAdditionCreateInput(formState: WaterAdditionFormState): WaterAdditionCreateInput {
+  return {
+    waterSource: formState.waterSource,
+    amount: Number.parseFloat(formState.amount),
+    unit: formState.unit,
+    reason: formState.reason,
+    notes: formState.notes.trim() ? formState.notes.trim() : null
+  };
+}
+
 function normalizeOptionalValue<T extends string>(value: string): T | null {
   return value.trim() ? (value as T) : null;
 }
@@ -596,6 +784,16 @@ function formatTimestamp(value: string): string {
 
 function formatChemicalType(value: ChemicalAdditionRecord["chemical_type"]): string {
   const match = CHEMICAL_TYPE_OPTIONS.find((option) => option.value === value);
+  return match?.label ?? value;
+}
+
+function formatWaterSource(value: WaterAdditionRecord["water_source"]): string {
+  const match = WATER_SOURCE_OPTIONS.find((option) => option.value === value);
+  return match?.label ?? value;
+}
+
+function formatWaterReason(value: WaterAdditionRecord["reason"]): string {
+  const match = WATER_REASON_OPTIONS.find((option) => option.value === value);
   return match?.label ?? value;
 }
 

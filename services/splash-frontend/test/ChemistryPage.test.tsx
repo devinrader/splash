@@ -31,7 +31,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("chemistry page loads observations, maintenance, and additions and saves all workflows", async () => {
+test("chemistry page loads observations, maintenance, chemical additions, and water additions and saves all workflows", async () => {
   const requests: string[] = [];
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url =
@@ -184,6 +184,53 @@ test("chemistry page loads observations, maintenance, and additions and saves al
         error: null
       });
     }
+    if (url.includes("/chemistry/water-additions") && (!method || method === "GET")) {
+      return response({
+        data: {
+          start: null,
+          end: null,
+          limit: 10,
+          additions: [
+            {
+              id: "water-addition-1",
+              pool_id: "pool-1",
+              water_source: "well",
+              amount: 200,
+              unit: "gal",
+              reason: "top_up",
+              notes: "Refilled after evaporation",
+              source: "manual",
+              recorded_at: "2026-06-02T20:00:00.000Z",
+              created_at: "2026-06-02T20:00:03.000Z"
+            }
+          ]
+        },
+        error: null
+      });
+    }
+    if (url.endsWith("/chemistry/water-additions") && method === "POST") {
+      const parsed = JSON.parse(init?.body as string) as Record<string, unknown>;
+      assert.equal(parsed.water_source, "well");
+      assert.equal(parsed.amount, 200);
+      assert.equal(parsed.unit, "gal");
+      assert.equal(parsed.reason, "top_up");
+      assert.equal(parsed.notes, "Refilled after evaporation");
+      return response({
+        data: {
+          id: "water-addition-2",
+          pool_id: "pool-1",
+          water_source: "well",
+          amount: 200,
+          unit: "gal",
+          reason: "top_up",
+          notes: "Refilled after evaporation",
+          source: "manual",
+          recorded_at: "2026-06-03T20:00:00.000Z",
+          created_at: "2026-06-03T20:00:03.000Z"
+        },
+        error: null
+      });
+    }
     throw new Error(`Unexpected fetch: ${method ?? "GET"} ${url}`);
   });
 
@@ -195,6 +242,7 @@ test("chemistry page loads observations, maintenance, and additions and saves al
     assert.ok(screen.getByRole("tab", { name: "Water Test Log" }));
     assert.ok(screen.getByRole("tab", { name: "Water Condition" }));
     assert.ok(screen.getByRole("tab", { name: "Chemical Additions" }));
+    assert.ok(screen.getByRole("tab", { name: "Water Additions" }));
     assert.ok(screen.getByRole("tab", { name: "Maintenance Activity" }));
   });
 
@@ -202,6 +250,7 @@ test("chemistry page loads observations, maintenance, and additions and saves al
     assert.ok(requests.some((entry) => entry.includes("/chemistry/observations")));
     assert.ok(requests.some((entry) => entry.includes("/chemistry/maintenance")));
     assert.ok(requests.some((entry) => entry.includes("/chemistry/additions")));
+    assert.ok(requests.some((entry) => entry.includes("/chemistry/water-additions")));
   });
 
   fireEvent.click(screen.getByRole("tab", { name: "Water Condition" }));
@@ -233,12 +282,23 @@ test("chemistry page loads observations, maintenance, and additions and saves al
     assert.ok(screen.getByText("Chemical addition saved."));
   });
 
+  fireEvent.click(screen.getByRole("tab", { name: "Water Additions" }));
+  fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "200" } });
+  fireEvent.change(screen.getByLabelText("Water Addition Notes"), { target: { value: "Refilled after evaporation" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save water addition" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Water addition saved."));
+  });
+
   const observationListRequests = requests.filter((entry) => entry.includes("/chemistry/observations"));
   assert.ok(observationListRequests.length >= 3);
   const maintenanceListRequests = requests.filter((entry) => entry.includes("/chemistry/maintenance"));
   assert.ok(maintenanceListRequests.length >= 3);
   const additionListRequests = requests.filter((entry) => entry.includes("/chemistry/additions"));
   assert.ok(additionListRequests.length >= 3);
+  const waterAdditionListRequests = requests.filter((entry) => entry.includes("/chemistry/water-additions"));
+  assert.ok(waterAdditionListRequests.length >= 3);
 });
 
 function response(body: unknown, status = 200): Response {

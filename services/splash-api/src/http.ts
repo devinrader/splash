@@ -44,6 +44,12 @@ import {
   type ChemicalAdditionsView
 } from "./chemical-additions.js";
 import {
+  WaterAdditionsUnavailableError,
+  WaterAdditionsValidationError,
+  type WaterAdditionRecord,
+  type WaterAdditionsView
+} from "./water-additions.js";
+import {
   PoolCoverEventsUnavailableError,
   PoolCoverEventsValidationError,
   type PoolCoverCurrentView,
@@ -157,6 +163,12 @@ export interface HttpHandlers {
     limit: string | null;
   }): Promise<ChemicalAdditionsView>;
   createChemicalAddition(input: Record<string, unknown>): Promise<ChemicalAdditionRecord>;
+  getWaterAdditions?(input: {
+    start: string | null;
+    end: string | null;
+    limit: string | null;
+  }): Promise<WaterAdditionsView>;
+  createWaterAddition?(input: Record<string, unknown>): Promise<WaterAdditionRecord>;
   getCurrentPoolCover(): Promise<PoolCoverCurrentView>;
   getPoolCoverHistory(input: {
     start: string | null;
@@ -616,6 +628,31 @@ export class LocalHttpServer implements HttpServer {
       if (req.method === "POST" && req.url === "/chemistry/additions") {
         const body = await readJsonBody(req);
         return json(req, res, 201, { data: await this.handlers.createChemicalAddition(body), error: null });
+      }
+
+      if (req.method === "GET" && req.url?.startsWith("/chemistry/water-additions")) {
+        const url = new URL(req.url, "http://localhost");
+        if (url.pathname === "/chemistry/water-additions") {
+          if (!this.handlers.getWaterAdditions) {
+            throw new HttpResponseError(503, { data: null, error: { code: "service_unavailable", message: "Water additions are unavailable." } });
+          }
+          return json(req, res, 200, {
+            data: await this.handlers.getWaterAdditions({
+              start: url.searchParams.get("start"),
+              end: url.searchParams.get("end"),
+              limit: url.searchParams.get("limit")
+            }),
+            error: null
+          });
+        }
+      }
+
+      if (req.method === "POST" && req.url === "/chemistry/water-additions") {
+        if (!this.handlers.createWaterAddition) {
+          throw new HttpResponseError(503, { data: null, error: { code: "service_unavailable", message: "Water additions are unavailable." } });
+        }
+        const body = await readJsonBody(req);
+        return json(req, res, 201, { data: await this.handlers.createWaterAddition(body), error: null });
       }
 
       if (req.method === "GET" && req.url === "/pool/cover") {
@@ -1211,6 +1248,27 @@ export class LocalHttpServer implements HttpServer {
       }
 
       if (error instanceof ChemicalAdditionsUnavailableError) {
+        return json(req, res, 503, {
+          data: null,
+          error: {
+            code: "service_unavailable",
+            message: error.message
+          }
+        });
+      }
+
+      if (error instanceof WaterAdditionsValidationError) {
+        return json(req, res, 400, {
+          data: null,
+          error: {
+            code: "validation_error",
+            message: error.message,
+            details: error.details
+          }
+        });
+      }
+
+      if (error instanceof WaterAdditionsUnavailableError) {
         return json(req, res, 503, {
           data: null,
           error: {

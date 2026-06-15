@@ -102,6 +102,13 @@ import {
   type ChemicalAdditionsView
 } from "./chemical-additions.js";
 import {
+  SqliteWaterAdditionsRepository,
+  WaterAdditionsService,
+  type WaterAdditionRecord,
+  type WaterAdditionsQueryInput,
+  type WaterAdditionsView
+} from "./water-additions.js";
+import {
   PoolCoverEventsService,
   SqlitePoolCoverEventsRepository,
   type PoolCoverCurrentView,
@@ -147,6 +154,7 @@ export interface AppOptions {
   chemistryObservations?: ChemistryObservationsService;
   maintenanceActivities?: MaintenanceActivitiesService;
   chemicalAdditions?: ChemicalAdditionsService;
+  waterAdditions?: WaterAdditionsService;
   poolCoverEvents?: PoolCoverEventsService;
   notifications?: NotificationsService;
   waterTestingSchedule?: WaterTestingScheduleService;
@@ -202,6 +210,7 @@ export class App {
   private readonly chemistryObservations: ChemistryObservationsService;
   private readonly maintenanceActivities: MaintenanceActivitiesService;
   private readonly chemicalAdditions: ChemicalAdditionsService;
+  private readonly waterAdditions: WaterAdditionsService;
   private readonly poolCoverEvents: PoolCoverEventsService;
   private readonly notifications: NotificationsService;
   private readonly waterTestingSchedule: WaterTestingScheduleService;
@@ -306,6 +315,12 @@ export class App {
       new ChemicalAdditionsService(
         this.config.poolId,
         this.sqliteDatabase ? new SqliteChemicalAdditionsRepository(this.sqliteDatabase) : null
+      );
+    this.waterAdditions =
+      options.waterAdditions ??
+      new WaterAdditionsService(
+        this.config.poolId,
+        this.sqliteDatabase ? new SqliteWaterAdditionsRepository(this.sqliteDatabase) : null
       );
     this.poolCoverEvents =
       options.poolCoverEvents ??
@@ -580,6 +595,16 @@ export class App {
   async createChemicalAddition(input: unknown): Promise<ChemicalAdditionRecord> {
     const addition = await this.chemicalAdditions.createChemicalAddition(input);
     this.events.publish("chemistry.addition", addition as unknown as Record<string, unknown>);
+    return addition;
+  }
+
+  async getWaterAdditions(input: WaterAdditionsQueryInput): Promise<WaterAdditionsView> {
+    return this.waterAdditions.getWaterAdditions(input);
+  }
+
+  async createWaterAddition(input: unknown): Promise<WaterAdditionRecord> {
+    const addition = await this.waterAdditions.createWaterAddition(input);
+    this.events.publish("chemistry.water_addition", addition as unknown as Record<string, unknown>);
     return addition;
   }
 
@@ -1643,6 +1668,8 @@ export class App {
         createMaintenanceActivity: async (input) => this.createMaintenanceActivity(input),
         getChemicalAdditions: async (query) => this.getChemicalAdditions(query),
         createChemicalAddition: async (input) => this.createChemicalAddition(input),
+        getWaterAdditions: async (query) => this.getWaterAdditions(query),
+        createWaterAddition: async (input) => this.createWaterAddition(input),
         getCurrentPoolCover: async () => this.getCurrentPoolCover(),
         getPoolCoverHistory: async (query) => this.getPoolCoverHistory(query),
         getPoolCoverExposureSummary: async (query) => this.getPoolCoverExposureSummary(query),
