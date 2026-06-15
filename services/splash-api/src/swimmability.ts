@@ -169,9 +169,6 @@ export function buildSwimmabilityView(input: SwimmabilityInput): SwimmabilityVie
   const coverDriver = describeCoverState(input.cover.current?.state ?? null, input.cover.current?.cover_type ?? null);
   if (coverDriver) {
     drivers.push(coverDriver);
-    if (coverDriver.severity === "neutral") {
-      score -= 3;
-    }
   }
 
   const weatherDriver = describeWeatherContext(context);
@@ -592,9 +589,7 @@ function assessChemistryRecency(
     driver: {
       key: "chemistry_recency",
       severity: "good",
-      message: context.coverState === "on"
-        ? "Chemistry reading is still reasonably fresh, helped by current cover protection."
-        : "Chemistry reading is still reasonably fresh."
+      message: "Chemistry reading is still reasonably fresh."
     }
   };
 }
@@ -639,13 +634,6 @@ function deriveContext(input: SwimmabilityInput) {
   let stalenessFactor = 1;
   const reasons: string[] = [];
 
-  if (coverState === "off") {
-    stalenessFactor += 0.3;
-    reasons.push("the pool is uncovered");
-  } else if (coverState === "on") {
-    stalenessFactor -= 0.15;
-    reasons.push("the pool is covered");
-  }
   if (uv != null && uv >= 8) {
     stalenessFactor += 0.35;
     reasons.push("UV is high");

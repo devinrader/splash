@@ -2445,6 +2445,7 @@ test("switches sidebar views and renders Diagnostics network cards", async () =>
     const provenance = within(screen.getByLabelText("Swimmability input provenance"));
     assert.ok(provenance.getByText("Chemistry"));
     assert.ok(provenance.getByText("Manual test · Fresh · High confidence"));
+    assert.equal(provenance.queryByText("Cover"), null);
     assert.ok(provenance.getByText("Weather"));
     assert.ok(provenance.getByText("Weather provider · Fresh · High confidence"));
     assert.ok(screen.getByRole("button", { name: "Cover On" }));
@@ -2659,7 +2660,7 @@ test("records a pool cover event from the Home page", async () => {
           data: {
             status: "caution",
             score: 68,
-            summary: "Chemistry confidence is aging because the pool is uncovered and UV is elevated.",
+            summary: "Chemistry confidence is aging because UV is elevated.",
             headline: "Use Caution",
             confidence: "medium",
             last_chemistry_age_label: "2 days ago",
@@ -2672,7 +2673,7 @@ test("records a pool cover event from the Home page", async () => {
               {
                 key: "chemistry_recency",
                 severity: "caution",
-                message: "Chemistry confidence is aging because the pool is uncovered and UV is elevated."
+                message: "Chemistry confidence is aging because UV is elevated."
               }
             ],
             inputs: {

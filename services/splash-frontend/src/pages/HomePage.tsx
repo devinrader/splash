@@ -446,7 +446,6 @@ function buildSwimmabilityProvenanceRows(swimmability: SwimmabilityData): Array<
 
   return [
     summarizeProvenance("Chemistry", provenance.chemistry),
-    summarizeProvenance("Cover", provenance.cover),
     summarizeProvenance("Weather", provenance.weather_forecast),
     summarizeProvenance("Water Temp", provenance.water_temperature),
     summarizeProvenance("Rain Context", provenance.rainfall_since_chemistry)

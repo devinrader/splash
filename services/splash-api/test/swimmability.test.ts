@@ -261,7 +261,7 @@ test("swimmability API route returns the assessment", async () => {
       return {
         status: "caution",
         score: 68,
-        summary: "Chemistry confidence is aging because the pool is uncovered and UV is elevated.",
+        summary: "Chemistry confidence is aging because UV is elevated.",
         headline: "Use Caution",
         confidence: "medium",
         last_chemistry_age_label: "3 days ago",
@@ -276,7 +276,7 @@ test("swimmability API route returns the assessment", async () => {
           {
             key: "chemistry_recency",
             severity: "caution",
-            message: "Chemistry confidence is aging because the pool is uncovered and UV is elevated."
+            message: "Chemistry confidence is aging because UV is elevated."
           }
         ],
         inputs: {
