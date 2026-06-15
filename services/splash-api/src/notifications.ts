@@ -20,12 +20,14 @@ export type NotificationType =
   | "provenance_contradiction";
 
 export type NotificationSeverity = "info" | "warning" | "critical";
+export type NotificationCategory = "informational" | "alert" | "action_item";
 export type NotificationStatusFilter = "unread" | "all";
 
 export interface NotificationRecord {
   id: string;
   pool_id: string;
   type: NotificationType;
+  category: NotificationCategory;
   severity: NotificationSeverity;
   title: string;
   body: string;
@@ -35,6 +37,9 @@ export interface NotificationRecord {
   related_entity_id: string | null;
   created_at: string;
   read_at: string | null;
+  acknowledged_at: string | null;
+  resolved_at: string | null;
+  resolution_source: string | null;
 }
 
 export interface NotificationsView {
@@ -67,6 +72,7 @@ export interface NotificationQueryInput {
 
 interface NotificationTemplate {
   type: NotificationType;
+  category: NotificationCategory;
   severity: NotificationSeverity;
   title: string;
   body: string;
@@ -87,6 +93,10 @@ interface StoredNotificationRow extends Record<string, unknown> {
   related_entity_id: string | null;
   created_at: string;
   read_at: string | null;
+  category: string | null;
+  acknowledged_at: string | null;
+  resolved_at: string | null;
+  resolution_source: string | null;
 }
 
 const NOTIFICATION_TYPES: readonly NotificationType[] = [
@@ -148,7 +158,7 @@ export class NotificationsService {
     params.push(query.limit);
     const rows = database.all<StoredNotificationRow>(
       `
-        SELECT id, pool_id, type, severity, title, body, read, source, related_entity_type, related_entity_id, created_at, read_at
+        SELECT id, pool_id, type, category, severity, title, body, read, source, related_entity_type, related_entity_id, created_at, read_at, acknowledged_at, resolved_at, resolution_source
         FROM notifications
         WHERE ${clauses.join(" AND ")}
         ORDER BY datetime(created_at) DESC, id DESC
@@ -180,7 +190,7 @@ export class NotificationsService {
 
     const row = database.get<StoredNotificationRow>(
       `
-        SELECT id, pool_id, type, severity, title, body, read, source, related_entity_type, related_entity_id, created_at, read_at
+        SELECT id, pool_id, type, category, severity, title, body, read, source, related_entity_type, related_entity_id, created_at, read_at, acknowledged_at, resolved_at, resolution_source
         FROM notifications
         WHERE id = ?
           AND pool_id = ?
@@ -226,7 +236,7 @@ export class NotificationsService {
     database.transaction(() => {
       const existingRows = database.all<StoredNotificationRow>(
         `
-          SELECT id, pool_id, type, severity, title, body, read, source, related_entity_type, related_entity_id, created_at, read_at
+          SELECT id, pool_id, type, category, severity, title, body, read, source, related_entity_type, related_entity_id, created_at, read_at, acknowledged_at, resolved_at, resolution_source
           FROM notifications
           WHERE pool_id = ?
             AND source = 'system'
@@ -258,12 +268,13 @@ export class NotificationsService {
             database.run(
               `
                 UPDATE notifications
-                SET severity = ?,
+                SET category = ?,
+                    severity = ?,
                     title = ?,
                     body = ?
                 WHERE id = ?
               `,
-              [notification.severity, notification.title, notification.body, existing.id]
+              [notification.category, notification.severity, notification.title, notification.body, existing.id]
             );
           }
           continue;
@@ -275,6 +286,7 @@ export class NotificationsService {
               id,
               pool_id,
               type,
+              category,
               severity,
               title,
               body,
@@ -283,14 +295,18 @@ export class NotificationsService {
               related_entity_type,
               related_entity_id,
               created_at,
-              read_at
+              read_at,
+              acknowledged_at,
+              resolved_at,
+              resolution_source
             )
-            VALUES (?, ?, ?, ?, ?, ?, 0, 'system', ?, ?, ?, NULL)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'system', ?, ?, ?, NULL, NULL, NULL, NULL)
           `,
           [
             randomUUID(),
             this.poolId,
             notification.type,
+            notification.category,
             notification.severity,
             notification.title,
             notification.body,
@@ -368,6 +384,7 @@ function buildNotificationTemplates(context: NotificationsContext): Notification
   if (!context.chemistry) {
     notifications.push({
       type: "chemistry_test_due",
+      category: "action_item",
       severity: "warning",
       title: "Chemistry test is due",
       body: "No chemistry reading has been logged yet. Record a water test to improve pool guidance.",
@@ -380,6 +397,7 @@ function buildNotificationTemplates(context: NotificationsContext): Notification
     if (hoursSinceChemistry >= promptThresholdHours) {
       notifications.push({
         type: "chemistry_test_due",
+        category: "action_item",
         severity: "warning",
         title: "Chemistry test is due",
         body: "The latest chemistry reading is older than the configured testing interval.",
@@ -391,6 +409,7 @@ function buildNotificationTemplates(context: NotificationsContext): Notification
     if ((context.rainfallSinceChemistryInches ?? 0) >= SIGNIFICANT_RAINFALL_INCHES) {
       notifications.push({
         type: "rain_since_test",
+        category: "alert",
         severity: "warning",
         title: "Rain has fallen since the last chemistry test",
         body: `About ${formatRainfall(context.rainfallSinceChemistryInches)} of rain has fallen since the latest chemistry reading. Retest before relying on older chlorine values.`,
@@ -403,6 +422,7 @@ function buildNotificationTemplates(context: NotificationsContext): Notification
   if (context.swimmability.status === "caution") {
     notifications.push({
       type: "swimmability_caution",
+      category: "alert",
       severity: "warning",
       title: "Swimmability needs attention",
       body: context.swimmability.summary,
@@ -412,6 +432,7 @@ function buildNotificationTemplates(context: NotificationsContext): Notification
   } else if (context.swimmability.status === "poor") {
     notifications.push({
       type: "swimmability_poor",
+      category: "action_item",
       severity: "critical",
       title: "Swimmability is poor",
       body: context.swimmability.summary,
@@ -434,6 +455,7 @@ function buildNotificationTemplates(context: NotificationsContext): Notification
 
     notifications.push({
       type,
+      category: item.status === "stale" ? "alert" : "action_item",
       severity: severityForFreshness(item.chemicalKey, item.status),
       title:
         item.status === "stale"
@@ -464,6 +486,7 @@ function buildProvenanceNotificationTemplates(context: NotificationsContext): No
     ]);
     notifications.push({
       type: "swimmability_low_confidence",
+      category: "alert",
       severity: "warning",
       title: "Swimmability confidence is low",
       body:
@@ -481,6 +504,7 @@ function buildProvenanceNotificationTemplates(context: NotificationsContext): No
   if (context.swimmability.status === "good" && isFreshnessProblem(provenance.chemistry.freshness_state)) {
     notifications.push({
       type: "provenance_contradiction",
+      category: "alert",
       severity: "warning",
       title: "Swimmability is marked good, but chemistry data is stale",
       body: provenanceBody("Chemistry", provenance.chemistry, "The current swimmability result looks positive, but the supporting chemistry provenance is not fresh."),
@@ -495,6 +519,7 @@ function buildProvenanceNotificationTemplates(context: NotificationsContext): No
   ) {
     notifications.push({
       type: "provenance_contradiction",
+      category: "alert",
       severity: "warning",
       title: "Water temperature telemetry is unavailable for current context",
       body: provenanceBody("Water temperature", provenance.water_temperature, "Water temperature is being presented as current context, but the supporting telemetry is not fresh enough to trust."),
@@ -509,6 +534,7 @@ function buildProvenanceNotificationTemplates(context: NotificationsContext): No
   ) {
     notifications.push({
       type: "provenance_contradiction",
+      category: "alert",
       severity: "warning",
       title: "Rainfall context is not strongly supported",
       body: provenanceBody("Weather", provenance.weather_forecast, "Rainfall context is affecting confidence, but the supporting weather provenance is stale or unavailable."),
@@ -531,6 +557,7 @@ function buildCriticalInputNotifications(
   if (provenance.freshness_state === "missing" || provenance.freshness_state === "unavailable") {
     notifications.push({
       type: "critical_input_missing",
+      category: "action_item",
       severity: key === "chemistry" && context.swimmability.status === "unknown" ? "critical" : "warning",
       title: `${label} input is unavailable`,
       body: provenanceBody(label, provenance, `${label} is missing or unavailable, which limits how strongly Splash can support the current swimmability conclusion.`),
@@ -540,6 +567,7 @@ function buildCriticalInputNotifications(
   } else if (provenance.freshness_state === "stale") {
     notifications.push({
       type: "critical_input_stale",
+      category: "action_item",
       severity: "warning",
       title: `${label} input is stale`,
       body: provenanceBody(label, provenance, `${label} is stale, which reduces trust in the current swimmability conclusion.`),
@@ -566,6 +594,7 @@ function mapNotificationRow(row: StoredNotificationRow): NotificationRecord {
     id: row.id,
     pool_id: row.pool_id,
     type: normalizeNotificationType(row.type),
+    category: normalizeNotificationCategory(row.category),
     severity: normalizeNotificationSeverity(row.severity),
     title: row.title,
     body: row.body,
@@ -574,7 +603,10 @@ function mapNotificationRow(row: StoredNotificationRow): NotificationRecord {
     related_entity_type: row.related_entity_type,
     related_entity_id: row.related_entity_id,
     created_at: row.created_at,
-    read_at: row.read_at
+    read_at: row.read_at,
+    acknowledged_at: row.acknowledged_at,
+    resolved_at: row.resolved_at,
+    resolution_source: row.resolution_source
   };
 }
 
@@ -617,6 +649,13 @@ function normalizeNotificationSeverity(value: string): NotificationSeverity {
     return value;
   }
   return "warning";
+}
+
+function normalizeNotificationCategory(value: string | null): NotificationCategory {
+  if (value === "informational" || value === "alert" || value === "action_item") {
+    return value;
+  }
+  return "alert";
 }
 
 function formatRainfall(value: number | null): string {

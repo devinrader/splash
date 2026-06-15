@@ -315,6 +315,8 @@ test("redirects legacy alerts route into Routines", async () => {
       if (input.includes("/notifications")) {
         return response({
           data: {
+            status: "unread",
+            limit: 50,
             notifications: []
           },
           error: null

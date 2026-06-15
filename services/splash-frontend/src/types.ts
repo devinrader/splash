@@ -1139,12 +1139,14 @@ export type NotificationType =
   | "provenance_contradiction";
 
 export type NotificationSeverity = "info" | "warning" | "critical";
+export type NotificationCategory = "informational" | "alert" | "action_item";
 export type NotificationStatusFilter = "unread" | "all";
 
 export interface NotificationRecord {
   id: string;
   pool_id: string;
   type: NotificationType;
+  category: NotificationCategory;
   severity: NotificationSeverity;
   title: string;
   body: string;
@@ -1154,6 +1156,9 @@ export interface NotificationRecord {
   related_entity_id: string | null;
   created_at: string;
   read_at: string | null;
+  acknowledged_at: string | null;
+  resolved_at: string | null;
+  resolution_source: string | null;
 }
 
 export interface NotificationsData {

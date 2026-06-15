@@ -145,6 +145,7 @@ export function AlertsPage() {
                       <span className={`alerts-severity alerts-severity-${notification.severity}`}>
                         {formatSeverity(notification.severity)}
                       </span>
+                      <span className="alerts-severity">{formatCategory(notification.category)}</span>
                       <strong>{notification.title}</strong>
                     </div>
                     <span className="alerts-item-time">{formatTimestamp(notification.created_at)}</span>
@@ -216,6 +217,19 @@ function formatSeverity(severity: NotificationRecord["severity"]): string {
       return "Info";
     default:
       return severity;
+  }
+}
+
+function formatCategory(category: NotificationRecord["category"]): string {
+  switch (category) {
+    case "informational":
+      return "Info";
+    case "alert":
+      return "Alert";
+    case "action_item":
+      return "Action";
+    default:
+      return category;
   }
 }
 

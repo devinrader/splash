@@ -84,6 +84,7 @@ test("mobile dashboard renders current swimmability", async () => {
                 id: "notification-1",
                 pool_id: "pool-1",
                 type: "swimmability_caution",
+                category: "alert",
                 severity: "warning",
                 title: "Retest soon",
                 body: "Chemistry is aging.",
@@ -92,7 +93,10 @@ test("mobile dashboard renders current swimmability", async () => {
                 related_entity_type: null,
                 related_entity_id: null,
                 created_at: "2026-06-13T11:30:00.000Z",
-                read_at: null
+                read_at: null,
+                acknowledged_at: null,
+                resolved_at: null,
+                resolution_source: null
               }
             ]
           },
@@ -235,6 +239,7 @@ test("mobile alerts screen renders active alerts first", async () => {
                 id: "notification-2",
                 pool_id: "pool-1",
                 type: "chemistry_test_due",
+                category: "action_item",
                 severity: "info",
                 title: "Test due",
                 body: "Time to retest.",
@@ -243,12 +248,16 @@ test("mobile alerts screen renders active alerts first", async () => {
                 related_entity_type: null,
                 related_entity_id: null,
                 created_at: "2026-06-13T10:00:00.000Z",
-                read_at: "2026-06-13T10:15:00.000Z"
+                read_at: "2026-06-13T10:15:00.000Z",
+                acknowledged_at: null,
+                resolved_at: null,
+                resolution_source: null
               },
               {
                 id: "notification-1",
                 pool_id: "pool-1",
                 type: "swimmability_poor",
+                category: "action_item",
                 severity: "critical",
                 title: "Do not swim",
                 body: "Free chlorine is too low.",
@@ -257,7 +266,10 @@ test("mobile alerts screen renders active alerts first", async () => {
                 related_entity_type: null,
                 related_entity_id: null,
                 created_at: "2026-06-13T11:00:00.000Z",
-                read_at: null
+                read_at: null,
+                acknowledged_at: null,
+                resolved_at: null,
+                resolution_source: null
               }
             ]
           },

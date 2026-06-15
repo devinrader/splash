@@ -49,6 +49,7 @@ test("alerts page loads notifications and marks one read", async () => {
               id: "notification-1",
               pool_id: "pool-1",
               type: "chemistry_test_due",
+              category: "action_item",
               severity: "warning",
               title: "Chemistry test is due",
               body: "The latest chemistry reading is older than the configured testing interval.",
@@ -57,7 +58,10 @@ test("alerts page loads notifications and marks one read", async () => {
               related_entity_type: "chemistry_reading",
               related_entity_id: "reading-1",
               created_at: "2026-06-04T21:00:00.000Z",
-              read_at: null
+              read_at: null,
+              acknowledged_at: null,
+              resolved_at: null,
+              resolution_source: null
             }
           ] : []
         },
@@ -70,6 +74,7 @@ test("alerts page loads notifications and marks one read", async () => {
           id: "notification-1",
           pool_id: "pool-1",
           type: "chemistry_test_due",
+          category: "action_item",
           severity: "warning",
           title: "Chemistry test is due",
           body: "The latest chemistry reading is older than the configured testing interval.",
@@ -78,7 +83,10 @@ test("alerts page loads notifications and marks one read", async () => {
           related_entity_type: "chemistry_reading",
           related_entity_id: "reading-1",
           created_at: "2026-06-04T21:00:00.000Z",
-          read_at: "2026-06-04T21:05:00.000Z"
+          read_at: "2026-06-04T21:05:00.000Z",
+          acknowledged_at: null,
+          resolved_at: null,
+          resolution_source: null
         },
         error: null
       });
