@@ -20,6 +20,14 @@ class FakeEventSource {
     this.listeners.set(type, handlers);
   }
 
+  removeEventListener(type: string, handler: (event: MessageEvent<string>) => void): void {
+    const handlers = this.listeners.get(type) ?? [];
+    this.listeners.set(
+      type,
+      handlers.filter((entry) => entry !== handler)
+    );
+  }
+
   emit(type: string, payload: Record<string, unknown>): void {
     const event = { data: JSON.stringify(payload) } as MessageEvent<string>;
     for (const handler of this.listeners.get(type) ?? []) {
@@ -3793,6 +3801,8 @@ test("toggles a writable controller circuit pill without optimistic state change
     assert.ok(within(poolRow).getByRole("button", { name: "Pending..." }));
     assert.equal(within(poolRow).queryByText("Off"), null);
   });
+
+  assert.equal(FakeEventSource.instances.length, 2);
 
   FakeEventSource.instances[0].emit("equipment.state", {
     updated_at: "2026-04-23T22:00:05Z",

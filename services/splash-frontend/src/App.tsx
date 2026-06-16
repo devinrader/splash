@@ -32,6 +32,7 @@ import { MobileApp } from "./mobile/MobileApp";
 import { RoutinesPage } from "./pages/RoutinesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SystemPage } from "./pages/SystemPage";
+import { appendActivePlatformRequest } from "./platformRequests";
 import { useFrontendStore } from "./store";
 import type {
   ConnectivityHistorySample,
@@ -159,6 +160,7 @@ function DesktopApp() {
   const hasRequestedControllerDatetimeRef = useRef(false);
   const hasRequestedControllerCircuitConfigRef = useRef(false);
   const isStreamPausedRef = useRef(false);
+  const pendingCircuitToggleRef = useRef<PendingCircuitToggle | null>(null);
   const pendingCircuitConfigLookupRef = useRef<PendingCircuitConfigLookup | null>(null);
   const messageLogTableRef = useRef<HTMLDivElement | null>(null);
 
@@ -178,20 +180,25 @@ function DesktopApp() {
   useEffect(() => {
     setSseStatus("connecting");
     const source = new EventSource(buildApiUrl("/events"));
-    source.addEventListener("ready", () => {
+    const handleReady = () => {
       setSseStatus("connected");
       void refreshEquipment(setEquipment, setErrorMessage);
       void refreshHealth(setHealthStatus, setHealthData, setErrorMessage);
-    });
-    source.addEventListener("equipment.state", (event) => startTransition(() => applyEquipmentStateEvent(parseEventPayload(event))));
-    source.addEventListener("pump.state", (event) => startTransition(() => applyPumpStateEvent(parseEventPayload(event))));
-    source.addEventListener("command.result", (event) => {
+    };
+    const handleEquipmentState = (event: MessageEvent<string>) => {
+      startTransition(() => applyEquipmentStateEvent(parseEventPayload(event)));
+    };
+    const handlePumpState = (event: MessageEvent<string>) => {
+      startTransition(() => applyPumpStateEvent(parseEventPayload(event)));
+    };
+    const handleCommandResult = (event: MessageEvent<string>) => {
       const payload = parseEventPayload(event);
       startTransition(() => {
         applyCommandResult(payload);
         clearActiveRequestByCommandResult(setActiveRequests, payload);
         const commandId = readNullableString(payload.command_id);
         const status = readNullableString(payload.status);
+        const pendingCircuitToggle = pendingCircuitToggleRef.current;
         if (pendingCircuitToggle && commandId === pendingCircuitToggle.commandId && (status === "failed" || status === "timed_out")) {
           setPendingCircuitToggle(null);
         }
@@ -201,22 +208,32 @@ function DesktopApp() {
           setCircuitConfigLookupMessage(`Circuit config request for index ${pendingLookup.circuitIndex} ${status}.`);
         }
       });
-    });
+    };
+    source.addEventListener("ready", handleReady);
+    source.addEventListener("equipment.state", handleEquipmentState);
+    source.addEventListener("pump.state", handlePumpState);
+    source.addEventListener("command.result", handleCommandResult);
     source.onerror = () => {
       setSseStatus("disconnected");
       void refreshHealth(setHealthStatus, setHealthData, setErrorMessage);
     };
-    return () => source.close();
-  }, [applyCommandResult, applyEquipmentStateEvent, applyPumpStateEvent, pendingCircuitToggle, setEquipment, setErrorMessage, setHealthData, setHealthStatus, setSseStatus]);
+    return () => {
+      source.removeEventListener?.("ready", handleReady);
+      source.removeEventListener?.("equipment.state", handleEquipmentState);
+      source.removeEventListener?.("pump.state", handlePumpState);
+      source.removeEventListener?.("command.result", handleCommandResult);
+      source.close();
+    };
+  }, [applyCommandResult, applyEquipmentStateEvent, applyPumpStateEvent, setEquipment, setErrorMessage, setHealthData, setHealthStatus, setSseStatus]);
 
   useEffect(() => {
     const source = new EventSource(buildApiUrl("/protocol/frames"));
-    source.addEventListener("protocol.frame.raw", (event) => {
+    const handleProtocolFrameRaw = (event: MessageEvent<string>) => {
       if (!isStreamPausedRef.current) {
         appendFrame(setRecentFrames, "protocol.frame.raw", parseEventPayload(event));
       }
-    });
-    source.addEventListener("protocol.frame.decoded", (event) => {
+    };
+    const handleProtocolFrameDecoded = (event: MessageEvent<string>) => {
       const payload = parseEventPayload(event);
       if (!isStreamPausedRef.current) {
         appendFrame(setRecentFrames, "protocol.frame.decoded", payload);
@@ -231,19 +248,29 @@ function DesktopApp() {
           setCircuitConfigLookupMessage(`Matched circuit_configuration reply for index ${pendingLookup.circuitIndex}.`);
         }
       }
-    });
-    source.addEventListener("protocol.command.encoded", (event) => {
+    };
+    const handleProtocolCommandEncoded = (event: MessageEvent<string>) => {
       if (!isStreamPausedRef.current) {
         appendFrame(setRecentFrames, "protocol.command.encoded", parseEventPayload(event));
       }
-    });
-    source.addEventListener("serial.tx.raw", (event) => {
+    };
+    const handleSerialTxRaw = (event: MessageEvent<string>) => {
       if (!isStreamPausedRef.current) {
         appendFrame(setRecentFrames, "serial.tx.raw", parseEventPayload(event));
       }
-    });
+    };
+    source.addEventListener("protocol.frame.raw", handleProtocolFrameRaw);
+    source.addEventListener("protocol.frame.decoded", handleProtocolFrameDecoded);
+    source.addEventListener("protocol.command.encoded", handleProtocolCommandEncoded);
+    source.addEventListener("serial.tx.raw", handleSerialTxRaw);
     source.onerror = () => setExplorerError((current) => current ?? "Protocol frame stream disconnected.");
-    return () => source.close();
+    return () => {
+      source.removeEventListener?.("protocol.frame.raw", handleProtocolFrameRaw);
+      source.removeEventListener?.("protocol.frame.decoded", handleProtocolFrameDecoded);
+      source.removeEventListener?.("protocol.command.encoded", handleProtocolCommandEncoded);
+      source.removeEventListener?.("serial.tx.raw", handleSerialTxRaw);
+      source.close();
+    };
   }, []);
 
   useEffect(() => {
@@ -297,6 +324,10 @@ function DesktopApp() {
   useEffect(() => {
     isStreamPausedRef.current = isStreamPaused;
   }, [isStreamPaused]);
+
+  useEffect(() => {
+    pendingCircuitToggleRef.current = pendingCircuitToggle;
+  }, [pendingCircuitToggle]);
 
   useEffect(() => {
     pendingCircuitConfigLookupRef.current = pendingCircuitConfigLookup;
@@ -972,7 +1003,7 @@ function addActiveRequest(
   setActiveRequests: Dispatch<SetStateAction<ActivePlatformRequest[]>>,
   request: Omit<ActivePlatformRequest, "requestedAt">
 ): void {
-  setActiveRequests((current) => [...current, { ...request, requestedAt: new Date().toISOString() }]);
+  setActiveRequests((current) => appendActivePlatformRequest(current, request));
 }
 
 function clearActiveRequestByReply(
