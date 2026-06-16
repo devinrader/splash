@@ -542,13 +542,13 @@ function summarizeExposureWindow(input: {
   const windowMs = windowLookbackMs(input.window);
   const windowStartMs = input.generatedAtMs - windowMs;
   let cursorMs = windowStartMs;
-  let activeState: PoolCoverState | null =
-    input.initialEvent && Date.parse(input.initialEvent.recorded_at) <= windowStartMs ? input.initialEvent.state : null;
+  const initialWindowState = resolveWindowStartState(input.initialEvent, input.events, windowStartMs);
+  let activeState: PoolCoverState | null = initialWindowState?.state ?? null;
   let coveredMs = 0;
   let uncoveredMs = 0;
   let knownMs = 0;
   let daylightUncoveredMs = 0;
-  let lastCoverChangeAt = input.initialEvent?.recorded_at ?? null;
+  let lastCoverChangeAt = initialWindowState?.recorded_at ?? null;
 
   for (const entry of input.events) {
     if (entry.timestampMs < windowStartMs || entry.timestampMs > input.generatedAtMs) {
@@ -604,6 +604,32 @@ function summarizeCoverageStatus(coveragePercent: number): PoolCoverExposureSumm
     return "partial";
   }
   return "insufficient_data";
+}
+
+function resolveWindowStartState(
+  initialEvent: PoolCoverEventRecord | null,
+  events: Array<{ event: PoolCoverEventRecord; timestampMs: number }>,
+  windowStartMs: number
+): Pick<PoolCoverEventRecord, "state" | "recorded_at"> | null {
+  let latestState: Pick<PoolCoverEventRecord, "state" | "recorded_at"> | null =
+    initialEvent && Date.parse(initialEvent.recorded_at) <= windowStartMs
+      ? {
+          state: initialEvent.state,
+          recorded_at: initialEvent.recorded_at
+        }
+      : null;
+
+  for (const entry of events) {
+    if (entry.timestampMs > windowStartMs) {
+      break;
+    }
+    latestState = {
+      state: entry.event.state,
+      recorded_at: entry.event.recorded_at
+    };
+  }
+
+  return latestState;
 }
 
 function calculateDaylightExposureMs(startMs: number, endMs: number, timezone: string): number {

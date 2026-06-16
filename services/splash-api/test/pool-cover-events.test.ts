@@ -150,6 +150,64 @@ test("service derives cover exposure summaries from cover history", async () => 
   assert.equal(summary.summaries[0]?.daylight_uncovered_minutes, 600);
 });
 
+test("service carries forward the latest known cover state into a narrower exposure window", async () => {
+  const service = new PoolCoverEventsService(
+    "pool-1",
+    {
+      async getLatest() {
+        return null;
+      },
+      async getLatestBefore() {
+        return {
+          id: "cover-seed",
+          pool_id: "pool-1",
+          state: "on",
+          cover_type: "solar",
+          source: "manual",
+          recorded_at: "2026-06-12T18:12:21.000Z",
+          created_at: "2026-06-12T18:12:22.000Z"
+        };
+      },
+      async getEarliestAfter() {
+        return null;
+      },
+      async create() {
+        throw new Error("should not be called");
+      },
+      async list() {
+        return [];
+      },
+      async listRange() {
+        return [
+          {
+            id: "cover-seed",
+            pool_id: "pool-1",
+            state: "on",
+            cover_type: "solar",
+            source: "manual",
+            recorded_at: "2026-06-12T18:12:21.000Z",
+            created_at: "2026-06-12T18:12:22.000Z"
+          }
+        ];
+      }
+    },
+    "America/New_York"
+  );
+
+  const summary = await service.getPoolCoverExposureSummary({
+    window: "24h",
+    now: "2026-06-15T18:13:00.000Z"
+  });
+
+  assert.equal(summary.summaries.length, 1);
+  assert.equal(summary.summaries[0]?.window, "24h");
+  assert.equal(summary.summaries[0]?.status, "available");
+  assert.equal(summary.summaries[0]?.covered_minutes, 1440);
+  assert.equal(summary.summaries[0]?.uncovered_minutes, 0);
+  assert.equal(summary.summaries[0]?.daylight_uncovered_minutes, 0);
+  assert.equal(summary.summaries[0]?.last_cover_change_at, "2026-06-12T18:12:21.000Z");
+});
+
 test("service accepts retroactive cover events with explicit recorded_at", async () => {
   let createdRecordedAt: string | null = null;
   const service = new PoolCoverEventsService("pool-1", {
