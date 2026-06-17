@@ -46,21 +46,24 @@ export const useFrontendStore = create<FrontendState>((set) => ({
   errorMessage: null,
   command: initialCommandState,
   setEquipment(records) {
-    set(() => ({
-      equipment: Object.fromEntries(records.map((record) => [record.id, record]))
-    }));
+    set((state) => {
+      const nextEquipment = Object.fromEntries(records.map((record) => [record.id, record]));
+      return areJsonValuesEqual(state.equipment, nextEquipment)
+        ? state
+        : { equipment: nextEquipment };
+    });
   },
   setHealthStatus(status) {
-    set(() => ({ healthStatus: status }));
+    set((state) => (state.healthStatus === status ? state : { healthStatus: status }));
   },
   setHealthData(data) {
-    set(() => ({ healthData: data }));
+    set((state) => (areJsonValuesEqual(state.healthData, data) ? state : { healthData: data }));
   },
   setSseStatus(status) {
-    set(() => ({ sseStatus: status }));
+    set((state) => (state.sseStatus === status ? state : { sseStatus: status }));
   },
   setErrorMessage(message) {
-    set(() => ({ errorMessage: message }));
+    set((state) => (state.errorMessage === message ? state : { errorMessage: message }));
   },
   beginPumpCommand({ commandId, rpm }) {
     set(() => ({
@@ -131,16 +134,52 @@ function mergeLatestState(
         }
       : payload;
 
+  const nextLatestState = {
+    ...existing.latest_state,
+    ...normalizedPayload
+  };
+
+  if (areJsonValuesEqual(existing.latest_state, nextLatestState)) {
+    return {
+      equipment: state.equipment
+    };
+  }
+
   return {
     equipment: {
       ...state.equipment,
       [equipmentId]: {
         ...existing,
-        latest_state: {
-          ...existing.latest_state,
-          ...normalizedPayload
-        }
+        latest_state: nextLatestState
       }
     }
   };
+}
+
+function areJsonValuesEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) {
+    return true;
+  }
+
+  if (Array.isArray(left) && Array.isArray(right)) {
+    if (left.length !== right.length) {
+      return false;
+    }
+    return left.every((value, index) => areJsonValuesEqual(value, right[index]));
+  }
+
+  if (isPlainRecord(left) && isPlainRecord(right)) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length) {
+      return false;
+    }
+    return leftKeys.every((key) => key in right && areJsonValuesEqual(left[key], right[key]));
+  }
+
+  return false;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
 }
