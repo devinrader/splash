@@ -34,10 +34,12 @@ import {
   formatControllerDatetimeReply,
   formatControllerTime,
   formatChlorinatorRunState,
+  formatChlorinatorStatus,
   formatFilterCondition,
   formatHexByte,
   formatLabel,
   formatMetric,
+  formatRequestTimestamp,
   formatValueWithLabel,
   getCircuitFunctionOptions,
   getCircuitStateClassName,
@@ -897,7 +899,7 @@ function SensorsTab({ controller, pump, chlorinator }: SystemPageProps) {
         <MetricCard label="Water Temperature" value={formatMetric(readMetric(controller?.latest_state.water_temp_f), "°F")} accent="water" icon="temperature" />
         <MetricCard label="Air Temperature" value={formatMetric(readMetric(controller?.latest_state.air_temp_f), "°F")} accent="sky" icon="air-temperature" />
         <MetricCard label="Salt Level" value={formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")} accent="sand" icon="salt" />
-        <MetricCard label="SWG Output" value={formatMetric(readMetric(chlorinator?.latest_state.output_percent), "%")} accent="pump" icon="chlorinator" />
+        <MetricCard label="SWG Output" value={formatMetric(readMetric(chlorinator?.latest_state.current_output_percent ?? chlorinator?.latest_state.output_percent), "%")} accent="pump" icon="chlorinator" />
         <MetricCard label="SWG State" value={formatChlorinatorRunState(chlorinator?.latest_state.run_state)} accent="sand" icon="good" />
         <MetricCard label="Flow Rate" value={formatMetric(readMetric(pump?.latest_state.flow_gpm), "GPM")} accent="pump" icon="pump" />
         <MetricCard label="Filter Pressure" value={formatMetric(readMetric(pump?.latest_state.filter_pressure_psi), "psi")} accent="water" icon="system" />
@@ -910,15 +912,12 @@ function SensorsTab({ controller, pump, chlorinator }: SystemPageProps) {
             <tr><td>Pool Temp</td><td>Temperature</td><td>Pool</td><td>{formatMetric(readMetric(controller?.latest_state.water_temp_f), "°F")}</td><td><span className="system-status-chip system-status-chip-good">Good</span></td></tr>
             <tr><td>Air Temp</td><td>Temperature</td><td>Pad</td><td>{formatMetric(readMetric(controller?.latest_state.air_temp_f), "°F")}</td><td><span className="system-status-chip system-status-chip-good">Good</span></td></tr>
             <tr><td>Salt Reading</td><td>Chemistry</td><td>Cell</td><td>{formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")}</td><td><span className="system-status-chip system-status-chip-watch">Watch</span></td></tr>
-            <tr><td>SWG Output</td><td>Chlorinator</td><td>Cell</td><td>{formatMetric(readMetric(chlorinator?.latest_state.output_percent), "%")}</td><td><span className="system-status-chip system-status-chip-good">Configured</span></td></tr>
-            <tr><td>SWG Run State</td><td>Chlorinator</td><td>Cell</td><td>{formatChlorinatorRunState(chlorinator?.latest_state.run_state)}</td><td><span className="system-status-chip system-status-chip-good">{formatLabel(({
-              ok: "OK",
-              low_salt: "Low Salt",
-              high_salt: "High Salt",
-              fault: "Fault",
-              offline: "Offline",
-              unknown: "Unknown"
-            } as Record<string, string>)[String(chlorinator?.latest_state.status)])}</span></td></tr>
+            <tr><td>Current SWG Output</td><td>Chlorinator</td><td>Cell</td><td>{formatMetric(readMetric(chlorinator?.latest_state.current_output_percent ?? chlorinator?.latest_state.output_percent), "%")}</td><td><span className="system-status-chip system-status-chip-good">Current</span></td></tr>
+            <tr><td>Target SWG Output</td><td>Chlorinator</td><td>Cell</td><td>{formatMetric(readMetric(chlorinator?.latest_state.target_output_percent ?? chlorinator?.latest_state.output_percent), "%")}</td><td><span className="system-status-chip system-status-chip-good">Target</span></td></tr>
+            <tr><td>SWG Run State</td><td>Chlorinator</td><td>Cell</td><td>{formatChlorinatorRunState(chlorinator?.latest_state.run_state)}</td><td><span className="system-status-chip system-status-chip-good">{formatChlorinatorStatus(chlorinator?.latest_state.status)}</span></td></tr>
+            <tr><td>SWG Model</td><td>Chlorinator</td><td>Cell</td><td>{readNullableString(chlorinator?.latest_state.model) ?? "Unknown"}</td><td><span className="system-status-chip system-status-chip-muted">Detected</span></td></tr>
+            <tr><td>SWG Water Temp</td><td>Temperature</td><td>Cell</td><td>{formatMetric(readMetric(chlorinator?.latest_state.water_temp_f), "°F")}</td><td><span className="system-status-chip system-status-chip-good">Current</span></td></tr>
+            <tr><td>SWG Last Comm</td><td>Connectivity</td><td>Cell</td><td>{typeof chlorinator?.latest_state.last_comm === "string" ? formatRequestTimestamp(chlorinator.latest_state.last_comm) : "--"}</td><td><span className={`system-status-chip ${String(chlorinator?.latest_state.comms_lost) === "true" ? "system-status-chip-watch" : "system-status-chip-good"}`}>{String(chlorinator?.latest_state.comms_lost) === "true" ? "Lost" : "Online"}</span></td></tr>
             <tr><td>Flow Rate</td><td>Hydraulics</td><td>Pump</td><td>{formatMetric(readMetric(pump?.latest_state.flow_gpm), "GPM")}</td><td><span className="system-status-chip system-status-chip-good">Current</span></td></tr>
             <tr><td>Filter Pressure</td><td>Hydraulics</td><td>Filter</td><td>{formatMetric(readMetric(pump?.latest_state.filter_pressure_psi), "psi")}</td><td><span className="system-status-chip system-status-chip-good">{formatFilterCondition(pump?.latest_state.filter_condition)}</span></td></tr>
           </tbody>
@@ -1062,7 +1061,7 @@ function ConnectivityTab({ controller, pump, chlorinator, healthData, connectivi
             <tbody>
               <tr><td>{controller?.display_name ?? "EasyTouch 8"}</td><td>0x10</td><td>1s ago</td><td><span className="system-status-chip system-status-chip-good">Online</span></td></tr>
               <tr><td>{pump?.display_name ?? "IntelliFlo"}</td><td>{readNullableString(pump?.bus_address) ?? "0x60"}</td><td>2s ago</td><td><span className="system-status-chip system-status-chip-good">Online</span></td></tr>
-              <tr><td>{chlorinator?.display_name ?? "IntelliChlor"}</td><td>0x30</td><td>3s ago</td><td><span className="system-status-chip system-status-chip-good">Online</span></td></tr>
+              <tr><td>{chlorinator?.display_name ?? "IntelliChlor"}</td><td>{readNullableString(chlorinator?.bus_address) ?? "0x50"}</td><td>{typeof chlorinator?.latest_state.last_comm === "string" ? formatRequestTimestamp(chlorinator.latest_state.last_comm) : "3s ago"}</td><td><span className={`system-status-chip ${String(chlorinator?.latest_state.comms_lost) === "true" ? "system-status-chip-watch" : "system-status-chip-good"}`}>{String(chlorinator?.latest_state.comms_lost) === "true" ? "Lost" : "Online"}</span></td></tr>
             </tbody>
           </table>
         </Card>

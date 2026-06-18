@@ -84,7 +84,7 @@ export class EquipmentBridge {
       equipmentType: "chlorinator",
       displayName: "Main Chlorinator",
       protocolName: "pentair_easytouch",
-      busAddress: null
+      busAddress: "0x50"
     }
   ];
 

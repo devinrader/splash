@@ -83,6 +83,38 @@ test("app publishes a controller circuit state command intent", async () => {
   });
 });
 
+test("app publishes a chlorinator output command intent", async () => {
+  const app = new App({
+    config: {
+      poolId: "pool-1",
+      natsUrl: "nats://127.0.0.1:4222",
+      httpBind: "127.0.0.1:8080",
+      logLevel: "info",
+      timezone: "UTC",
+      natsMonitoringUrl: null
+    },
+    logger: noopLogger
+  });
+  const session = new FakeSession();
+
+  const result = await app.publishChlorinatorOutputCommand(
+    { equipmentId: "chlorinator-main", outputPercent: 55 },
+    session
+  );
+
+  assert.ok(result.commandId);
+  assert.equal(session.published.length, 1);
+  assert.equal(session.published[0].payload.command_type, "set_chlorinator_output");
+  assert.deepEqual(session.published[0].payload.target, {
+    equipment_id: "chlorinator-main",
+    equipment_type: "chlorinator",
+    bus_address: "0x50"
+  });
+  assert.deepEqual(session.published[0].payload.arguments, {
+    output_percent: 55
+  });
+});
+
 test("app publishes a manual Remote Layout request intent for Protocol Explorer", async () => {
   const app = new App({
     config: {

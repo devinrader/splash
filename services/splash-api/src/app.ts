@@ -1093,6 +1093,40 @@ export class App {
     return { commandId };
   }
 
+  async publishChlorinatorOutputCommand(
+    input: { equipmentId: string; outputPercent: number },
+    session: MessagingSession
+  ): Promise<{ commandId: string }> {
+    const equipment = this.bridge.get(input.equipmentId);
+    if (!equipment || equipment.equipmentType !== "chlorinator") {
+      throw new Error("Unsupported chlorinator target.");
+    }
+
+    if (!Number.isInteger(input.outputPercent) || input.outputPercent < 0 || input.outputPercent > 100) {
+      throw new Error("Chlorinator output percent must be an integer between 0 and 100.");
+    }
+
+    const commandId = randomUUID();
+    await session.publish("protocol.command.intent", {
+      pool_id: this.config.poolId,
+      command_id: commandId,
+      requested_at: new Date().toISOString(),
+      protocol_name: equipment.protocolName,
+      target: {
+        equipment_id: equipment.id,
+        equipment_type: "chlorinator",
+        bus_address: equipment.busAddress ?? "0x50"
+      },
+      command_type: "set_chlorinator_output",
+      arguments: {
+        output_percent: input.outputPercent
+      },
+      requested_by: "api_control",
+      dry_run: false
+    });
+    return { commandId };
+  }
+
   async publishRemoteLayoutRequest(input: { pageIndex: number }, session: MessagingSession): Promise<{ commandId: string }> {
     const commandId = randomUUID();
     await session.publish("protocol.command.intent", {
@@ -1800,6 +1834,13 @@ export class App {
             throw new Error("NATS session unavailable.");
           }
           return this.publishCircuitStateCommand({ equipmentId, circuitKey, enabled }, session);
+        },
+        publishChlorinatorOutputCommand: async ({ equipmentId, outputPercent }) => {
+          const session = this.currentSession;
+          if (!session) {
+            throw new Error("NATS session unavailable.");
+          }
+          return this.publishChlorinatorOutputCommand({ equipmentId, outputPercent }, session);
         }
       });
 

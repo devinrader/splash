@@ -751,6 +751,39 @@ export function formatChlorinatorRunState(value: unknown): string {
   }
 }
 
+export function formatChlorinatorStatus(value: unknown): string {
+  switch (value) {
+    case "ok":
+      return "OK";
+    case "low_flow":
+      return "Low Flow";
+    case "low_salt":
+      return "Low Salt";
+    case "very_low_salt":
+      return "Very Low Salt";
+    case "high_salt":
+      return "High Salt";
+    case "high_current":
+      return "High Current";
+    case "clean_cell":
+      return "Clean Cell";
+    case "low_voltage":
+      return "Low Voltage";
+    case "low_water_temp":
+      return "Low Water Temp";
+    case "communication_lost":
+      return "Communication Lost";
+    case "fault":
+      return "Fault";
+    case "offline":
+      return "Offline";
+    case "unknown":
+      return "Unknown";
+    default:
+      return "Unknown";
+  }
+}
+
 export function formatFilterCondition(value: unknown): string {
   switch (value) {
     case "clean":

@@ -849,21 +849,19 @@ test("decodePentairFrame decodes observed 0x18 pump info for EasyTouch Pump #2",
   assert.equal(decoded.fields.trailing_config_byte, 0x00);
 });
 
-test("decodePentairFrame classifies intellichlor framed traffic generically", () => {
-  const decoded = decodePentairFrame(Uint8Array.from([0x10, 0x02, 0x50, 0x11, 0x1e, 0x91, 0x10, 0x03]));
+test("decodePentairFrame decodes Intellichlor target output frames", () => {
+  const decoded = decodePentairFrame(Uint8Array.from([0x10, 0x02, 0x50, 0x11, 0x1e, 0x91, 0x10, 0x03]), {
+    occurredAt: "2026-06-17T20:10:00Z"
+  });
 
   assert.equal(decoded.frameFamily, "intellichlor");
-  assert.equal(decoded.messageType, "intellichlor_frame");
+  assert.equal(decoded.messageType, "intellichlor_set_output");
   assert.equal(decoded.actionCode, "0x11");
   assert.equal(decoded.sourceAddress, "unknown");
   assert.equal(decoded.destinationAddress, "0x50");
-  assert.equal(decoded.checksumStatus, "unknown");
-  assert.deepEqual(decoded.fields, {
-    payload_hex: "1e",
-    payload_length: 1,
-    checksum_byte: 0x91
-  });
-  assert.deepEqual(decoded.normalizedEvents, []);
+  assert.equal(decoded.checksumStatus, "valid");
+  assert.equal(decoded.fields.target_output_percent, 30);
+  assert.equal(decoded.normalizedEvents?.[0]?.payload.target_output_percent, 30);
 });
 
 test("decodePentairFrame classifies EasyTouch action 17 as a schedule frame", () => {
@@ -1296,6 +1294,60 @@ test("pentairEasyTouchPlugin encodes a controller circuit state write", () => {
   assert.equal(encoded.writes.length, 1);
   assert.equal(encoded.writes[0].bytesHex, "ff00ffa534102186020e0101a1");
   assert.equal(encoded.correlation?.kind, "controller_ack");
+});
+
+test("pentairEasyTouchPlugin encodes IntelliChlor output control only when direct control is enabled", () => {
+  const encoded = pentairEasyTouchPlugin.encodeCommand(
+    {
+      pool_id: "pool-1",
+      command_id: "command-chlorinator-output",
+      requested_at: "2026-03-30T00:00:00Z",
+      protocol_name: "pentair_easytouch",
+      target: {
+        equipment_type: "chlorinator",
+        bus_address: "0x50"
+      },
+      command_type: "set_chlorinator_output",
+      arguments: {
+        output_percent: 40
+      },
+      dry_run: false
+    },
+    {
+      intellichlor_direct_control: {
+        enabled: true,
+        destination_address: 80
+      }
+    }
+  );
+
+  assert.equal(encoded.writes.length, 2);
+  assert.equal(encoded.writes[0].bytesHex, "1002500000621003");
+  assert.equal(encoded.writes[1].bytesHex, "10025011289b1003");
+  assert.equal(encoded.correlation?.kind, "transport_ack");
+});
+
+test("pentairEasyTouchPlugin rejects IntelliChlor output control when direct control is disabled", () => {
+  assert.throws(() =>
+    pentairEasyTouchPlugin.encodeCommand(
+      {
+        pool_id: "pool-1",
+        command_id: "command-chlorinator-output-disabled",
+        requested_at: "2026-03-30T00:00:00Z",
+        protocol_name: "pentair_easytouch",
+        target: {
+          equipment_type: "chlorinator",
+          bus_address: "0x50"
+        },
+        command_type: "set_chlorinator_output",
+        arguments: {
+          output_percent: 40
+        },
+        dry_run: false
+      },
+      {}
+    )
+  );
 });
 
 test("pentairEasyTouchPlugin encodes a manual pump info request for Pump #1", () => {

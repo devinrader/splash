@@ -15,6 +15,13 @@ import {
   createSetSolarHeatPumpFrame,
   parseEasyTouchSolarHeatPumpStatusPayload
 } from "./pentair-easytouch-heat-pump.js";
+import {
+  createIntellichlorGetModelFrame,
+  createIntellichlorSetOutputFrame,
+  createIntellichlorTakeControlFrame,
+  DEFAULT_INTELLICHLOR_DESTINATION,
+  parseIntellichlorFrame
+} from "./pentair-intellichlor.js";
 import type { ProtocolPlugin } from "./types.js";
 import { bytesToHex } from "../protocol/hex.js";
 import {
@@ -933,26 +940,7 @@ export function decodePentairFrame(
   context: { frameId?: string; occurredAt?: string } = {}
 ): DecodedProtocolFrame {
   if (hasDelimiter(frame, INTELLICHLOR_START_DELIMITER) && hasDelimiter(frame, INTELLICHLOR_END_DELIMITER, frame.length - 2)) {
-    const destination = frame[2] ?? 0;
-    const command = frame[3] ?? 0;
-    const checksumByte = frame[frame.length - 3] ?? null;
-    const payload = frame.slice(4, frame.length - 3);
-    return {
-      protocolName: "pentair_easytouch",
-      frameFamily: "intellichlor",
-      messageType: "intellichlor_frame",
-      actionCode: `0x${command.toString(16).padStart(2, "0")}`,
-      sourceAddress: "unknown",
-      destinationAddress: `0x${destination.toString(16).padStart(2, "0")}`,
-      checksumStatus: "unknown",
-      fields: {
-        payload_hex: bytesToHex(payload),
-        payload_length: payload.length,
-        checksum_byte: checksumByte
-      },
-      unknownFields: decodeUnknownFields(payload),
-      normalizedEvents: []
-    };
+    return parseIntellichlorFrame(frame, context);
   }
 
   expectStartDelimiter(frame);
@@ -1635,9 +1623,68 @@ function encodePentairCommand(intent: NormalizedCommandIntent, protocolConfig: R
     };
   }
 
+  if (intent.command_type === "set_chlorinator_output") {
+    const intellichlorConfig = resolveIntellichlorDirectControlConfig(protocolConfig);
+    if (!intellichlorConfig.enabled) {
+      throw new ProtocolCommandError(
+        "IntelliChlor direct control is not enabled in the active protocol configuration.",
+        "command_mode_unavailable"
+      );
+    }
+
+    const percent = parseByteArgument(intent.arguments.output_percent, "output_percent");
+    if (percent > 100) {
+      throw new ProtocolCommandError("IntelliChlor output percent must be between 0 and 100.", "command_arguments_invalid");
+    }
+
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        createIntellichlorTakeControlFrame(intellichlorConfig.destinationAddress),
+        createIntellichlorSetOutputFrame(percent, intellichlorConfig.destinationAddress)
+      ].map((bytes) => ({
+        bytes,
+        bytesHex: bytesToHex(bytes),
+        busRequirements: {
+          requires_idle_ms: DEFAULT_IDLE_MS
+        }
+      })),
+      correlation: {
+        kind: "transport_ack"
+      }
+    };
+  }
+
+  if (intent.command_type === "request_chlorinator_model") {
+    const intellichlorConfig = resolveIntellichlorDirectControlConfig(protocolConfig);
+    if (!intellichlorConfig.enabled) {
+      throw new ProtocolCommandError(
+        "IntelliChlor direct control is not enabled in the active protocol configuration.",
+        "command_mode_unavailable"
+      );
+    }
+
+    const bytes = createIntellichlorGetModelFrame(intellichlorConfig.destinationAddress);
+    return {
+      protocolName: "pentair_easytouch",
+      writes: [
+        {
+          bytes,
+          bytesHex: bytesToHex(bytes),
+          busRequirements: {
+            requires_idle_ms: DEFAULT_IDLE_MS
+          }
+        }
+      ],
+      correlation: {
+        kind: "transport_ack"
+      }
+    };
+  }
+
   if (intent.command_type !== "set_speed") {
     throw new ProtocolCommandError(
-      "pentair_easytouch only supports controller-circuit set_speed and set_circuit_state, manual circuit config requests, manual controller schedule requests, manual custom name requests, manual controller software-version requests, controller date/time requests and sync, manual pump info requests, manual pump config writes, manual Remote Layout requests, and Explorer raw frame sends in the current command slice.",
+      "pentair_easytouch only supports controller-circuit set_speed and set_circuit_state, IntelliChlor output/model commands when direct control is enabled, manual circuit config requests, manual controller schedule requests, manual custom name requests, manual controller software-version requests, controller date/time requests and sync, manual pump info requests, manual pump config writes, manual Remote Layout requests, and Explorer raw frame sends in the current command slice.",
       "unsupported_command_encode"
     );
   }
@@ -1694,6 +1741,31 @@ function parseHeatModeArgument(value: unknown, fieldName: string): 0 | 1 | 2 | 3
     throw new ProtocolCommandError(`${fieldName} must be an integer heat mode between 0 and 3.`, "command_arguments_invalid");
   }
   return parsed as 0 | 1 | 2 | 3;
+}
+
+function resolveIntellichlorDirectControlConfig(protocolConfig: Record<string, unknown>): {
+  enabled: boolean;
+  destinationAddress: number;
+} {
+  const raw = protocolConfig.intellichlor_direct_control;
+  if (raw == null) {
+    return {
+      enabled: false,
+      destinationAddress: DEFAULT_INTELLICHLOR_DESTINATION
+    };
+  }
+
+  const config = readProtocolConfigObject(raw, "intellichlor_direct_control");
+  const enabled = config.enabled === true;
+  const destinationAddress =
+    config.destination_address == null
+      ? DEFAULT_INTELLICHLOR_DESTINATION
+      : parseByteArgument(config.destination_address, "intellichlor_direct_control.destination_address");
+
+  return {
+    enabled,
+    destinationAddress
+  };
 }
 
 export function encodePentairPumpConfigWriteFromBaseline(input: {

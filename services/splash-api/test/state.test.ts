@@ -65,8 +65,18 @@ test("projection exposes initial milestone equipment values through the bridge",
   projection.updateChlorinator({
     salt_ppm: 3100,
     output_percent: 45,
+    current_output_percent: 43,
+    target_output_percent: 45,
     run_state: "producing",
     status: "ok",
+    status_code: 0,
+    water_temp_f: 73,
+    model: "IC40",
+    connected: true,
+    comms_lost: false,
+    last_comm: "2026-03-30T00:00:02Z",
+    production_lb_per_day: 1.4,
+    production_lb_per_second: 0.000016204,
     occurred_at: "2026-03-30T00:00:02Z"
   });
 
@@ -117,8 +127,18 @@ test("projection exposes initial milestone equipment values through the bridge",
     latest_state: {
       salt_ppm: number;
       output_percent: number;
+      current_output_percent: number;
+      target_output_percent: number;
       run_state: string;
       status: string;
+      status_code: number;
+      water_temp_f: number;
+      model: string;
+      connected: boolean;
+      comms_lost: boolean;
+      last_comm: string;
+      production_lb_per_day: number;
+      production_lb_per_second: number;
     };
   };
 
@@ -176,8 +196,18 @@ test("projection exposes initial milestone equipment values through the bridge",
   assert.equal(pump.default_control_circuit_key, "pool");
   assert.equal(chlorinator.latest_state.salt_ppm, 3100);
   assert.equal(chlorinator.latest_state.output_percent, 45);
+  assert.equal(chlorinator.latest_state.current_output_percent, 43);
+  assert.equal(chlorinator.latest_state.target_output_percent, 45);
   assert.equal(chlorinator.latest_state.run_state, "producing");
   assert.equal(chlorinator.latest_state.status, "ok");
+  assert.equal(chlorinator.latest_state.status_code, 0);
+  assert.equal(chlorinator.latest_state.water_temp_f, 73);
+  assert.equal(chlorinator.latest_state.model, "IC40");
+  assert.equal(chlorinator.latest_state.connected, true);
+  assert.equal(chlorinator.latest_state.comms_lost, false);
+  assert.equal(chlorinator.latest_state.last_comm, "2026-03-30T00:00:02Z");
+  assert.equal(chlorinator.latest_state.production_lb_per_day, 1.4);
+  assert.equal(chlorinator.latest_state.production_lb_per_second, 0.000016204);
 });
 
 test("projection normalizes unknown filter condition values conservatively", () => {
@@ -225,6 +255,33 @@ test("projection normalizes unknown chlorinator state values conservatively", ()
 
   assert.equal(chlorinator.latest_state.run_state, "unknown");
   assert.equal(chlorinator.latest_state.status, "unknown");
+});
+
+test("projection preserves expanded chlorinator status values", () => {
+  const bridge = new EquipmentBridge();
+  const projection = new LatestStateProjection();
+
+  projection.updateChlorinator({
+    salt_ppm: 2400,
+    output_percent: 0,
+    run_state: "idle",
+    status: "clean_cell",
+    status_code: 5,
+    connected: true,
+    comms_lost: false,
+    occurred_at: "2026-03-30T00:12:00Z"
+  });
+
+  const equipment = projection.getEquipmentView(bridge.all());
+  const chlorinator = equipment[2] as {
+    latest_state: {
+      status: string;
+      status_code: number;
+    };
+  };
+
+  assert.equal(chlorinator.latest_state.status, "clean_cell");
+  assert.equal(chlorinator.latest_state.status_code, 5);
 });
 
 test("projection exposes controller schedule visibility as unavailable until fields are validated", () => {

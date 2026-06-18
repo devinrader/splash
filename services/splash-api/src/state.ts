@@ -295,8 +295,18 @@ export interface PumpLatestState {
 export interface ChlorinatorLatestState {
   saltPpm: number | null;
   outputPercent: number | null;
+  currentOutputPercent?: number | null;
+  targetOutputPercent?: number | null;
   runState: string | null;
   status: string | null;
+  statusCode?: number | null;
+  waterTempF?: number | null;
+  model?: string | null;
+  connected?: boolean | null;
+  commsLost?: boolean | null;
+  lastComm?: string | null;
+  productionLbPerDay?: number | null;
+  productionLbPerSecond?: number | null;
   updatedAt: string | null;
 }
 
@@ -351,8 +361,18 @@ export class LatestStateProjection {
   private chlorinator: ChlorinatorLatestState = {
     saltPpm: null,
     outputPercent: null,
+    currentOutputPercent: null,
+    targetOutputPercent: null,
     runState: null,
     status: null,
+    statusCode: null,
+    waterTempF: null,
+    model: null,
+    connected: null,
+    commsLost: null,
+    lastComm: null,
+    productionLbPerDay: null,
+    productionLbPerSecond: null,
     updatedAt: null
   };
 
@@ -658,8 +678,18 @@ export class LatestStateProjection {
     this.chlorinator = {
       saltPpm: readNumber(payload, "salt_ppm"),
       outputPercent: readNumber(payload, "output_percent"),
+      currentOutputPercent: readNumber(payload, "current_output_percent"),
+      targetOutputPercent: readNumber(payload, "target_output_percent"),
       runState: normalizeChlorinatorRunState(readString(payload, "run_state")),
       status: normalizeChlorinatorStatus(readString(payload, "status")),
+      statusCode: readNumber(payload, "status_code"),
+      waterTempF: readNumber(payload, "water_temp_f"),
+      model: readString(payload, "model"),
+      connected: readBoolean(payload, "connected"),
+      commsLost: readBoolean(payload, "comms_lost"),
+      lastComm: readString(payload, "last_comm"),
+      productionLbPerDay: readNumber(payload, "production_lb_per_day"),
+      productionLbPerSecond: readNumber(payload, "production_lb_per_second"),
       updatedAt: readString(payload, "occurred_at")
     };
   }
@@ -770,8 +800,18 @@ export class LatestStateProjection {
             latest_state: {
               salt_ppm: this.chlorinator.saltPpm,
               output_percent: this.chlorinator.outputPercent,
+              current_output_percent: this.chlorinator.currentOutputPercent,
+              target_output_percent: this.chlorinator.targetOutputPercent,
               run_state: this.chlorinator.runState,
               status: this.chlorinator.status,
+              status_code: this.chlorinator.statusCode,
+              water_temp_f: this.chlorinator.waterTempF,
+              model: this.chlorinator.model,
+              connected: this.chlorinator.connected,
+              comms_lost: this.chlorinator.commsLost,
+              last_comm: this.chlorinator.lastComm,
+              production_lb_per_day: this.chlorinator.productionLbPerDay,
+              production_lb_per_second: this.chlorinator.productionLbPerSecond,
               updated_at: this.chlorinator.updatedAt
             }
           };
@@ -1065,8 +1105,15 @@ function normalizeChlorinatorRunState(value: string | null): string | null {
 function normalizeChlorinatorStatus(value: string | null): string | null {
   switch (value) {
     case "ok":
+    case "low_flow":
     case "low_salt":
+    case "very_low_salt":
     case "high_salt":
+    case "high_current":
+    case "clean_cell":
+    case "low_voltage":
+    case "low_water_temp":
+    case "communication_lost":
     case "fault":
     case "offline":
     case "unknown":

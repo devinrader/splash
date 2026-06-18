@@ -244,6 +244,7 @@ export interface HttpHandlers {
   publishRawFrameCommand(input: { protocolName: string; bytesHex: string }): Promise<{ commandId: string }>;
   publishPumpSpeedCommand(input: { equipmentId: string; rpm: number; circuitKey?: string | null }): Promise<{ commandId: string }>;
   publishCircuitStateCommand(input: { equipmentId: string; circuitKey: string; enabled: boolean }): Promise<{ commandId: string }>;
+  publishChlorinatorOutputCommand?(input: { equipmentId: string; outputPercent: number }): Promise<{ commandId: string }>;
 }
 
 export interface PumpConfigWriteSlot {
@@ -1067,11 +1068,27 @@ export class LocalHttpServer implements HttpServer {
                 rpm: controlRequest.rpm,
                 circuitKey: controlRequest.circuitKey
               })
-            : await this.handlers.publishCircuitStateCommand({
+            : controlRequest.commandType === "set_circuit_state"
+              ? await this.handlers.publishCircuitStateCommand({
                 equipmentId,
                 circuitKey: controlRequest.circuitKey,
                 enabled: controlRequest.enabled
-              });
+              })
+              : await (() => {
+                if (!this.handlers.publishChlorinatorOutputCommand) {
+                  throw new HttpResponseError(503, {
+                    data: null,
+                    error: {
+                      code: "service_unavailable",
+                      message: "Chlorinator output control is unavailable."
+                    }
+                  });
+                }
+                return this.handlers.publishChlorinatorOutputCommand({
+                  equipmentId,
+                  outputPercent: controlRequest.outputPercent
+                });
+              })();
         return json(req, res, 202, {
           data: {
             command_id: result.commandId,
@@ -1372,7 +1389,8 @@ function readEquipmentControlRequest(
   body: Record<string, unknown>
 ):
   | { commandType: "set_speed"; rpm: number; circuitKey: string | null }
-  | { commandType: "set_circuit_state"; circuitKey: string; enabled: boolean } {
+  | { commandType: "set_circuit_state"; circuitKey: string; enabled: boolean }
+  | { commandType: "set_chlorinator_output"; outputPercent: number } {
   const commandType = body.command_type;
   const args = body.arguments;
   if (!args || typeof args !== "object" || Array.isArray(args)) {
@@ -1413,7 +1431,18 @@ function readEquipmentControlRequest(
     };
   }
 
-  throw new HttpRequestError("Control payload must provide command_type 'set_speed' or 'set_circuit_state'.");
+  if (commandType === "set_chlorinator_output") {
+    const outputPercent = (args as Record<string, unknown>).output_percent;
+    if (typeof outputPercent !== "number" || !Number.isInteger(outputPercent) || outputPercent < 0 || outputPercent > 100) {
+      throw new HttpRequestError("Chlorinator output control requires integer arguments.output_percent between 0 and 100.");
+    }
+    return {
+      commandType,
+      outputPercent
+    };
+  }
+
+  throw new HttpRequestError("Control payload must provide command_type 'set_speed', 'set_circuit_state', or 'set_chlorinator_output'.");
 }
 
 function readPageIndex(body: Record<string, unknown>): number {
