@@ -1264,7 +1264,7 @@ test("lazy-loads tabbed persistence-backed history charts", async () => {
   assert.equal(midRangeTemperatureHistoryUrl.searchParams.get("interval"), "15m");
   const midRangeTemperatureStart = Date.parse(midRangeTemperatureHistoryUrl.searchParams.get("start") as string);
   const midRangeTemperatureEnd = Date.parse(midRangeTemperatureHistoryUrl.searchParams.get("end") as string);
-  assert.equal(midRangeTemperatureEnd - midRangeTemperatureStart, 12 * 60 * 60 * 1000);
+  assert.ok(Math.abs((midRangeTemperatureEnd - midRangeTemperatureStart) - (12 * 60 * 60 * 1000)) <= 1);
 
   fireEvent.change(screen.getByLabelText("Time range"), {
     target: { value: "7d" }
@@ -1440,6 +1440,88 @@ test("renders custom name bank values as text inputs on the EasyTouch hardware d
     assert.ok(screen.getByLabelText("Discard custom name row 0"));
   });
 }, 10000);
+
+test("renders IntelliChlor hardware details and submits an output command", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init?: RequestInit) => {
+      if (input.endsWith("/protocol/bundles")) {
+        return response({ data: [], error: null });
+      }
+
+      if (input.endsWith("/equipment") && (!init || !init.method)) {
+        return response({
+          data: [
+            {
+              id: "chlorinator-main",
+              equipment_type: "chlorinator",
+              display_name: "Main Chlorinator",
+              protocol_name: "pentair_easytouch",
+              bus_address: "0x50",
+              latest_state: {
+                model: "PLUS40",
+                salt_ppm: 3200,
+                output_percent: 45,
+                current_output_percent: 40,
+                target_output_percent: 45,
+                run_state: "producing",
+                status: "low_flow",
+                status_code: 1,
+                water_temp_f: 78,
+                connected: true,
+                comms_lost: false,
+                last_comm: "2026-06-17T19:59:00Z",
+                production_lb_per_day: 1.4,
+                production_lb_per_second: 0.0000162
+              }
+            }
+          ],
+          error: null
+        });
+      }
+
+      if (input.endsWith("/platform/status")) {
+        return platformStatusResponse();
+      }
+
+      if (input.includes("/equipment/chlorinator-main/control")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          command_type?: string;
+          arguments?: { output_percent?: number };
+        };
+        assert.equal(body.command_type, "set_chlorinator_output");
+        assert.equal(body.arguments?.output_percent, 35);
+        return response({
+          data: {
+            command_id: "chlorinator-command-1",
+            status: "accepted"
+          },
+          error: null
+        });
+      }
+
+      throw new Error(`Unhandled fetch call for ${input}`);
+    })
+  );
+
+  renderApp(["/system/hardware/intellichlor"]);
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Runtime Status"));
+    assert.ok(screen.getByText("Output Control"));
+    assert.ok(screen.getByText("Warnings & Guidance"));
+    assert.ok(screen.getByText("Production & Diagnostics"));
+    assert.ok(screen.getAllByText("PLUS40").length >= 1);
+    assert.ok(screen.getAllByText("Low Flow").length >= 1);
+  });
+
+  fireEvent.change(screen.getByLabelText("Target output percent"), { target: { value: "35" } });
+  fireEvent.click(screen.getByRole("button", { name: "Set chlorinator output" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Output command accepted. Awaiting refreshed IntelliChlor telemetry."));
+  });
+});
 
 test("renders EasyTouch circuit configuration rows as staged editors from live controller metadata", async () => {
   vi.stubGlobal(

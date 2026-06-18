@@ -943,6 +943,30 @@ export async function requestCircuitState(input: {
   return (await response.json()) as CommandAcceptedResponse;
 }
 
+export async function requestChlorinatorOutput(input: {
+  equipmentId: string;
+  outputPercent: number;
+}): Promise<CommandAcceptedResponse> {
+  const response = await fetch(buildApiUrl(`/equipment/${encodeURIComponent(input.equipmentId)}/control`), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      command_type: "set_chlorinator_output",
+      arguments: {
+        output_percent: input.outputPercent
+      }
+    })
+  });
+
+  if (!response.ok) {
+    throw await buildApiError(response, "Chlorinator output request failed.");
+  }
+
+  return (await response.json()) as CommandAcceptedResponse;
+}
+
 export async function fetchProtocolBundles(): Promise<ProtocolBundleSummaryResponse> {
   const response = await fetch(buildApiUrl("/protocol/bundles"));
   if (!response.ok) {

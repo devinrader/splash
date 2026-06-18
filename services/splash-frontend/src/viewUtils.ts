@@ -726,14 +726,33 @@ export function getHardwareDetailSubtitle(detail: SystemHardwareDetailId): strin
         : "UltraTemp Heat Pump";
 }
 
-export function getHardwareDetailStatus(detail: SystemHardwareDetailId, pumpRunning: unknown): string {
+export function getHardwareDetailStatus(
+  detail: SystemHardwareDetailId,
+  pumpRunning: unknown,
+  chlorinatorRunState?: unknown
+): string {
   if (detail === "easytouch8") {
     return "Online";
   }
   if (detail === "intelliflo") {
     return typeof pumpRunning === "boolean" && pumpRunning ? "Running" : "Idle";
   }
-  return detail === "intellichlor" ? "Producing" : "Heating";
+  if (detail === "intellichlor") {
+    return formatChlorinatorRunState(chlorinatorRunState);
+  }
+  return "Heating";
+}
+
+export function getChlorinatorStatusTone(value: unknown): "good" | "watch" | "muted" {
+  switch (value) {
+    case "ok":
+      return "good";
+    case "unknown":
+    case "offline":
+      return "muted";
+    default:
+      return "watch";
+  }
 }
 
 export function formatChlorinatorRunState(value: unknown): string {
@@ -828,7 +847,13 @@ export function getHardwareDetailFacts(
     waterTemp: string;
     saltLevel: string;
     chlorinatorOutput: string;
+    chlorinatorCurrentOutput: string;
+    chlorinatorTargetOutput: string;
     chlorinatorRunState: string;
+    chlorinatorStatus: string;
+    chlorinatorModel: string;
+    chlorinatorAddress: string;
+    chlorinatorLastComm: string;
     pumpRpm: string;
     flowRate: string;
     filterPressure: string;
@@ -860,14 +885,15 @@ export function getHardwareDetailFacts(
       ];
     case "intellichlor":
       return [
-        { label: "Model", value: "IntelliChlor IC40" },
+        { label: "Model", value: input.chlorinatorModel },
         { label: "Salt Level", value: input.saltLevel },
-        { label: "Firmware Version", value: "1.07" },
-        { label: "Output Level", value: input.chlorinatorOutput },
+        { label: "Current Output", value: input.chlorinatorCurrentOutput },
+        { label: "Target Output", value: input.chlorinatorTargetOutput },
         { label: "Protocol", value: "Pentair RS485" },
         { label: "Cell Status", value: input.chlorinatorRunState },
-        { label: "Address", value: "0x30" },
-        { label: "Last Message", value: "2s ago" }
+        { label: "Status Detail", value: input.chlorinatorStatus },
+        { label: "Address", value: input.chlorinatorAddress },
+        { label: "Last Message", value: input.chlorinatorLastComm }
       ];
     case "ultratemp":
       return [

@@ -5,6 +5,7 @@ import {
   fetchControllerClock,
   fetchControllerHeater,
   fetchControllerPumpConfigurations,
+  requestChlorinatorOutput,
   requestControllerClockRefresh,
   requestPumpInfo,
   updateControllerClock,
@@ -43,6 +44,7 @@ import {
   formatValueWithLabel,
   getCircuitFunctionOptions,
   getCircuitStateClassName,
+  getChlorinatorStatusTone,
   getCircuitNameOptions,
   getHardwareDetailCode,
   getHardwareDetailFacts,
@@ -286,6 +288,9 @@ function HardwareDetailTab({
   const [heaterSettingsPending, setHeaterSettingsPending] = useState(false);
   const [heaterConfigMessage, setHeaterConfigMessage] = useState<string | null>(null);
   const [heaterSettingsMessage, setHeaterSettingsMessage] = useState<string | null>(null);
+  const [chlorinatorOutputDraft, setChlorinatorOutputDraft] = useState("");
+  const [chlorinatorOutputPending, setChlorinatorOutputPending] = useState(false);
+  const [chlorinatorOutputMessage, setChlorinatorOutputMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setDraftRows(getEditableCircuitRows(controllerCircuitStates));
@@ -354,6 +359,19 @@ function HardwareDetailTab({
       coolSetpoint: String(heater.settings.cool_setpoint ?? 0)
     });
   }, [heater]);
+
+  useEffect(() => {
+    const targetOutput = readMetric(
+      chlorinator?.latest_state.target_output_percent
+        ?? chlorinator?.latest_state.output_percent
+        ?? chlorinator?.latest_state.current_output_percent
+    );
+    setChlorinatorOutputDraft(targetOutput == null ? "" : String(targetOutput));
+  }, [
+    chlorinator?.latest_state.current_output_percent,
+    chlorinator?.latest_state.output_percent,
+    chlorinator?.latest_state.target_output_percent
+  ]);
 
   async function handleHeaterConfigurationSave(): Promise<void> {
     setHeaterConfigPending(true);
@@ -495,6 +513,54 @@ function HardwareDetailTab({
     }
   }
 
+  async function handleChlorinatorOutputSave(): Promise<void> {
+    if (!chlorinator) {
+      setChlorinatorOutputMessage("No IntelliChlor equipment record is available.");
+      return;
+    }
+
+    const outputPercent = Number.parseInt(chlorinatorOutputDraft, 10);
+    if (Number.isNaN(outputPercent) || outputPercent < 0 || outputPercent > 100) {
+      setChlorinatorOutputMessage("Enter an output percent from 0 to 100.");
+      return;
+    }
+
+    setChlorinatorOutputPending(true);
+    setChlorinatorOutputMessage(null);
+    try {
+      await requestChlorinatorOutput({
+        equipmentId: chlorinator.id,
+        outputPercent
+      });
+      setChlorinatorOutputMessage("Output command accepted. Awaiting refreshed IntelliChlor telemetry.");
+    } catch (error) {
+      setChlorinatorOutputMessage(error instanceof Error ? error.message : "Failed to send IntelliChlor output command.");
+    } finally {
+      setChlorinatorOutputPending(false);
+    }
+  }
+
+  const chlorinatorStatus = chlorinator?.latest_state.status;
+  const chlorinatorStatusLabel = formatChlorinatorStatus(chlorinatorStatus);
+  const chlorinatorStatusTone = getChlorinatorStatusTone(chlorinatorStatus);
+  const chlorinatorWarnings = getChlorinatorWarnings(chlorinator);
+  const chlorinatorModel = readNullableString(chlorinator?.latest_state.model) ?? "Unknown";
+  const chlorinatorAddress = readNullableString(chlorinator?.bus_address) ?? "0x50";
+  const chlorinatorLastComm =
+    typeof chlorinator?.latest_state.last_comm === "string"
+      ? formatRequestTimestamp(chlorinator.latest_state.last_comm)
+      : "Unavailable";
+  const chlorinatorCurrentOutput = formatMetric(
+    readMetric(chlorinator?.latest_state.current_output_percent ?? chlorinator?.latest_state.output_percent),
+    "%"
+  );
+  const chlorinatorTargetOutput = formatMetric(
+    readMetric(chlorinator?.latest_state.target_output_percent ?? chlorinator?.latest_state.output_percent),
+    "%"
+  );
+  const chlorinatorProductionLbPerDay = readMetric(chlorinator?.latest_state.production_lb_per_day);
+  const chlorinatorSuperChlorRemainingSeconds = readMetric(chlorinator?.latest_state.super_chlor_remaining_seconds);
+
   return (
     <section className="mock-system-page">
       <Card title={getHardwareDetailTitle(detail, controller?.display_name, pump?.display_name, chlorinator?.display_name)} className="mock-hardware-hero-card">
@@ -506,7 +572,9 @@ function HardwareDetailTab({
           <div className="mock-hardware-main">
             <div className="mock-hardware-heading">
               <h2>{getHardwareDetailTitle(detail, controller?.display_name, pump?.display_name, chlorinator?.display_name)}</h2>
-              <span className={`system-status-chip ${getStatusChipClassName("good")}`}>{getHardwareDetailStatus(detail, pump?.latest_state.running)}</span>
+              <span className={`system-status-chip ${getStatusChipClassName("good")}`}>
+                {getHardwareDetailStatus(detail, pump?.latest_state.running, chlorinator?.latest_state.run_state)}
+              </span>
             </div>
             <div className="mock-hardware-info-grid">
               {getHardwareDetailFacts(detail, {
@@ -515,7 +583,13 @@ function HardwareDetailTab({
                 waterTemp: formatMetric(readMetric(controller?.latest_state.water_temp_f), "°F"),
                 saltLevel: formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm"),
                 chlorinatorOutput: formatMetric(readMetric(chlorinator?.latest_state.output_percent), "%"),
+                chlorinatorCurrentOutput,
+                chlorinatorTargetOutput,
                 chlorinatorRunState: formatChlorinatorRunState(chlorinator?.latest_state.run_state),
+                chlorinatorStatus: chlorinatorStatusLabel,
+                chlorinatorModel,
+                chlorinatorAddress,
+                chlorinatorLastComm,
                 pumpRpm: formatMetric(readMetric(pump?.latest_state.rpm), "RPM"),
                 flowRate: formatMetric(readMetric(pump?.latest_state.flow_gpm), "GPM"),
                 filterPressure: formatMetric(readMetric(pump?.latest_state.filter_pressure_psi), "psi"),
@@ -529,7 +603,88 @@ function HardwareDetailTab({
         <NavLink className="page-back-link" to="/system/hardware">Back to System (Hardware)</NavLink>
       </Card>
 
-      {detail === "easytouch8" ? (
+      {detail === "intellichlor" ? (
+        <>
+          <section className="mock-kpi-grid">
+            <MetricCard label="Current Output" value={chlorinatorCurrentOutput} accent="pump" icon="chlorinator" />
+            <MetricCard label="Target Output" value={chlorinatorTargetOutput} accent="water" icon="system" />
+            <MetricCard label="Salt Level" value={formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")} accent="sand" icon="salt" />
+            <MetricCard label="Water Temp" value={formatMetric(readMetric(chlorinator?.latest_state.water_temp_f), "°F")} accent="water" icon="temperature" />
+            <MetricCard label="Run State" value={formatChlorinatorRunState(chlorinator?.latest_state.run_state)} accent="sky" icon="good" />
+            <MetricCard label="Connection" value={String(chlorinator?.latest_state.comms_lost) === "true" ? "Lost" : "Online"} accent="sand" icon="system" />
+          </section>
+          <section className="mock-system-grid">
+            <Card title="Runtime Status" status={chlorinatorStatusLabel}>
+              <dl className="system-summary-list">
+                <div><dt>Model</dt><dd>{chlorinatorModel}</dd></div>
+                <div><dt>Status</dt><dd><span className={`system-status-chip ${getStatusChipClassName(chlorinatorStatusTone)}`}>{chlorinatorStatusLabel}</span></dd></div>
+                <div><dt>Run state</dt><dd>{formatChlorinatorRunState(chlorinator?.latest_state.run_state)}</dd></div>
+                <div><dt>Current output</dt><dd>{chlorinatorCurrentOutput}</dd></div>
+                <div><dt>Target output</dt><dd>{chlorinatorTargetOutput}</dd></div>
+                <div><dt>Salt ppm</dt><dd>{formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")}</dd></div>
+                <div><dt>Water temp</dt><dd>{formatMetric(readMetric(chlorinator?.latest_state.water_temp_f), "°F")}</dd></div>
+                <div><dt>Last communication</dt><dd>{chlorinatorLastComm}</dd></div>
+                <div><dt>Comms lost</dt><dd>{String(chlorinator?.latest_state.comms_lost) === "true" ? "Yes" : "No"}</dd></div>
+                <div><dt>Address</dt><dd>{chlorinatorAddress}</dd></div>
+              </dl>
+            </Card>
+            <Card title="Output Control" status="Direct control">
+              <p className="panel-copy">This writes the current IntelliChlor output target through the existing equipment control path. In observed-only mode, Splash API should reject the request clearly.</p>
+              <div className="control-form">
+                <label htmlFor="chlorinator-output">Target output percent</label>
+                <input
+                  id="chlorinator-output"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={chlorinatorOutputDraft}
+                  onChange={(event) => setChlorinatorOutputDraft(event.target.value)}
+                  disabled={chlorinatorOutputPending || !chlorinator}
+                />
+                <div className="panel-actions">
+                  <button type="button" className="secondary-action" onClick={() => setChlorinatorOutputDraft("0")} disabled={chlorinatorOutputPending || !chlorinator}>
+                    Set 0%
+                  </button>
+                  <button type="button" className="secondary-action" onClick={() => setChlorinatorOutputDraft("50")} disabled={chlorinatorOutputPending || !chlorinator}>
+                    Set 50%
+                  </button>
+                  <button type="button" className="secondary-action" onClick={() => setChlorinatorOutputDraft("100")} disabled={chlorinatorOutputPending || !chlorinator}>
+                    Set 100%
+                  </button>
+                  <button type="button" onClick={() => void handleChlorinatorOutputSave()} disabled={chlorinatorOutputPending || !chlorinator}>
+                    {chlorinatorOutputPending ? "Sending..." : "Set chlorinator output"}
+                  </button>
+                </div>
+                {chlorinatorOutputMessage ? <p className="form-caption">{chlorinatorOutputMessage}</p> : null}
+              </div>
+            </Card>
+            <Card title="Warnings & Guidance" status={chlorinatorWarnings.length > 0 ? "Operator attention" : "Normal"}>
+              {chlorinatorWarnings.length > 0 ? (
+                <div className="record-list">
+                  {chlorinatorWarnings.map((warning) => (
+                    <div className="record-card" key={warning.title}>
+                      <strong>{warning.title}</strong>
+                      <span>{warning.summary}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="panel-copy">No active IntelliChlor warning conditions are present in the current latest-state snapshot.</p>
+              )}
+            </Card>
+            <Card title="Production & Diagnostics" status="Runtime">
+              <dl className="system-summary-list">
+                <div><dt>Production rate</dt><dd>{chlorinatorProductionLbPerDay == null ? "Unavailable" : `${chlorinatorProductionLbPerDay.toFixed(2)} lb/day`}</dd></div>
+                <div><dt>Production per second</dt><dd>{formatMetric(readMetric(chlorinator?.latest_state.production_lb_per_second), "lb/sec")}</dd></div>
+                <div><dt>Status code</dt><dd>{readMetric(chlorinator?.latest_state.status_code) ?? "Unavailable"}</dd></div>
+                <div><dt>Super chlorinate remaining</dt><dd>{formatDurationSeconds(chlorinatorSuperChlorRemainingSeconds)}</dd></div>
+                <div><dt>Connected</dt><dd>{String(chlorinator?.latest_state.connected) === "true" ? "Yes" : "No"}</dd></div>
+                <div><dt>Protocol</dt><dd>{chlorinator?.protocol_name ?? "Unavailable"}</dd></div>
+              </dl>
+              <p className="form-caption">Direct control, super chlorinate state, and controller-owned configuration remain partially implemented in this slice. This page only exposes fields already carried through the current latest-state projection.</p>
+            </Card>
+          </section>
+        </>
+      ) : detail === "easytouch8" ? (
         <>
           <Card title="Circuit Configuration">
             <div className="mock-card-toolbar">
@@ -1364,6 +1519,72 @@ function formatRatePerMinute(valuePerSecond: number | null | undefined): string 
     return "Unavailable";
   }
   return `${Math.round(valuePerSecond * 60)} / min`;
+}
+
+function formatDurationSeconds(value: number | null): string {
+  if (value == null || value <= 0) {
+    return "Unavailable";
+  }
+  const hours = Math.floor(value / 3600);
+  const minutes = Math.floor((value % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
+
+function getChlorinatorWarnings(chlorinator: EquipmentRecord | undefined): Array<{ title: string; summary: string }> {
+  const warnings: Array<{ title: string; summary: string }> = [];
+  const status = chlorinator?.latest_state.status;
+  const commsLost = chlorinator?.latest_state.comms_lost === true;
+
+  if (commsLost || status === "communication_lost") {
+    warnings.push({
+      title: "Communication lost",
+      summary: "Splash has stopped receiving recent IntelliChlor traffic, so current output and salt telemetry may no longer be trustworthy."
+    });
+  }
+
+  switch (status) {
+    case "low_flow":
+      warnings.push({
+        title: "Low flow",
+        summary: "The cell is reporting low flow. Verify circulation and confirm the pump or body assignment is active before relying on chlorination."
+      });
+      break;
+    case "low_salt":
+    case "very_low_salt":
+      warnings.push({
+        title: "Salt attention needed",
+        summary: "The cell is reporting low salt support. Recheck the salt reading before increasing output, because production may already be limited."
+      });
+      break;
+    case "clean_cell":
+      warnings.push({
+        title: "Cell cleaning recommended",
+        summary: "The current status indicates the cell may need inspection or cleaning before production can be trusted."
+      });
+      break;
+    case "high_current":
+    case "low_voltage":
+    case "low_water_temp":
+      warnings.push({
+        title: formatChlorinatorStatus(status),
+        summary: "The current IntelliChlor status is outside normal operating conditions. Treat the output target as advisory until the equipment state recovers."
+      });
+      break;
+    default:
+      break;
+  }
+
+  if (warnings.length === 0 && readMetric(chlorinator?.latest_state.salt_ppm) == null) {
+    warnings.push({
+      title: "Telemetry incomplete",
+      summary: "Salt telemetry is not currently available, so production support remains partially observed."
+    });
+  }
+
+  return warnings;
 }
 
 function formatCountValue(value: number | null | undefined): string {
