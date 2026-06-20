@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.stubGlobal("EventSource", FakeEventSource);
 });
 
-test("settings page loads and saves weather location and pool chemistry settings", async () => {
+test("settings page loads and saves weather location and swimmability policy settings", async () => {
   const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
     if (input.endsWith("/equipment")) {
       return response({ data: [], error: null });
@@ -595,10 +595,10 @@ test("settings page loads and saves weather location and pool chemistry settings
 
   fireEvent.change(screen.getByLabelText("Free Chlorine target"), { target: { value: "6" } });
   fireEvent.change(screen.getByLabelText("Chemistry prompt interval (days)"), { target: { value: "4" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save pool chemistry" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save swimmability policy" }));
 
   await waitFor(() => {
-    assert.ok(screen.getByText("Pool chemistry settings saved."));
+    assert.ok(screen.getByText("Swimmability policy saved."));
     const freeChlorineTarget = screen.getByLabelText("Free Chlorine target") as HTMLInputElement;
     assert.equal(freeChlorineTarget.value, "6");
   });

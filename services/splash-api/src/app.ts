@@ -69,7 +69,7 @@ import {
 import {
   PoolChemistrySettingsService,
   SqlitePoolChemistrySettingsRepository,
-  type PoolChemistryRecommendationBounds,
+  type SwimmabilityPolicyBounds,
   type PoolChemistrySettingsView
 } from "./pool-chemistry-settings.js";
 import {
@@ -77,6 +77,11 @@ import {
   SqlitePoolProfileSettingsRepository,
   type PoolProfileSettingsView
 } from "./pool-profile-settings.js";
+import {
+  ChlorinatorProfileSettingsService,
+  SqliteChlorinatorProfileSettingsRepository,
+  type ChlorinatorProfileSettingsView
+} from "./chlorinator-profile-settings.js";
 import {
   ChemistryReadingsService,
   SqliteChemistryReadingsRepository,
@@ -156,6 +161,7 @@ export interface AppOptions {
   geocodingSettings?: GeocodingSettingsService;
   poolProfileSettings?: PoolProfileSettingsService;
   poolChemistrySettings?: PoolChemistrySettingsService;
+  chlorinatorProfileSettings?: ChlorinatorProfileSettingsService;
   chemistryReadings?: ChemistryReadingsService;
   chemistryObservations?: ChemistryObservationsService;
   maintenanceActivities?: MaintenanceActivitiesService;
@@ -213,6 +219,7 @@ export class App {
   private readonly geocodingSettings: GeocodingSettingsService;
   private readonly poolProfileSettings: PoolProfileSettingsService;
   private readonly poolChemistrySettings: PoolChemistrySettingsService;
+  private readonly chlorinatorProfileSettings: ChlorinatorProfileSettingsService;
   private readonly chemistryReadings: ChemistryReadingsService;
   private readonly chemistryObservations: ChemistryObservationsService;
   private readonly maintenanceActivities: MaintenanceActivitiesService;
@@ -304,6 +311,12 @@ export class App {
       new PoolChemistrySettingsService(
         this.config.poolId,
         this.sqliteDatabase ? new SqlitePoolChemistrySettingsRepository(this.sqliteDatabase) : null
+      );
+    this.chlorinatorProfileSettings =
+      options.chlorinatorProfileSettings ??
+      new ChlorinatorProfileSettingsService(
+        this.config.poolId,
+        this.sqliteDatabase ? new SqliteChlorinatorProfileSettingsRepository(this.sqliteDatabase) : null
       );
     this.chemistryReadings =
       options.chemistryReadings ??
@@ -507,6 +520,14 @@ export class App {
     return this.poolChemistrySettings.updatePoolChemistrySettings(input);
   }
 
+  async getChlorinatorProfileSettings(): Promise<ChlorinatorProfileSettingsView> {
+    return this.chlorinatorProfileSettings.getChlorinatorProfileSettings();
+  }
+
+  async updateChlorinatorProfileSettings(input: unknown): Promise<ChlorinatorProfileSettingsView> {
+    return this.chlorinatorProfileSettings.updateChlorinatorProfileSettings(input);
+  }
+
   async getWaterTestingSchedule(): Promise<WaterTestingScheduleStatusView> {
     const schedule = await this.waterTestingSchedule.getSchedule();
     const freshness = await this.getWaterTestingFreshness();
@@ -648,12 +669,12 @@ export class App {
   }
 
   async getSwimmability(): Promise<SwimmabilityView> {
-    const { chemistry, chemistryBounds, cover, forecast, latestTemperatures, rainfallSinceChemistryInches, freshness } =
+    const { chemistry, swimmabilityPolicy, cover, forecast, latestTemperatures, rainfallSinceChemistryInches, freshness } =
       await this.getSwimmabilityInputs();
 
     return buildSwimmabilityView({
       chemistry,
-      chemistryBounds,
+      swimmabilityPolicy,
       cover,
       forecast,
       latestTemperatures,
@@ -718,7 +739,7 @@ export class App {
   async getNotifications(input: { status: string | null; limit: string | null; type: string | null }): Promise<NotificationsView> {
     const {
       chemistry,
-      chemistryBounds,
+      swimmabilityPolicy,
       cover,
       forecast,
       latestTemperatures,
@@ -727,7 +748,7 @@ export class App {
     } = await this.getSwimmabilityInputs();
     const swimmability = buildSwimmabilityView({
       chemistry,
-      chemistryBounds,
+      swimmabilityPolicy,
       cover,
       forecast,
       latestTemperatures,
@@ -759,16 +780,16 @@ export class App {
 
   private async getSwimmabilityInputs(): Promise<{
     chemistry: ChemistryReadingRecord | null;
-    chemistryBounds: PoolChemistryRecommendationBounds;
+    swimmabilityPolicy: SwimmabilityPolicyBounds;
     cover: PoolCoverCurrentView;
     forecast: Awaited<ReturnType<WeatherForecastService["getLatest"]>>;
     latestTemperatures: Awaited<ReturnType<TemperatureTelemetryService["getLatest"]>>;
     rainfallSinceChemistryInches: number | null;
     freshness: WaterTestingFreshnessView;
   }> {
-    const [chemistry, chemistryBounds, cover, forecast, latestTemperatures] = await Promise.all([
+    const [chemistry, swimmabilityPolicy, cover, forecast, latestTemperatures] = await Promise.all([
       this.chemistryReadings.getLatestChemistryReading(),
-      this.poolChemistrySettings.getChemistryBoundsForRecommendations(),
+      this.poolChemistrySettings.getSwimmabilityPolicyBounds(),
       this.poolCoverEvents.getCurrentPoolCover(),
       this.weatherForecast.getLatest(),
       this.temperatureTelemetry.getLatest()
@@ -789,7 +810,7 @@ export class App {
 
     return {
       chemistry,
-      chemistryBounds,
+      swimmabilityPolicy,
       cover,
       forecast,
       latestTemperatures,
@@ -824,7 +845,7 @@ export class App {
 
     const {
       chemistry,
-      chemistryBounds,
+      swimmabilityPolicy,
       cover,
       forecast,
       latestTemperatures,
@@ -833,7 +854,7 @@ export class App {
     } = await this.getSwimmabilityInputs();
     const swimmability = buildSwimmabilityView({
       chemistry,
-      chemistryBounds,
+      swimmabilityPolicy,
       cover,
       forecast,
       latestTemperatures,
@@ -853,8 +874,8 @@ export class App {
     });
   }
 
-  async getChemistryBoundsForRecommendations(): Promise<PoolChemistryRecommendationBounds> {
-    return this.poolChemistrySettings.getChemistryBoundsForRecommendations();
+  async getChemistryBoundsForRecommendations(): Promise<SwimmabilityPolicyBounds> {
+    return this.poolChemistrySettings.getSwimmabilityPolicyBounds();
   }
 
   async getPlatformStatus(): Promise<Record<string, unknown>> {
@@ -1711,6 +1732,8 @@ export class App {
         updatePoolProfileSettings: async (input) => this.updatePoolProfileSettings(input) as unknown as Record<string, unknown>,
         getPoolChemistrySettings: async () => this.getPoolChemistrySettings() as unknown as Record<string, unknown>,
         updatePoolChemistrySettings: async (input) => this.updatePoolChemistrySettings(input) as unknown as Record<string, unknown>,
+        getChlorinatorProfileSettings: async () => this.getChlorinatorProfileSettings() as unknown as Record<string, unknown>,
+        updateChlorinatorProfileSettings: async (input) => this.updateChlorinatorProfileSettings(input) as unknown as Record<string, unknown>,
         getWaterTestingSchedule: async () => this.getWaterTestingSchedule() as unknown as Record<string, unknown>,
         updateWaterTestingSchedule: async (input) => this.updateWaterTestingSchedule(input) as unknown as Record<string, unknown>,
         updateWaterTestingScheduleItem: async (chemicalKey, input) =>

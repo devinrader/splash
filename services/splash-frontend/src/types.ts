@@ -604,6 +604,52 @@ export interface PoolChemistrySettingsSaveInput {
   chemistryPromptIntervalDays?: number;
 }
 
+export type ChlorinatorProfileChemicalKey =
+  | "free_chlorine"
+  | "combined_chlorine"
+  | "ph"
+  | "cyanuric_acid"
+  | "total_alkalinity"
+  | "calcium_hardness"
+  | "tds"
+  | "salinity"
+  | "phosphates";
+
+export interface ChlorinatorProfileSetting {
+  chemicalKey: ChlorinatorProfileChemicalKey;
+  displayName: string;
+  unit: string | null;
+  ideal_min: number | null;
+  ideal_max: number | null;
+  ideal_target: number | null;
+  allowed_min: number | null;
+  allowed_max: number | null;
+  enabled: boolean;
+  sortOrder: number;
+}
+
+export interface ChlorinatorProfileSettingsData {
+  settings: ChlorinatorProfileSetting[];
+  source: "sqlite" | "defaults";
+}
+
+export interface ChlorinatorProfileSettingsResponse {
+  data: ChlorinatorProfileSettingsData;
+  error: unknown;
+}
+
+export interface ChlorinatorProfileSettingsSaveInput {
+  settings: Array<{
+    chemicalKey: ChlorinatorProfileChemicalKey;
+    idealMin?: number | null;
+    idealMax?: number | null;
+    idealTarget?: number | null;
+    allowedMin?: number | null;
+    allowedMax?: number | null;
+    enabled?: boolean;
+  }>;
+}
+
 export type WaterTestingScheduleChemicalKey =
   | "free_chlorine"
   | "ph"

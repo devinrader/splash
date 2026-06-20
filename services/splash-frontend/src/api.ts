@@ -51,6 +51,8 @@ import type {
   PoolProfileSettingsSaveInput,
   PoolChemistrySettingsResponse,
   PoolChemistrySettingsSaveInput,
+  ChlorinatorProfileSettingsResponse,
+  ChlorinatorProfileSettingsSaveInput,
   NotificationReadResponse,
   NotificationsReadAllResponse,
   NotificationsResponse,
@@ -847,6 +849,40 @@ export async function savePoolChemistrySettings(input: PoolChemistrySettingsSave
     throw await buildApiError(response, "Pool chemistry settings save failed.");
   }
   return (await response.json()) as PoolChemistrySettingsResponse;
+}
+
+export async function fetchChlorinatorProfileSettings(): Promise<ChlorinatorProfileSettingsResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/chlorinator-profile"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Chlorinator operating profile request failed.");
+  }
+  return (await response.json()) as ChlorinatorProfileSettingsResponse;
+}
+
+export async function saveChlorinatorProfileSettings(
+  input: ChlorinatorProfileSettingsSaveInput
+): Promise<ChlorinatorProfileSettingsResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/chlorinator-profile"), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      settings: input.settings.map((entry) => ({
+        chemicalKey: entry.chemicalKey,
+        ideal_min: entry.idealMin,
+        ideal_max: entry.idealMax,
+        ideal_target: entry.idealTarget,
+        allowed_min: entry.allowedMin,
+        allowed_max: entry.allowedMax,
+        enabled: entry.enabled
+      }))
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Chlorinator operating profile save failed.");
+  }
+  return (await response.json()) as ChlorinatorProfileSettingsResponse;
 }
 
 export async function fetchWaterTestingSchedule(): Promise<WaterTestingScheduleResponse> {

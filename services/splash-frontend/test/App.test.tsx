@@ -1746,6 +1746,81 @@ test("renders IntelliChlor hardware details and submits an output command", asyn
         });
       }
 
+      if (input.endsWith("/api/settings/chlorinator-profile") && (!init || !init.method)) {
+        return response({
+          data: {
+            settings: [
+              {
+                chemicalKey: "free_chlorine",
+                displayName: "Free Chlorine",
+                unit: "ppm",
+                ideal_min: 2,
+                ideal_max: 4,
+                ideal_target: null,
+                allowed_min: 1,
+                allowed_max: 4,
+                enabled: true,
+                sortOrder: 10
+              },
+              {
+                chemicalKey: "salinity",
+                displayName: "Salinity",
+                unit: "ppm",
+                ideal_min: null,
+                ideal_max: null,
+                ideal_target: 3600,
+                allowed_min: 2600,
+                allowed_max: 4500,
+                enabled: true,
+                sortOrder: 80
+              }
+            ],
+            source: "sqlite"
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/api/settings/chlorinator-profile") && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body ?? "{}")) as {
+          settings?: Array<Record<string, unknown>>;
+        };
+        const salinity = body.settings?.find((entry) => entry.chemicalKey === "salinity");
+        assert.equal(salinity?.ideal_target, 3500);
+        return response({
+          data: {
+            settings: [
+              {
+                chemicalKey: "free_chlorine",
+                displayName: "Free Chlorine",
+                unit: "ppm",
+                ideal_min: 2,
+                ideal_max: 4,
+                ideal_target: null,
+                allowed_min: 1,
+                allowed_max: 4,
+                enabled: true,
+                sortOrder: 10
+              },
+              {
+                chemicalKey: "salinity",
+                displayName: "Salinity",
+                unit: "ppm",
+                ideal_min: null,
+                ideal_max: null,
+                ideal_target: 3500,
+                allowed_min: 2600,
+                allowed_max: 4500,
+                enabled: true,
+                sortOrder: 80
+              }
+            ],
+            source: "sqlite"
+          },
+          error: null
+        });
+      }
+
       if (input.endsWith("/api/settings/pool-profile") && init?.method === "PUT") {
         const body = JSON.parse(String(init.body ?? "{}")) as {
           volume_gallons?: number;
@@ -1777,6 +1852,25 @@ test("renders IntelliChlor hardware details and submits an output command", asyn
         });
       }
 
+      if (input.endsWith("/chemistry/latest") && (!init || !init.method)) {
+        return response({
+          data: {
+            id: "reading-1",
+            pool_id: "pool-1",
+            ph: 7.5,
+            free_chlorine: 3.2,
+            total_chlorine: 3.4,
+            total_alkalinity: 90,
+            calcium_hardness: 250,
+            cyanuric_acid: 45,
+            source: "manual",
+            recorded_at: "2026-06-17T19:00:00Z",
+            created_at: "2026-06-17T19:00:00Z"
+          },
+          error: null
+        });
+      }
+
       if (input.includes("/equipment/chlorinator-main/control")) {
         const body = JSON.parse(String(init?.body ?? "{}")) as {
           command_type?: string;
@@ -1803,6 +1897,8 @@ test("renders IntelliChlor hardware details and submits an output command", asyn
     assert.ok(screen.getByText("Runtime Status"));
     assert.ok(screen.getByText("Output Control"));
     assert.ok(screen.getByText("Pool Volume"));
+    assert.ok(screen.getByText("Chlorinator Operating Profile"));
+    assert.ok(screen.getByText("Current Chemistry vs IntelliChlor Profile"));
     assert.ok(screen.getByText("24h Chlorine Support"));
     assert.ok(screen.getAllByText("Configured Output").length >= 1);
     assert.ok(screen.getAllByText("Water temp (controller)").length >= 1);
@@ -1812,6 +1908,9 @@ test("renders IntelliChlor hardware details and submits an output command", asyn
     assert.ok(screen.getAllByText("Low Flow").length >= 1);
     assert.equal((screen.getByLabelText("Pool volume (gallons)") as HTMLInputElement).value, "18000");
     assert.ok(screen.getByText("+4.2 ppm"));
+    assert.equal((screen.getByLabelText("Salinity ideal target") as HTMLInputElement).value, "3600");
+    assert.ok(screen.getByText("Outside ideal range"));
+    assert.ok(screen.getByText("Allowed only"));
   });
 
   fireEvent.change(screen.getByLabelText("Target output percent"), { target: { value: "35" } });
@@ -1827,6 +1926,14 @@ test("renders IntelliChlor hardware details and submits an output command", asyn
   await waitFor(() => {
     assert.ok(screen.getByText("Pool volume saved."));
     assert.equal((screen.getByLabelText("Pool volume (gallons)") as HTMLInputElement).value, "22000");
+  });
+
+  fireEvent.change(screen.getByLabelText("Salinity ideal target"), { target: { value: "3500" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save chlorinator profile" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Chlorinator operating profile saved."));
+    assert.equal((screen.getByLabelText("Salinity ideal target") as HTMLInputElement).value, "3500");
   });
 });
 

@@ -378,7 +378,7 @@ export function SettingsPage() {
         response.data.source,
         response.data.chemistry_prompt_interval_days
       );
-      setChemistrySuccessMessage("Pool chemistry settings saved.");
+      setChemistrySuccessMessage("Swimmability policy saved.");
     } catch (error) {
       setChemistryErrorMessage(error instanceof Error ? error.message : String(error));
       const details = (error as Error & { details?: { details?: Record<string, Record<string, string>> } }).details;
@@ -799,11 +799,11 @@ export function SettingsPage() {
         ) : null}
       </Card>
 
-      <Card title="Pool Chemistry" status={chemistrySource === "sqlite" ? "Customized bounds" : "Default bounds"} className="settings-card-chemistry">
+      <Card title="Swimmability Policy" status={chemistrySource === "sqlite" ? "Customized policy" : "Default policy"} className="settings-card-chemistry">
         <p className="panel-copy">
           Configure the chemistry targets Splash should use for swimmability and future maintenance recommendations. These values are durable SQLite-backed settings and not time-series telemetry.
         </p>
-        {chemistryLoading ? <p className="chart-empty-state">Loading pool chemistry settings…</p> : null}
+        {chemistryLoading ? <p className="chart-empty-state">Loading swimmability policy…</p> : null}
         {!chemistryLoading ? (
           <form className="settings-form" onSubmit={handleChemistrySubmit}>
             <div className="settings-chemistry-source">
@@ -822,7 +822,7 @@ export function SettingsPage() {
               </label>
             </div>
             <div className="settings-chemistry-table-shell">
-              <table className="system-data-table" aria-label="pool chemistry settings">
+              <table className="system-data-table" aria-label="swimmability policy settings">
                 <thead>
                   <tr>
                     <th>Chemistry</th>
@@ -917,9 +917,9 @@ export function SettingsPage() {
             {chemistrySuccessMessage ? <p className="settings-message settings-message-success">{chemistrySuccessMessage}</p> : null}
 
             <div className="settings-actions">
-              <button type="submit" disabled={chemistrySaving}>
-                {chemistrySaving ? "Saving…" : "Save pool chemistry"}
-              </button>
+                  <button type="submit" disabled={chemistrySaving}>
+                    {chemistrySaving ? "Saving…" : "Save swimmability policy"}
+                  </button>
             </div>
           </form>
         ) : null}

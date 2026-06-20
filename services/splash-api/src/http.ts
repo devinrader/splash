@@ -72,6 +72,10 @@ import {
   PoolProfileSettingsUnavailableError,
   PoolProfileSettingsValidationError
 } from "./pool-profile-settings.js";
+import {
+  ChlorinatorProfileSettingsUnavailableError,
+  ChlorinatorProfileSettingsValidationError
+} from "./chlorinator-profile-settings.js";
 import type { SwimmabilityView } from "./swimmability.js";
 import {
   WaterTestingScheduleUnavailableError,
@@ -140,6 +144,8 @@ export interface HttpHandlers {
   updatePoolProfileSettings?(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   getPoolChemistrySettings(): Promise<Record<string, unknown>>;
   updatePoolChemistrySettings(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  getChlorinatorProfileSettings?(): Promise<Record<string, unknown>>;
+  updateChlorinatorProfileSettings?(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   getWaterTestingSchedule?(): Promise<Record<string, unknown>>;
   updateWaterTestingSchedule?(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   updateWaterTestingScheduleItem?(chemicalKey: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
@@ -522,6 +528,33 @@ export class LocalHttpServer implements HttpServer {
       if (req.method === "PUT" && req.url === "/api/settings/pool-chemistry") {
         const body = await readJsonBody(req);
         return json(req, res, 200, { data: await this.handlers.updatePoolChemistrySettings(body), error: null });
+      }
+
+      if (req.method === "GET" && req.url === "/api/settings/chlorinator-profile") {
+        if (!this.handlers.getChlorinatorProfileSettings) {
+          throw new HttpResponseError(503, {
+            data: null,
+            error: {
+              code: "service_unavailable",
+              message: "Chlorinator operating profile is unavailable."
+            }
+          });
+        }
+        return json(req, res, 200, { data: await this.handlers.getChlorinatorProfileSettings(), error: null });
+      }
+
+      if (req.method === "PUT" && req.url === "/api/settings/chlorinator-profile") {
+        if (!this.handlers.updateChlorinatorProfileSettings) {
+          throw new HttpResponseError(503, {
+            data: null,
+            error: {
+              code: "service_unavailable",
+              message: "Chlorinator operating profile is unavailable."
+            }
+          });
+        }
+        const body = await readJsonBody(req);
+        return json(req, res, 200, { data: await this.handlers.updateChlorinatorProfileSettings(body), error: null });
       }
 
       if (req.method === "GET" && req.url === "/api/settings/water-testing-schedule") {
@@ -1181,16 +1214,37 @@ export class LocalHttpServer implements HttpServer {
         });
       }
 
-      if (error instanceof PoolProfileSettingsValidationError) {
-        return json(req, res, 400, {
-          data: null,
-          error: {
-            code: "validation_error",
+    if (error instanceof PoolProfileSettingsValidationError) {
+      return json(req, res, 400, {
+        data: null,
+        error: {
+          code: "validation_error",
             message: error.message,
             details: error.details
-          }
-        });
-      }
+        }
+      });
+    }
+
+    if (error instanceof ChlorinatorProfileSettingsUnavailableError) {
+      return json(req, res, 503, {
+        data: null,
+        error: {
+          code: "service_unavailable",
+          message: error.message
+        }
+      });
+    }
+
+    if (error instanceof ChlorinatorProfileSettingsValidationError) {
+      return json(req, res, 400, {
+        data: null,
+        error: {
+          code: "validation_error",
+          message: error.message,
+          details: error.details
+        }
+      });
+    }
 
       if (error instanceof PoolProfileSettingsUnavailableError) {
         return json(req, res, 503, {

@@ -2,14 +2,17 @@ import { useEffect, useState } from "react";
 import type React from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
+  fetchChemistryLatest,
   fetchControllerClock,
   fetchControllerHeater,
+  fetchChlorinatorProfileSettings,
   fetchControllerPumpConfigurations,
   fetchCurrentPoolCover,
   fetchPoolProfileSettings,
   requestChlorinatorOutput,
   requestControllerClockRefresh,
   requestPumpInfo,
+  saveChlorinatorProfileSettings,
   savePoolProfileSettings,
   updateControllerClock,
   updateControllerHeaterConfiguration,
@@ -22,7 +25,10 @@ import { Card, MetricCard, MockEntityRow, MockModeRow } from "../components/mock
 import type { SystemHardwareDetailId } from "../navigation";
 import { SYSTEM_TABS, getActiveSystemTab } from "../navigation";
 import type {
+  ChemistryReadingRecord,
   ConnectivityHistorySample,
+  ChlorinatorProfileChemicalKey,
+  ChlorinatorProfileSettingsData,
   ControllerClockData,
   ControllerHeaterData,
   ControllerPumpConfigurationData,
@@ -302,6 +308,12 @@ function HardwareDetailTab({
   const [poolVolumePending, setPoolVolumePending] = useState(false);
   const [poolVolumeMessage, setPoolVolumeMessage] = useState<string | null>(null);
   const [coverCurrent, setCoverCurrent] = useState<PoolCoverCurrentData | null>(null);
+  const [latestChemistry, setLatestChemistry] = useState<ChemistryReadingRecord | null>(null);
+  const [chlorinatorProfile, setChlorinatorProfile] = useState<ChlorinatorProfileSettingsData | null>(null);
+  const [chlorinatorProfileForm, setChlorinatorProfileForm] = useState<ChlorinatorProfileFormEntry[]>([]);
+  const [chlorinatorProfileError, setChlorinatorProfileError] = useState<string | null>(null);
+  const [chlorinatorProfilePending, setChlorinatorProfilePending] = useState(false);
+  const [chlorinatorProfileMessage, setChlorinatorProfileMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setDraftRows(getEditableCircuitRows(controllerCircuitStates));
@@ -339,15 +351,22 @@ function HardwareDetailTab({
     }
     void (async () => {
       try {
-        const [profileResponse, coverResponse] = await Promise.all([
+        const [profileResponse, coverResponse, chlorinatorProfileResponse, chemistryResponse] = await Promise.all([
           fetchPoolProfileSettings(),
-          fetchCurrentPoolCover()
+          fetchCurrentPoolCover(),
+          fetchChlorinatorProfileSettings(),
+          fetchChemistryLatest()
         ]);
         setPoolProfile(profileResponse.data);
         setCoverCurrent(coverResponse.data);
+        setChlorinatorProfile(chlorinatorProfileResponse.data);
+        setLatestChemistry(chemistryResponse.data);
         setPoolProfileError(null);
+        setChlorinatorProfileError(null);
       } catch (error) {
-        setPoolProfileError(error instanceof Error ? error.message : "Failed to load pool profile settings.");
+        const message = error instanceof Error ? error.message : "Failed to load IntelliChlor settings.";
+        setPoolProfileError(message);
+        setChlorinatorProfileError(message);
       }
     })();
   }, [detail]);
@@ -404,6 +423,25 @@ function HardwareDetailTab({
   useEffect(() => {
     setPoolVolumeDraft(poolProfile?.volume_gallons == null ? "" : String(poolProfile.volume_gallons));
   }, [poolProfile?.volume_gallons]);
+
+  useEffect(() => {
+    setChlorinatorProfileForm(
+      [...(chlorinatorProfile?.settings ?? [])]
+        .sort((left, right) => left.sortOrder - right.sortOrder || left.displayName.localeCompare(right.displayName))
+        .map((setting) => ({
+          chemicalKey: setting.chemicalKey,
+          displayName: setting.displayName,
+          unit: setting.unit,
+          idealMin: setting.ideal_min == null ? "" : String(setting.ideal_min),
+          idealMax: setting.ideal_max == null ? "" : String(setting.ideal_max),
+          idealTarget: setting.ideal_target == null ? "" : String(setting.ideal_target),
+          allowedMin: setting.allowed_min == null ? "" : String(setting.allowed_min),
+          allowedMax: setting.allowed_max == null ? "" : String(setting.allowed_max),
+          enabled: setting.enabled,
+          sortOrder: setting.sortOrder
+        }))
+    );
+  }, [chlorinatorProfile]);
 
   async function handleHeaterConfigurationSave(): Promise<void> {
     setHeaterConfigPending(true);
@@ -595,6 +633,31 @@ function HardwareDetailTab({
     }
   }
 
+  async function handleChlorinatorProfileSave(): Promise<void> {
+    setChlorinatorProfilePending(true);
+    setChlorinatorProfileMessage(null);
+    try {
+      const response = await saveChlorinatorProfileSettings({
+        settings: chlorinatorProfileForm.map((entry) => ({
+          chemicalKey: entry.chemicalKey,
+          idealMin: parseNullableNumberInput(entry.idealMin),
+          idealMax: parseNullableNumberInput(entry.idealMax),
+          idealTarget: parseNullableNumberInput(entry.idealTarget),
+          allowedMin: parseNullableNumberInput(entry.allowedMin),
+          allowedMax: parseNullableNumberInput(entry.allowedMax),
+          enabled: entry.enabled
+        }))
+      });
+      setChlorinatorProfile(response.data);
+      setChlorinatorProfileError(null);
+      setChlorinatorProfileMessage("Chlorinator operating profile saved.");
+    } catch (error) {
+      setChlorinatorProfileMessage(error instanceof Error ? error.message : "Failed to save chlorinator operating profile.");
+    } finally {
+      setChlorinatorProfilePending(false);
+    }
+  }
+
   const chlorinatorStatus = chlorinator?.latest_state.status;
   const chlorinatorStatusLabel = formatChlorinatorStatus(chlorinatorStatus);
   const chlorinatorStatusTone = getChlorinatorStatusTone(chlorinatorStatus);
@@ -624,6 +687,11 @@ function HardwareDetailTab({
     targetOutputPercent: chlorinatorConfiguredOutputValue,
     waterTempF: estimateWaterTempF,
     coverState: estimateCoverState
+  });
+  const chlorinatorChemistryComparison = buildChlorinatorChemistryComparison({
+    latestChemistry,
+    chlorinator,
+    chlorinatorProfile: chlorinatorProfile?.settings ?? []
   });
 
   return (
@@ -739,6 +807,68 @@ function HardwareDetailTab({
                 {poolProfileError ? <p className="form-caption">{poolProfileError}</p> : null}
                 {poolVolumeMessage ? <p className="form-caption">{poolVolumeMessage}</p> : null}
               </div>
+            </Card>
+            <Card title="Chlorinator Operating Profile" status={chlorinatorProfile?.source === "sqlite" ? "Customized profile" : "Default profile"}>
+              <p className="panel-copy">This profile defines IntelliChlor-safe chemistry guidance and stays separate from the pool-wide swimmability policy on the Settings page.</p>
+              <div className="mock-table-shell mock-table-shell-scroll">
+                <table className="system-data-table" aria-label="chlorinator operating profile settings">
+                  <thead>
+                    <tr><th>Chemical</th><th>Ideal Min</th><th>Ideal Max</th><th>Ideal Target</th><th>Allowed Min</th><th>Allowed Max</th><th>Enabled</th></tr>
+                  </thead>
+                  <tbody>
+                    {chlorinatorProfileForm.map((entry) => (
+                      <tr key={entry.chemicalKey}>
+                        <td>{entry.displayName}{entry.unit ? ` (${entry.unit})` : ""}</td>
+                        <td><input aria-label={`${entry.displayName} ideal min`} value={entry.idealMin} onChange={(event) => setChlorinatorProfileForm((current) => current.map((item) => item.chemicalKey === entry.chemicalKey ? { ...item, idealMin: event.target.value } : item))} disabled={chlorinatorProfilePending} /></td>
+                        <td><input aria-label={`${entry.displayName} ideal max`} value={entry.idealMax} onChange={(event) => setChlorinatorProfileForm((current) => current.map((item) => item.chemicalKey === entry.chemicalKey ? { ...item, idealMax: event.target.value } : item))} disabled={chlorinatorProfilePending} /></td>
+                        <td><input aria-label={`${entry.displayName} ideal target`} value={entry.idealTarget} onChange={(event) => setChlorinatorProfileForm((current) => current.map((item) => item.chemicalKey === entry.chemicalKey ? { ...item, idealTarget: event.target.value } : item))} disabled={chlorinatorProfilePending} /></td>
+                        <td><input aria-label={`${entry.displayName} allowed min`} value={entry.allowedMin} onChange={(event) => setChlorinatorProfileForm((current) => current.map((item) => item.chemicalKey === entry.chemicalKey ? { ...item, allowedMin: event.target.value } : item))} disabled={chlorinatorProfilePending} /></td>
+                        <td><input aria-label={`${entry.displayName} allowed max`} value={entry.allowedMax} onChange={(event) => setChlorinatorProfileForm((current) => current.map((item) => item.chemicalKey === entry.chemicalKey ? { ...item, allowedMax: event.target.value } : item))} disabled={chlorinatorProfilePending} /></td>
+                        <td>
+                          <button
+                            className={`mock-switch ${entry.enabled ? "mock-switch-on" : ""}`}
+                            type="button"
+                            role="switch"
+                            aria-label={`${entry.displayName} enabled`}
+                            aria-checked={entry.enabled}
+                            onClick={() => setChlorinatorProfileForm((current) => current.map((item) => item.chemicalKey === entry.chemicalKey ? { ...item, enabled: !item.enabled } : item))}
+                            disabled={chlorinatorProfilePending}
+                          >
+                            <span />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="panel-actions">
+                <button type="button" onClick={() => void handleChlorinatorProfileSave()} disabled={chlorinatorProfilePending}>
+                  {chlorinatorProfilePending ? "Saving..." : "Save chlorinator profile"}
+                </button>
+              </div>
+              {chlorinatorProfileError ? <p className="form-caption">{chlorinatorProfileError}</p> : null}
+              {chlorinatorProfileMessage ? <p className="form-caption">{chlorinatorProfileMessage}</p> : null}
+            </Card>
+            <Card title="Current Chemistry vs IntelliChlor Profile" status={chlorinatorChemistryComparison.summary}>
+              <div className="mock-table-shell mock-table-shell-scroll">
+                <table className="system-data-table" aria-label="current chemistry versus chlorinator profile">
+                  <thead>
+                    <tr><th>Parameter</th><th>Current Value</th><th>Profile Status</th><th>Last Observed</th></tr>
+                  </thead>
+                  <tbody>
+                    {chlorinatorChemistryComparison.rows.map((row) => (
+                      <tr key={row.label}>
+                        <td>{row.label}</td>
+                        <td>{row.value}</td>
+                        <td><span className={`system-status-chip ${getStatusChipClassName(row.tone)}`}>{row.status}</span></td>
+                        <td>{row.lastObserved}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="form-caption">{chlorinatorChemistryComparison.caption}</p>
             </Card>
             <Card title="24h Chlorine Support" status="Estimated">
               {swgSupportEstimate ? (
@@ -1448,6 +1578,19 @@ function getCustomNameRows(controller: EquipmentRecord | undefined): Array<{ ind
   });
 }
 
+interface ChlorinatorProfileFormEntry {
+  chemicalKey: ChlorinatorProfileChemicalKey;
+  displayName: string;
+  unit: string | null;
+  idealMin: string;
+  idealMax: string;
+  idealTarget: string;
+  allowedMin: string;
+  allowedMax: string;
+  enabled: boolean;
+  sortOrder: number;
+}
+
 interface EditableCircuitConfigRow {
   key: string;
   circuitId: number | null;
@@ -1690,6 +1833,141 @@ function getChlorinatorWarnings(chlorinator: EquipmentRecord | undefined): Array
   }
 
   return warnings;
+}
+
+function parseNullableNumberInput(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  const parsed = Number.parseFloat(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildChlorinatorChemistryComparison(input: {
+  latestChemistry: ChemistryReadingRecord | null;
+  chlorinator: EquipmentRecord | undefined;
+  chlorinatorProfile: ChlorinatorProfileSettingsData["settings"];
+}): {
+  rows: Array<{ label: string; value: string; status: string; tone: "good" | "watch" | "muted"; lastObserved: string }>;
+  summary: string;
+  caption: string;
+} {
+  const rows = input.chlorinatorProfile
+    .filter((setting) => setting.enabled)
+    .map((setting) => {
+      const observation = resolveChlorinatorChemistryObservation(input.latestChemistry, input.chlorinator, setting.chemicalKey);
+      if (!observation) {
+        return {
+          label: setting.displayName,
+          value: "Unavailable",
+          status: "Unavailable",
+          tone: "muted" as const,
+          lastObserved: "Unavailable"
+        };
+      }
+
+      const status = classifyProfileStatus(
+        observation.value,
+        setting.ideal_min,
+        setting.ideal_max,
+        setting.ideal_target,
+        setting.allowed_min,
+        setting.allowed_max
+      );
+
+      return {
+        label: setting.displayName,
+        value: setting.unit ? formatMetric(observation.value, setting.unit) : String(observation.value),
+        status: status.label,
+        tone: status.tone,
+        lastObserved: observation.recordedAt ? formatRequestTimestamp(observation.recordedAt) : "Unavailable"
+      };
+    });
+
+  const outsideCount = rows.filter((row) => row.status === "Outside allowed").length;
+  const cautionCount = rows.filter((row) => row.status === "Allowed only").length;
+  const unavailableCount = rows.filter((row) => row.status === "Unavailable").length;
+
+  const summary =
+    outsideCount > 0 ? "Outside allowed range" :
+      cautionCount > 0 ? "Outside ideal range" :
+        unavailableCount === rows.length ? "Data unavailable" : "Within IntelliChlor guidance";
+
+  const caption =
+    outsideCount > 0
+      ? "Some current chemistry values are outside the configured IntelliChlor allowed range."
+      : cautionCount > 0
+        ? "Current chemistry is usable for IntelliChlor, but some values are outside the ideal operating profile."
+        : unavailableCount === rows.length
+          ? "No current chemistry or salt observations are available to compare against the IntelliChlor operating profile."
+          : "Current chemistry is within the configured IntelliChlor operating profile.";
+
+  return { rows, summary, caption };
+}
+
+function resolveChlorinatorChemistryObservation(
+  latestChemistry: ChemistryReadingRecord | null,
+  chlorinator: EquipmentRecord | undefined,
+  key: ChlorinatorProfileChemicalKey
+): { value: number; recordedAt: string | null } | null {
+  switch (key) {
+    case "free_chlorine":
+      return latestChemistry?.free_chlorine == null ? null : { value: latestChemistry.free_chlorine, recordedAt: latestChemistry.recorded_at };
+    case "combined_chlorine":
+      if (latestChemistry?.free_chlorine == null || latestChemistry.total_chlorine == null) {
+        return null;
+      }
+      return {
+        value: Number((latestChemistry.total_chlorine - latestChemistry.free_chlorine).toFixed(2)),
+        recordedAt: latestChemistry.recorded_at
+      };
+    case "ph":
+      return latestChemistry?.ph == null ? null : { value: latestChemistry.ph, recordedAt: latestChemistry.recorded_at };
+    case "cyanuric_acid":
+      return latestChemistry?.cyanuric_acid == null ? null : { value: latestChemistry.cyanuric_acid, recordedAt: latestChemistry.recorded_at };
+    case "total_alkalinity":
+      return latestChemistry?.total_alkalinity == null ? null : { value: latestChemistry.total_alkalinity, recordedAt: latestChemistry.recorded_at };
+    case "calcium_hardness":
+      return latestChemistry?.calcium_hardness == null ? null : { value: latestChemistry.calcium_hardness, recordedAt: latestChemistry.recorded_at };
+    case "salinity": {
+      const salt = readMetric(chlorinator?.latest_state.salt_ppm);
+      const recordedAt = readNullableString(chlorinator?.latest_state.last_comm)
+        ?? readNullableString(chlorinator?.latest_state.updated_at);
+      return salt == null ? null : { value: salt, recordedAt };
+    }
+    case "tds":
+    case "phosphates":
+      return null;
+  }
+}
+
+function classifyProfileStatus(
+  value: number,
+  idealMin: number | null,
+  idealMax: number | null,
+  idealTarget: number | null,
+  allowedMin: number | null,
+  allowedMax: number | null
+): { label: string; tone: "good" | "watch" | "muted" } {
+  const withinAllowed =
+    (allowedMin == null || value >= allowedMin)
+    && (allowedMax == null || value <= allowedMax);
+  if (!withinAllowed) {
+    return { label: "Outside allowed", tone: "watch" };
+  }
+
+  const withinIdealRange =
+    (idealMin == null || value >= idealMin)
+    && (idealMax == null || value <= idealMax);
+  const matchesIdealTarget =
+    idealTarget == null || Math.abs(value - idealTarget) < 0.0001;
+
+  if (withinIdealRange && matchesIdealTarget) {
+    return { label: "Ideal", tone: "good" };
+  }
+
+  return { label: "Allowed only", tone: "muted" };
 }
 
 function buildSwgSupportEstimate(input: {

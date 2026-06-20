@@ -54,25 +54,28 @@ export interface PoolChemistrySettingsUpdateItem {
   source_binding?: PoolChemistrySourceBinding | null;
 }
 
-export interface PoolChemistryBoundsRecord {
+export interface SwimmabilityPolicyBoundsRecord {
   min: number | null;
   target: number | null;
   max: number | null;
   unit: string | null;
 }
 
-export interface PoolChemistryRecommendationBounds {
-  freeChlorine?: PoolChemistryBoundsRecord;
-  totalChlorine?: PoolChemistryBoundsRecord;
-  ph?: PoolChemistryBoundsRecord;
-  totalAlkalinity?: PoolChemistryBoundsRecord;
-  cyanuricAcid?: PoolChemistryBoundsRecord;
-  calciumHardness?: PoolChemistryBoundsRecord;
-  salt?: PoolChemistryBoundsRecord;
-  waterTemperature?: PoolChemistryBoundsRecord;
-  phosphates?: PoolChemistryBoundsRecord;
-  borates?: PoolChemistryBoundsRecord;
+export interface SwimmabilityPolicyBounds {
+  freeChlorine?: SwimmabilityPolicyBoundsRecord;
+  totalChlorine?: SwimmabilityPolicyBoundsRecord;
+  ph?: SwimmabilityPolicyBoundsRecord;
+  totalAlkalinity?: SwimmabilityPolicyBoundsRecord;
+  cyanuricAcid?: SwimmabilityPolicyBoundsRecord;
+  calciumHardness?: SwimmabilityPolicyBoundsRecord;
+  salt?: SwimmabilityPolicyBoundsRecord;
+  waterTemperature?: SwimmabilityPolicyBoundsRecord;
+  phosphates?: SwimmabilityPolicyBoundsRecord;
+  borates?: SwimmabilityPolicyBoundsRecord;
 }
+
+export type PoolChemistryBoundsRecord = SwimmabilityPolicyBoundsRecord;
+export type PoolChemistryRecommendationBounds = SwimmabilityPolicyBounds;
 
 interface StoredPoolChemistrySettings {
   poolId: string;
@@ -286,7 +289,11 @@ export class PoolChemistrySettingsService {
     };
   }
 
-  async getChemistryBoundsForRecommendations(): Promise<PoolChemistryRecommendationBounds> {
+  async getChemistryBoundsForRecommendations(): Promise<SwimmabilityPolicyBounds> {
+    return this.getSwimmabilityPolicyBounds();
+  }
+
+  async getSwimmabilityPolicyBounds(): Promise<SwimmabilityPolicyBounds> {
     if (!this.repository) {
       return toRecommendationBounds(defaultPoolChemistrySettingsMap());
     }
@@ -563,8 +570,8 @@ function validateBoundOrdering(setting: PoolChemistrySetting): Record<string, st
   return Object.keys(details).length > 0 ? details : null;
 }
 
-function toRecommendationBounds(settings: Record<PoolChemistryKey, PoolChemistrySetting>): PoolChemistryRecommendationBounds {
-  const result: PoolChemistryRecommendationBounds = {};
+function toRecommendationBounds(settings: Record<PoolChemistryKey, PoolChemistrySetting>): SwimmabilityPolicyBounds {
+  const result: SwimmabilityPolicyBounds = {};
 
   for (const setting of listPoolChemistrySettings(settings)) {
     if (!setting.enabled) {

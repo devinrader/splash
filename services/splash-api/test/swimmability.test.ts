@@ -21,7 +21,7 @@ test("buildSwimmabilityView returns poor when chemistry hits a do-not-swim condi
       recorded_at: "2026-06-04T12:00:00.000Z",
       created_at: "2026-06-04T12:00:00.000Z"
     },
-    chemistryBounds: {
+    swimmabilityPolicy: {
       freeChlorine: { min: 3, target: 5, max: 10, unit: "ppm" },
       ph: { min: 7.2, target: 7.6, max: 7.8, unit: null }
     },
@@ -83,7 +83,7 @@ test("buildSwimmabilityView returns unknown when chemistry is old and uncovered 
       recorded_at: "2026-05-22T12:00:00.000Z",
       created_at: "2026-05-22T12:00:00.000Z"
     },
-    chemistryBounds: {
+    swimmabilityPolicy: {
       freeChlorine: { min: 3, target: 5, max: 10, unit: "ppm" },
       ph: { min: 7.2, target: 7.6, max: 7.8, unit: null }
     },
@@ -155,7 +155,7 @@ test("buildPredictedSwimmabilityView projects horizon predictions with show-your
   };
   const swimmabilityInput = {
     chemistry,
-    chemistryBounds: {
+    swimmabilityPolicy: {
       freeChlorine: { min: 3, target: 5, max: 10, unit: "ppm" },
       ph: { min: 7.2, target: 7.6, max: 7.8, unit: null }
     },
