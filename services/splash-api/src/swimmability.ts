@@ -1,5 +1,5 @@
 import type { ChemistryReadingRecord } from "./chemistry-readings.js";
-import type { PoolChemistryRecommendationBounds } from "./pool-chemistry-settings.js";
+import type { SwimmabilityPolicyBounds } from "./pool-chemistry-settings.js";
 import type { PoolCoverCurrentView } from "./pool-cover-events.js";
 import { ageHours, buildValueProvenance, classifyAgeFreshness, type ValueProvenance } from "./provenance.js";
 import type { TemperatureLatestView } from "./temperature-telemetry.js";
@@ -49,7 +49,7 @@ export interface SwimmabilityView {
 
 export interface SwimmabilityInput {
   chemistry: ChemistryReadingRecord | null;
-  chemistryBounds: PoolChemistryRecommendationBounds;
+  swimmabilityPolicy: SwimmabilityPolicyBounds;
   cover: PoolCoverCurrentView;
   forecast: WeatherForecastView;
   latestTemperatures: TemperatureLatestView;
@@ -123,7 +123,7 @@ export function buildSwimmabilityView(input: SwimmabilityInput): SwimmabilityVie
     status = "poor";
   }
 
-  const chemistryDrivers = assessChemistryBounds(input.chemistry, input.chemistryBounds);
+  const chemistryDrivers = assessChemistryBounds(input.chemistry, input.swimmabilityPolicy);
   for (const driver of chemistryDrivers) {
     drivers.push(driver);
     if (driver.severity === "caution") {
@@ -474,7 +474,7 @@ function assessHardBlock(reading: ChemistryReadingRecord): SwimmabilityDriver | 
 
 function assessChemistryBounds(
   reading: ChemistryReadingRecord,
-  bounds: PoolChemistryRecommendationBounds
+  bounds: SwimmabilityPolicyBounds
 ): SwimmabilityDriver[] {
   const drivers: SwimmabilityDriver[] = [];
   maybePushBoundDriver(drivers, "free_chlorine", "Free chlorine", reading.free_chlorine, bounds.freeChlorine?.min, bounds.freeChlorine?.max);
