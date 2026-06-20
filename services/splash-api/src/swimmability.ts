@@ -176,7 +176,7 @@ export function buildSwimmabilityView(input: SwimmabilityInput): SwimmabilityVie
     }
   }
 
-  const temperatureDriver = describeWaterTemperatureComfort(context.waterTemperatureF);
+  const temperatureDriver = describeWaterTemperatureComfort(context.waterTemperatureF, input.swimmabilityPolicy.waterTemperature);
   if (temperatureDriver) {
     drivers.push(temperatureDriver);
     if (temperatureDriver.severity === "caution" && status === "good") {
@@ -729,18 +729,23 @@ function describeWeatherContext(context: ReturnType<typeof deriveContext>): Swim
   };
 }
 
-function describeWaterTemperatureComfort(value: number | null): SwimmabilityDriver | null {
+function describeWaterTemperatureComfort(
+  value: number | null,
+  bounds: SwimmabilityPolicyBoundsRecord | undefined
+): SwimmabilityDriver | null {
   if (value == null) {
     return null;
   }
-  if (value < 70) {
+  const min = bounds?.min ?? 70;
+  const max = bounds?.max ?? 92;
+  if (value < min) {
     return {
       key: "water_temperature",
       severity: "caution",
       message: `Pool water is cool at ${Math.round(value)}°F.`
     };
   }
-  if (value > 92) {
+  if (value > max) {
     return {
       key: "water_temperature",
       severity: "caution",
