@@ -573,6 +573,8 @@ export interface PoolChemistrySetting {
   minimum: number | null;
   target: number | null;
   maximum: number | null;
+  unsafe_min: number | null;
+  unsafe_max: number | null;
   enabled: boolean;
   sortOrder: number;
   source_mode: PoolChemistrySourceMode;
@@ -597,6 +599,8 @@ export interface PoolChemistrySettingsSaveInput {
     minimum?: number | null;
     target?: number | null;
     maximum?: number | null;
+    unsafeMin?: number | null;
+    unsafeMax?: number | null;
     enabled?: boolean;
     sourceMode?: PoolChemistrySourceMode;
     sourceBinding?: PoolChemistrySourceBinding | null;

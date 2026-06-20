@@ -159,6 +159,8 @@ test("settings page loads and saves weather location and swimmability policy set
               minimum: 3,
               target: 5,
               maximum: 10,
+              unsafe_min: 0.5,
+              unsafe_max: null,
               enabled: true,
               sortOrder: 10,
               source_mode: "manual",
@@ -172,6 +174,8 @@ test("settings page loads and saves weather location and swimmability policy set
               minimum: 3,
               target: 5,
               maximum: 10,
+              unsafe_min: null,
+              unsafe_max: null,
               enabled: true,
               sortOrder: 20,
               source_mode: "manual",
@@ -185,6 +189,8 @@ test("settings page loads and saves weather location and swimmability policy set
               minimum: 7.2,
               target: 7.6,
               maximum: 7.8,
+              unsafe_min: 7.0,
+              unsafe_max: 8.2,
               enabled: true,
               sortOrder: 30,
               source_mode: "manual",
@@ -198,6 +204,8 @@ test("settings page loads and saves weather location and swimmability policy set
               minimum: 70,
               target: 84,
               maximum: 92,
+              unsafe_min: null,
+              unsafe_max: null,
               enabled: true,
               sortOrder: 80,
               source_mode: "hardware",
@@ -472,6 +480,7 @@ test("settings page loads and saves weather location and swimmability policy set
       const freeChlorine = parsed.settings.find((entry) => entry.chemicalKey === "free_chlorine");
       assert.ok(freeChlorine);
       assert.equal(freeChlorine.target, 6);
+      assert.equal(freeChlorine.unsafe_min, 0.5);
       assert.equal(parsed.chemistry_prompt_interval_days, 4);
       return response({
         data: {
@@ -483,6 +492,8 @@ test("settings page loads and saves weather location and swimmability policy set
               minimum: 3,
               target: 6,
               maximum: 10,
+              unsafe_min: 0.5,
+              unsafe_max: null,
               enabled: true,
               sortOrder: 10,
               source_mode: "manual",
@@ -496,6 +507,8 @@ test("settings page loads and saves weather location and swimmability policy set
               minimum: 3,
               target: 5,
               maximum: 10,
+              unsafe_min: null,
+              unsafe_max: null,
               enabled: true,
               sortOrder: 20,
               source_mode: "manual",
@@ -509,6 +522,8 @@ test("settings page loads and saves weather location and swimmability policy set
               minimum: 7.2,
               target: 7.6,
               maximum: 7.8,
+              unsafe_min: 7.0,
+              unsafe_max: 8.2,
               enabled: true,
               sortOrder: 30,
               source_mode: "manual",
@@ -522,6 +537,8 @@ test("settings page loads and saves weather location and swimmability policy set
               minimum: 70,
               target: 84,
               maximum: 92,
+              unsafe_min: null,
+              unsafe_max: null,
               enabled: true,
               sortOrder: 80,
               source_mode: "hardware",
@@ -562,6 +579,8 @@ test("settings page loads and saves weather location and swimmability policy set
     assert.equal(addressInput.value, "123 Main St");
     const freeChlorineTarget = screen.getByLabelText("Free Chlorine target") as HTMLInputElement;
     assert.equal(freeChlorineTarget.value, "5");
+    const freeChlorineUnsafeMinimum = screen.getByLabelText("Free Chlorine unsafe minimum") as HTMLInputElement;
+    assert.equal(freeChlorineUnsafeMinimum.value, "0.5");
     const geocodingProvider = screen.getByLabelText("Active geocoding provider") as HTMLSelectElement;
     assert.equal(geocodingProvider.value, "geoapify");
     const waterTemperatureSource = screen.getByLabelText("Water Temperature source") as HTMLSelectElement;

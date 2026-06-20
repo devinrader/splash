@@ -838,6 +838,8 @@ export async function savePoolChemistrySettings(input: PoolChemistrySettingsSave
         minimum: entry.minimum,
         target: entry.target,
         maximum: entry.maximum,
+        unsafe_min: entry.unsafeMin,
+        unsafe_max: entry.unsafeMax,
         enabled: entry.enabled,
         source_mode: entry.sourceMode,
         source_binding: entry.sourceBinding

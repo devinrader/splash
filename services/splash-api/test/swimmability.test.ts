@@ -22,8 +22,8 @@ test("buildSwimmabilityView returns poor when chemistry hits a do-not-swim condi
       created_at: "2026-06-04T12:00:00.000Z"
     },
     swimmabilityPolicy: {
-      freeChlorine: { min: 3, target: 5, max: 10, unit: "ppm" },
-      ph: { min: 7.2, target: 7.6, max: 7.8, unit: null }
+      freeChlorine: { min: 3, target: 5, max: 10, unsafeMin: 0.5, unsafeMax: null, unit: "ppm" },
+      ph: { min: 7.2, target: 7.6, max: 7.8, unsafeMin: 7.0, unsafeMax: 8.2, unit: null }
     },
     cover: { current: null },
     forecast: {
@@ -68,6 +68,63 @@ test("buildSwimmabilityView returns poor when chemistry hits a do-not-swim condi
   assert.equal(result.input_provenance.weather_forecast.value_kind, "predicted");
 });
 
+test("buildSwimmabilityView uses configured unsafe bounds instead of hidden constants", () => {
+  const result = buildSwimmabilityView({
+    chemistry: {
+      id: "reading-1",
+      pool_id: "pool-1",
+      ph: 7.15,
+      free_chlorine: 2.5,
+      total_chlorine: 2.7,
+      total_alkalinity: 90,
+      calcium_hardness: 260,
+      cyanuric_acid: 70,
+      source: "manual",
+      recorded_at: "2026-06-04T12:00:00.000Z",
+      created_at: "2026-06-04T12:00:00.000Z"
+    },
+    swimmabilityPolicy: {
+      freeChlorine: { min: 3, target: 5, max: 10, unsafeMin: 2.0, unsafeMax: null, unit: "ppm" },
+      ph: { min: 7.2, target: 7.6, max: 7.8, unsafeMin: 7.1, unsafeMax: 8.2, unit: null }
+    },
+    cover: { current: null },
+    forecast: {
+      pool_id: "pool-1",
+      provider: "openmeteo",
+      status: "available",
+      message: "available",
+      stale: false,
+      fetched_at: "2026-06-04T13:00:00.000Z",
+      location: null,
+      daily: [{ date: "2026-06-04", weather_code: null, high_temp_f: 86, high_temp_c: null, low_temp_f: 72, low_temp_c: null, precipitation_probability_max: 0, precipitation_amount: 0, precipitation_unit: "mm", uv_index_max: 7, sunrise: null, sunset: null }],
+      hourly: []
+    },
+    latestTemperatures: {
+      controller_id: "default",
+      status: "available",
+      message: "ok",
+      last_updated: "2026-06-04T13:00:00.000Z",
+      readings: {
+        pool_water: {
+          timestamp: "2026-06-04T13:00:00.000Z",
+          original_value: 84,
+          original_unit: "F",
+          normalized_f: 84,
+          normalized_c: 28.9,
+          raw_byte: null,
+          controller_timestamp: null
+        }
+      }
+    },
+    rainfallSinceChemistryInches: 0,
+    now: "2026-06-04T13:00:00.000Z"
+  });
+
+  assert.equal(result.status, "caution");
+  assert.ok(result.drivers.some((driver) => driver.key === "ph" && driver.severity === "caution"));
+  assert.ok(result.drivers.every((driver) => !(driver.key === "ph" && driver.severity === "poor")));
+});
+
 test("buildSwimmabilityView returns unknown when chemistry is old and uncovered in high UV after rain", () => {
   const result = buildSwimmabilityView({
     chemistry: {
@@ -84,8 +141,8 @@ test("buildSwimmabilityView returns unknown when chemistry is old and uncovered 
       created_at: "2026-05-22T12:00:00.000Z"
     },
     swimmabilityPolicy: {
-      freeChlorine: { min: 3, target: 5, max: 10, unit: "ppm" },
-      ph: { min: 7.2, target: 7.6, max: 7.8, unit: null }
+      freeChlorine: { min: 3, target: 5, max: 10, unsafeMin: 0.5, unsafeMax: null, unit: "ppm" },
+      ph: { min: 7.2, target: 7.6, max: 7.8, unsafeMin: 7.0, unsafeMax: 8.2, unit: null }
     },
     cover: {
       current: {
@@ -156,8 +213,8 @@ test("buildPredictedSwimmabilityView projects horizon predictions with show-your
   const swimmabilityInput = {
     chemistry,
     swimmabilityPolicy: {
-      freeChlorine: { min: 3, target: 5, max: 10, unit: "ppm" },
-      ph: { min: 7.2, target: 7.6, max: 7.8, unit: null }
+      freeChlorine: { min: 3, target: 5, max: 10, unsafeMin: 0.5, unsafeMax: null, unit: "ppm" },
+      ph: { min: 7.2, target: 7.6, max: 7.8, unsafeMin: 7.0, unsafeMax: 8.2, unit: null }
     },
     cover: {
       current: {

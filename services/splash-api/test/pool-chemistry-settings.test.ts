@@ -19,6 +19,7 @@ test("validatePoolChemistrySettingsUpdateInput accepts supported chemistry updat
         minimum: 3,
         target: 5,
         maximum: 10,
+        unsafe_min: 0.5,
         enabled: true
       },
       {
@@ -44,6 +45,7 @@ test("validatePoolChemistrySettingsUpdateInput accepts supported chemistry updat
   assert.equal(result.settings.length, 3);
   assert.equal(result.settings[0]?.chemicalKey, "free_chlorine");
   assert.equal(result.settings[0]?.target, 5);
+  assert.equal(result.settings[0]?.unsafe_min, 0.5);
   assert.equal(result.settings[1]?.chemicalKey, "total_chlorine");
   assert.equal(result.settings[1]?.target, 5);
   assert.equal(result.settings[2]?.source_mode, "hardware");
@@ -75,6 +77,41 @@ test("validatePoolChemistrySettingsUpdateInput rejects unknown keys and invalid 
   );
 });
 
+test("service rejects invalid unsafe ordering during merge", async () => {
+  const service = new PoolChemistrySettingsService("pool-1", {
+    async get() {
+      return null;
+    },
+    async upsert(settings) {
+      return settings;
+    }
+  });
+
+  await assert.rejects(
+    () =>
+      service.updatePoolChemistrySettings({
+        settings: [
+          {
+            chemicalKey: "ph",
+            minimum: 7.2,
+            target: 7.6,
+            maximum: 7.8,
+            unsafe_min: 7.4
+          }
+        ]
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof PoolChemistrySettingsValidationError);
+      assert.deepEqual(error.details, {
+        ph: {
+          unsafe_min: "Unsafe minimum must be less than or equal to minimum."
+        }
+      });
+      return true;
+    }
+  );
+});
+
 test("repository maps saved chemistry settings rows", async () => {
   const repository = new SqlitePoolChemistrySettingsRepository({
     get() {
@@ -88,6 +125,8 @@ test("repository maps saved chemistry settings rows", async () => {
             minimum: 3,
             target: 5,
             maximum: 10,
+            unsafe_min: 0.5,
+            unsafe_max: null,
             enabled: true,
             sortOrder: 10,
             source_mode: "manual",
@@ -111,6 +150,7 @@ test("repository maps saved chemistry settings rows", async () => {
 
   assert.ok(result);
   assert.equal(result?.settings.free_chlorine.target, 5);
+  assert.equal(result?.settings.free_chlorine.unsafe_min, 0.5);
   assert.equal(result?.settings.ph.target, 7.6);
 });
 
@@ -170,6 +210,7 @@ test("service returns seeded defaults when SQLite rows are missing", async () =>
   assert.equal(result.settings[0]?.chemicalKey, "free_chlorine");
   assert.equal(result.settings.find((setting) => setting.chemicalKey === "total_chlorine")?.displayName, "Total Chlorine");
   assert.equal(result.settings.find((setting) => setting.chemicalKey === "salt")?.target, 3400);
+  assert.equal(result.settings.find((setting) => setting.chemicalKey === "free_chlorine")?.unsafe_min, 0.5);
   assert.equal(result.settings.find((setting) => setting.chemicalKey === "salt")?.source_mode, "hardware");
   assert.equal(result.settings.find((setting) => setting.chemicalKey === "water_temperature")?.available_sources[0]?.label, "EasyTouch Controller Water Temperature");
 });
@@ -201,6 +242,7 @@ test("service merges partial updates onto current chemistry settings", async () 
 
   assert.equal(result.source, "sqlite");
   assert.equal(ph?.target, 7.5);
+  assert.equal(ph?.unsafe_min, 7.0);
   assert.equal(salt?.target, 3400);
   assert.equal(salt?.source_mode, "hardware");
 });
@@ -211,7 +253,9 @@ test("service returns fallback recommendation bounds when repository is unavaila
   const result = await service.getChemistryBoundsForRecommendations();
 
   assert.equal(result.freeChlorine?.target, 5);
+  assert.equal(result.freeChlorine?.unsafeMin, 0.5);
   assert.equal(result.ph?.min, 7.2);
+  assert.equal(result.ph?.unsafeMax, 8.2);
 });
 
 test("service throws unavailable when updating without SQLite", async () => {

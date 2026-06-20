@@ -50,6 +50,8 @@ interface ChemistryFormEntry {
   minimum: string;
   target: string;
   maximum: string;
+  unsafeMin: string;
+  unsafeMax: string;
   enabled: boolean;
   sortOrder: number;
   sourceMode: PoolChemistrySourceMode;
@@ -293,6 +295,8 @@ export function SettingsPage() {
           minimum: setting.minimum !== null ? String(setting.minimum) : "",
           target: setting.target !== null ? String(setting.target) : "",
           maximum: setting.maximum !== null ? String(setting.maximum) : "",
+          unsafeMin: setting.unsafe_min != null ? String(setting.unsafe_min) : "",
+          unsafeMax: setting.unsafe_max != null ? String(setting.unsafe_max) : "",
           enabled: setting.enabled,
           sortOrder: setting.sortOrder,
           sourceMode: setting.source_mode,
@@ -367,6 +371,8 @@ export function SettingsPage() {
           minimum: parseOptionalNumber(entry.minimum),
           target: parseOptionalNumber(entry.target),
           maximum: parseOptionalNumber(entry.maximum),
+          unsafeMin: parseOptionalNumber(entry.unsafeMin),
+          unsafeMax: parseOptionalNumber(entry.unsafeMax),
           enabled: entry.enabled,
           sourceMode: entry.sourceMode,
           sourceBinding: entry.sourceBinding
@@ -830,6 +836,8 @@ export function SettingsPage() {
                     <th>Minimum</th>
                     <th>Target</th>
                     <th>Maximum</th>
+                    <th>Unsafe Min</th>
+                    <th>Unsafe Max</th>
                     <th>Source</th>
                     <th>Enabled</th>
                   </tr>
@@ -873,6 +881,28 @@ export function SettingsPage() {
                           />
                         </label>
                         {renderChemistryFieldError(chemistryFieldErrors, entry.chemicalKey, "maximum")}
+                      </td>
+                      <td>
+                        <label className="settings-chemistry-field">
+                          <span className="sr-only">{`${entry.displayName} unsafe minimum`}</span>
+                          <input
+                            aria-label={`${entry.displayName} unsafe minimum`}
+                            value={entry.unsafeMin}
+                            onChange={(event) => updateChemistryField(index, "unsafeMin", event.target.value)}
+                          />
+                        </label>
+                        {renderChemistryFieldError(chemistryFieldErrors, entry.chemicalKey, "unsafe_min")}
+                      </td>
+                      <td>
+                        <label className="settings-chemistry-field">
+                          <span className="sr-only">{`${entry.displayName} unsafe maximum`}</span>
+                          <input
+                            aria-label={`${entry.displayName} unsafe maximum`}
+                            value={entry.unsafeMax}
+                            onChange={(event) => updateChemistryField(index, "unsafeMax", event.target.value)}
+                          />
+                        </label>
+                        {renderChemistryFieldError(chemistryFieldErrors, entry.chemicalKey, "unsafe_max")}
                       </td>
                       <td>
                         <label className="settings-chemistry-field">

@@ -19,6 +19,8 @@ export interface PoolChemistrySetting {
   minimum: number | null;
   target: number | null;
   maximum: number | null;
+  unsafe_min: number | null;
+  unsafe_max: number | null;
   enabled: boolean;
   sortOrder: number;
   source_mode: PoolChemistrySourceMode;
@@ -49,6 +51,8 @@ export interface PoolChemistrySettingsUpdateItem {
   minimum?: number | null;
   target?: number | null;
   maximum?: number | null;
+  unsafe_min?: number | null;
+  unsafe_max?: number | null;
   enabled?: boolean;
   source_mode?: PoolChemistrySourceMode;
   source_binding?: PoolChemistrySourceBinding | null;
@@ -58,6 +62,8 @@ export interface SwimmabilityPolicyBoundsRecord {
   min: number | null;
   target: number | null;
   max: number | null;
+  unsafeMin: number | null;
+  unsafeMax: number | null;
   unit: string | null;
 }
 
@@ -113,7 +119,9 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 3,
     target: 5,
     maximum: 10,
-      enabled: true,
+    unsafe_min: 0.5,
+    unsafe_max: null,
+    enabled: true,
     sortOrder: 10,
     source_mode: "manual",
     source_binding: null,
@@ -126,7 +134,9 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 0,
     target: 5,
     maximum: 10,
-      enabled: true,
+    unsafe_min: null,
+    unsafe_max: null,
+    enabled: true,
     sortOrder: 20,
     source_mode: "manual",
     source_binding: null,
@@ -139,7 +149,9 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 7.2,
     target: 7.6,
     maximum: 7.8,
-      enabled: true,
+    unsafe_min: 7.0,
+    unsafe_max: 8.2,
+    enabled: true,
     sortOrder: 30,
     source_mode: "manual",
     source_binding: null,
@@ -152,7 +164,9 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 60,
     target: 80,
     maximum: 100,
-      enabled: true,
+    unsafe_min: null,
+    unsafe_max: null,
+    enabled: true,
     sortOrder: 40,
     source_mode: "manual",
     source_binding: null,
@@ -165,7 +179,9 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 60,
     target: 70,
     maximum: 80,
-      enabled: true,
+    unsafe_min: null,
+    unsafe_max: 100,
+    enabled: true,
     sortOrder: 50,
     source_mode: "manual",
     source_binding: null,
@@ -178,7 +194,9 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 200,
     target: 300,
     maximum: 400,
-      enabled: true,
+    unsafe_min: null,
+    unsafe_max: null,
+    enabled: true,
     sortOrder: 60,
     source_mode: "manual",
     source_binding: null,
@@ -191,7 +209,9 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 3000,
     target: 3400,
     maximum: 4000,
-      enabled: true,
+    unsafe_min: null,
+    unsafe_max: null,
+    enabled: true,
     sortOrder: 70,
     source_mode: "hardware",
     source_binding: {
@@ -208,7 +228,9 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 70,
     target: 84,
     maximum: 92,
-      enabled: true,
+    unsafe_min: null,
+    unsafe_max: null,
+    enabled: true,
     sortOrder: 80,
     source_mode: "hardware",
     source_binding: {
@@ -225,7 +247,9 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 0,
     target: 0,
     maximum: 200,
-      enabled: false,
+    unsafe_min: null,
+    unsafe_max: null,
+    enabled: false,
     sortOrder: 90,
     source_mode: "manual",
     source_binding: null,
@@ -238,7 +262,9 @@ const DEFAULT_POOL_CHEMISTRY_SETTINGS: PoolChemistrySetting[] = [
     minimum: 30,
     target: 50,
     maximum: 60,
-      enabled: false,
+    unsafe_min: null,
+    unsafe_max: null,
+    enabled: false,
     sortOrder: 100,
     source_mode: "manual",
     source_binding: null,
@@ -422,6 +448,8 @@ export function validatePoolChemistrySettingsUpdateInput(
     const minimum = optionalFiniteNumber(itemRecord.minimum);
     const target = optionalFiniteNumber(itemRecord.target);
     const maximum = optionalFiniteNumber(itemRecord.maximum);
+    const unsafeMin = optionalFiniteNumber(itemRecord.unsafe_min);
+    const unsafeMax = optionalFiniteNumber(itemRecord.unsafe_max);
     const enabled = optionalBoolean(itemRecord.enabled);
     const sourceMode = optionalSourceMode(itemRecord.source_mode);
     const sourceBinding = normalizeSourceBinding(itemRecord.source_binding);
@@ -434,6 +462,12 @@ export function validatePoolChemistrySettingsUpdateInput(
     }
     if (itemRecord.maximum !== undefined && maximum === null) {
       itemDetails.maximum = "Maximum must be a valid number.";
+    }
+    if (itemRecord.unsafe_min !== undefined && unsafeMin === null) {
+      itemDetails.unsafe_min = "Unsafe minimum must be a valid number.";
+    }
+    if (itemRecord.unsafe_max !== undefined && unsafeMax === null) {
+      itemDetails.unsafe_max = "Unsafe maximum must be a valid number.";
     }
     if (itemRecord.enabled !== undefined && enabled === null) {
       itemDetails.enabled = "Enabled must be a boolean.";
@@ -452,12 +486,14 @@ export function validatePoolChemistrySettingsUpdateInput(
 
     normalized.push({
       chemicalKey: chemicalKey as PoolChemistryKey,
-      minimum,
-      target,
-      maximum,
-      enabled: enabled ?? undefined,
-      source_mode: sourceMode ?? undefined,
-      source_binding: sourceBinding
+      ...(itemRecord.minimum !== undefined ? { minimum } : {}),
+      ...(itemRecord.target !== undefined ? { target } : {}),
+      ...(itemRecord.maximum !== undefined ? { maximum } : {}),
+      ...(itemRecord.unsafe_min !== undefined ? { unsafe_min: unsafeMin } : {}),
+      ...(itemRecord.unsafe_max !== undefined ? { unsafe_max: unsafeMax } : {}),
+      ...(itemRecord.enabled !== undefined ? { enabled: enabled ?? undefined } : {}),
+      ...(itemRecord.source_mode !== undefined ? { source_mode: sourceMode ?? undefined } : {}),
+      ...(itemRecord.source_binding !== undefined ? { source_binding: sourceBinding } : {})
     });
   }
 
@@ -509,6 +545,8 @@ function applyPoolChemistrySettingsUpdate(
       minimum: update.minimum !== undefined ? update.minimum : currentSetting.minimum,
       target: update.target !== undefined ? update.target : currentSetting.target,
       maximum: update.maximum !== undefined ? update.maximum : currentSetting.maximum,
+      unsafe_min: update.unsafe_min !== undefined ? update.unsafe_min : currentSetting.unsafe_min,
+      unsafe_max: update.unsafe_max !== undefined ? update.unsafe_max : currentSetting.unsafe_max,
       enabled: update.enabled !== undefined ? update.enabled : currentSetting.enabled,
       source_mode: update.source_mode !== undefined ? update.source_mode : currentSetting.source_mode,
       source_binding: update.source_binding !== undefined ? update.source_binding : currentSetting.source_binding,
@@ -567,6 +605,30 @@ function validateBoundOrdering(setting: PoolChemistrySetting): Record<string, st
     details.minimum = "Minimum must be less than or equal to maximum.";
   }
 
+  if (
+    setting.unsafe_min !== null &&
+    setting.unsafe_max !== null &&
+    setting.unsafe_min > setting.unsafe_max
+  ) {
+    details.unsafe_min = "Unsafe minimum must be less than or equal to unsafe maximum.";
+  }
+
+  if (
+    setting.unsafe_min !== null &&
+    setting.minimum !== null &&
+    setting.unsafe_min > setting.minimum
+  ) {
+    details.unsafe_min = "Unsafe minimum must be less than or equal to minimum.";
+  }
+
+  if (
+    setting.unsafe_max !== null &&
+    setting.maximum !== null &&
+    setting.unsafe_max < setting.maximum
+  ) {
+    details.unsafe_max = "Unsafe maximum must be greater than or equal to maximum.";
+  }
+
   return Object.keys(details).length > 0 ? details : null;
 }
 
@@ -582,6 +644,8 @@ function toRecommendationBounds(settings: Record<PoolChemistryKey, PoolChemistry
       min: setting.minimum,
       target: setting.target,
       max: setting.maximum,
+      unsafeMin: setting.unsafe_min,
+      unsafeMax: setting.unsafe_max,
       unit: setting.unit
     };
 
@@ -661,6 +725,8 @@ function mapStoredChemistryBounds(value: Record<string, unknown> | string | null
       minimum: isLegacyCombinedChlorine ? base.minimum : optionalFiniteNumber(settingRecord.minimum),
       target: isLegacyCombinedChlorine ? base.target : optionalFiniteNumber(settingRecord.target),
       maximum: isLegacyCombinedChlorine ? base.maximum : optionalFiniteNumber(settingRecord.maximum),
+      unsafe_min: isLegacyCombinedChlorine ? base.unsafe_min : optionalFiniteNumber(settingRecord.unsafe_min),
+      unsafe_max: isLegacyCombinedChlorine ? base.unsafe_max : optionalFiniteNumber(settingRecord.unsafe_max),
       enabled: typeof settingRecord.enabled === "boolean" ? settingRecord.enabled : base.enabled,
       sortOrder: typeof settingRecord.sortOrder === "number" && Number.isFinite(settingRecord.sortOrder) ? settingRecord.sortOrder : base.sortOrder,
       source_mode: optionalSourceMode(settingRecord.source_mode) ?? base.source_mode,

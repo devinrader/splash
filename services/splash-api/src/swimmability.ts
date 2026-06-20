@@ -1,5 +1,5 @@
 import type { ChemistryReadingRecord } from "./chemistry-readings.js";
-import type { SwimmabilityPolicyBounds } from "./pool-chemistry-settings.js";
+import type { SwimmabilityPolicyBounds, SwimmabilityPolicyBoundsRecord } from "./pool-chemistry-settings.js";
 import type { PoolCoverCurrentView } from "./pool-cover-events.js";
 import { ageHours, buildValueProvenance, classifyAgeFreshness, type ValueProvenance } from "./provenance.js";
 import type { TemperatureLatestView } from "./temperature-telemetry.js";
@@ -58,10 +58,6 @@ export interface SwimmabilityInput {
   now?: string;
 }
 
-const HARD_BLOCK_PH_LOW = 7.0;
-const HARD_BLOCK_PH_HIGH = 8.2;
-const HARD_BLOCK_FC_LOW = 0.5;
-const HARD_BLOCK_CYA_HIGH = 100;
 const STALE_CAUTION_HOURS = 7 * 24;
 const STALE_UNKNOWN_HOURS = 14 * 24;
 const LIGHT_RAIN_INCHES = 0.25;
@@ -116,7 +112,7 @@ export function buildSwimmabilityView(input: SwimmabilityInput): SwimmabilityVie
   let score = 100;
   let status: SwimmabilityStatus = "good";
 
-  const hardBlock = assessHardBlock(input.chemistry);
+  const hardBlock = assessHardBlock(input.chemistry, input.swimmabilityPolicy);
   if (hardBlock) {
     drivers.push(hardBlock);
     score = Math.min(score, 20);
@@ -447,28 +443,44 @@ function formatHours(hours: number): string {
   return `${Math.round(hours / 24)} days`;
 }
 
-function assessHardBlock(reading: ChemistryReadingRecord): SwimmabilityDriver | null {
-  if (reading.ph != null && (reading.ph < HARD_BLOCK_PH_LOW || reading.ph > HARD_BLOCK_PH_HIGH)) {
-    return {
-      key: "ph",
-      severity: "poor",
-      message: "pH is outside the documented do-not-swim range."
-    };
+function assessHardBlock(
+  reading: ChemistryReadingRecord,
+  policy: SwimmabilityPolicyBounds
+): SwimmabilityDriver | null {
+  const checks: Array<{
+    key: string;
+    label: string;
+    value: number | null;
+    bounds: SwimmabilityPolicyBoundsRecord | undefined;
+  }> = [
+    { key: "free_chlorine", label: "Free chlorine", value: reading.free_chlorine, bounds: policy.freeChlorine },
+    { key: "total_chlorine", label: "Total chlorine", value: reading.total_chlorine, bounds: policy.totalChlorine },
+    { key: "ph", label: "pH", value: reading.ph, bounds: policy.ph },
+    { key: "total_alkalinity", label: "Total alkalinity", value: reading.total_alkalinity, bounds: policy.totalAlkalinity },
+    { key: "calcium_hardness", label: "Calcium hardness", value: reading.calcium_hardness, bounds: policy.calciumHardness },
+    { key: "cyanuric_acid", label: "Cyanuric acid", value: reading.cyanuric_acid, bounds: policy.cyanuricAcid }
+  ];
+
+  for (const check of checks) {
+    if (check.value == null || !check.bounds) {
+      continue;
+    }
+    if (check.bounds.unsafeMin != null && check.value < check.bounds.unsafeMin) {
+      return {
+        key: check.key,
+        severity: "poor",
+        message: `${check.label} is below the configured unsafe minimum.`
+      };
+    }
+    if (check.bounds.unsafeMax != null && check.value > check.bounds.unsafeMax) {
+      return {
+        key: check.key,
+        severity: "poor",
+        message: `${check.label} is above the configured unsafe maximum.`
+      };
+    }
   }
-  if (reading.free_chlorine != null && reading.free_chlorine < HARD_BLOCK_FC_LOW) {
-    return {
-      key: "free_chlorine",
-      severity: "poor",
-      message: "Free chlorine is below the documented do-not-swim minimum."
-    };
-  }
-  if (reading.cyanuric_acid != null && reading.cyanuric_acid > HARD_BLOCK_CYA_HIGH) {
-    return {
-      key: "cyanuric_acid",
-      severity: "poor",
-      message: "Cyanuric acid is above the documented do-not-swim threshold."
-    };
-  }
+
   return null;
 }
 
