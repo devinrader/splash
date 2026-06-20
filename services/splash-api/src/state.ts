@@ -676,21 +676,33 @@ export class LatestStateProjection {
 
   updateChlorinator(payload: Record<string, unknown>): void {
     this.chlorinator = {
-      saltPpm: readNumber(payload, "salt_ppm"),
-      outputPercent: readNumber(payload, "output_percent"),
-      currentOutputPercent: readNumber(payload, "current_output_percent"),
-      targetOutputPercent: readNumber(payload, "target_output_percent"),
-      runState: normalizeChlorinatorRunState(readString(payload, "run_state")),
-      status: normalizeChlorinatorStatus(readString(payload, "status")),
-      statusCode: readNumber(payload, "status_code"),
-      waterTempF: readNumber(payload, "water_temp_f"),
-      model: readString(payload, "model"),
-      connected: readBoolean(payload, "connected"),
-      commsLost: readBoolean(payload, "comms_lost"),
-      lastComm: readString(payload, "last_comm"),
-      productionLbPerDay: readNumber(payload, "production_lb_per_day"),
-      productionLbPerSecond: readNumber(payload, "production_lb_per_second"),
-      updatedAt: readString(payload, "occurred_at")
+      saltPpm: hasPayloadKey(payload, "salt_ppm") ? readNumber(payload, "salt_ppm") : this.chlorinator.saltPpm,
+      outputPercent: hasPayloadKey(payload, "output_percent") ? readNumber(payload, "output_percent") : this.chlorinator.outputPercent,
+      currentOutputPercent: hasPayloadKey(payload, "current_output_percent")
+        ? readNumber(payload, "current_output_percent")
+        : this.chlorinator.currentOutputPercent,
+      targetOutputPercent: hasPayloadKey(payload, "target_output_percent")
+        ? readNumber(payload, "target_output_percent")
+        : this.chlorinator.targetOutputPercent,
+      runState: hasPayloadKey(payload, "run_state")
+        ? normalizeChlorinatorRunState(readString(payload, "run_state"))
+        : this.chlorinator.runState,
+      status: hasPayloadKey(payload, "status")
+        ? normalizeChlorinatorStatus(readString(payload, "status"))
+        : this.chlorinator.status,
+      statusCode: hasPayloadKey(payload, "status_code") ? readNumber(payload, "status_code") : this.chlorinator.statusCode,
+      waterTempF: hasPayloadKey(payload, "water_temp_f") ? readNumber(payload, "water_temp_f") : this.chlorinator.waterTempF,
+      model: hasPayloadKey(payload, "model") ? readString(payload, "model") : this.chlorinator.model,
+      connected: hasPayloadKey(payload, "connected") ? readBoolean(payload, "connected") : this.chlorinator.connected,
+      commsLost: hasPayloadKey(payload, "comms_lost") ? readBoolean(payload, "comms_lost") : this.chlorinator.commsLost,
+      lastComm: hasPayloadKey(payload, "last_comm") ? readString(payload, "last_comm") : this.chlorinator.lastComm,
+      productionLbPerDay: hasPayloadKey(payload, "production_lb_per_day")
+        ? readNumber(payload, "production_lb_per_day")
+        : this.chlorinator.productionLbPerDay,
+      productionLbPerSecond: hasPayloadKey(payload, "production_lb_per_second")
+        ? readNumber(payload, "production_lb_per_second")
+        : this.chlorinator.productionLbPerSecond,
+      updatedAt: hasPayloadKey(payload, "occurred_at") ? readString(payload, "occurred_at") : this.chlorinator.updatedAt
     };
   }
 
@@ -1173,6 +1185,10 @@ function mapPumpTypeBranch(pumpType: number | null): "vf" | "vs" | "unknown" | n
 function readNumber(payload: Record<string, unknown>, key: string): number | null {
   const value = payload[key];
   return typeof value === "number" ? value : null;
+}
+
+function hasPayloadKey(payload: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(payload, key);
 }
 
 function readBoolean(payload: Record<string, unknown>, key: string): boolean | null {

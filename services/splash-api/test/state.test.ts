@@ -284,6 +284,45 @@ test("projection preserves expanded chlorinator status values", () => {
   assert.equal(chlorinator.latest_state.status_code, 5);
 });
 
+test("projection preserves configured chlorinator output when later events only carry salt and comms fields", () => {
+  const bridge = new EquipmentBridge();
+  const projection = new LatestStateProjection();
+
+  projection.updateChlorinator({
+    output_percent: 45,
+    occurred_at: "2026-06-18T03:55:00Z"
+  });
+  projection.updateChlorinator({
+    salt_ppm: 4150,
+    status: "ok",
+    connected: true,
+    comms_lost: false,
+    last_comm: "2026-06-18T03:59:25Z",
+    occurred_at: "2026-06-18T03:59:25Z"
+  });
+
+  const equipment = projection.getEquipmentView(bridge.all());
+  const chlorinator = equipment[2] as {
+    latest_state: {
+      salt_ppm: number | null;
+      output_percent: number | null;
+      status: string | null;
+      connected: boolean | null;
+      comms_lost: boolean | null;
+      last_comm: string | null;
+      updated_at: string | null;
+    };
+  };
+
+  assert.equal(chlorinator.latest_state.output_percent, 45);
+  assert.equal(chlorinator.latest_state.salt_ppm, 4150);
+  assert.equal(chlorinator.latest_state.status, "ok");
+  assert.equal(chlorinator.latest_state.connected, true);
+  assert.equal(chlorinator.latest_state.comms_lost, false);
+  assert.equal(chlorinator.latest_state.last_comm, "2026-06-18T03:59:25Z");
+  assert.equal(chlorinator.latest_state.updated_at, "2026-06-18T03:59:25Z");
+});
+
 test("projection exposes controller schedule visibility as unavailable until fields are validated", () => {
   const projection = new LatestStateProjection();
 

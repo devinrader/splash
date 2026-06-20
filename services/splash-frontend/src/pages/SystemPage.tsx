@@ -5,9 +5,12 @@ import {
   fetchControllerClock,
   fetchControllerHeater,
   fetchControllerPumpConfigurations,
+  fetchCurrentPoolCover,
+  fetchPoolProfileSettings,
   requestChlorinatorOutput,
   requestControllerClockRefresh,
   requestPumpInfo,
+  savePoolProfileSettings,
   updateControllerClock,
   updateControllerHeaterConfiguration,
   updateControllerHeaterSettings,
@@ -24,6 +27,8 @@ import type {
   ControllerHeaterData,
   ControllerPumpConfigurationData,
   EquipmentRecord,
+  PoolCoverCurrentData,
+  PoolProfileSettingsData,
   PlatformStatusResponse,
   PlatformServiceHealthRecord
 } from "../types";
@@ -291,6 +296,12 @@ function HardwareDetailTab({
   const [chlorinatorOutputDraft, setChlorinatorOutputDraft] = useState("");
   const [chlorinatorOutputPending, setChlorinatorOutputPending] = useState(false);
   const [chlorinatorOutputMessage, setChlorinatorOutputMessage] = useState<string | null>(null);
+  const [poolProfile, setPoolProfile] = useState<PoolProfileSettingsData | null>(null);
+  const [poolProfileError, setPoolProfileError] = useState<string | null>(null);
+  const [poolVolumeDraft, setPoolVolumeDraft] = useState("");
+  const [poolVolumePending, setPoolVolumePending] = useState(false);
+  const [poolVolumeMessage, setPoolVolumeMessage] = useState<string | null>(null);
+  const [coverCurrent, setCoverCurrent] = useState<PoolCoverCurrentData | null>(null);
 
   useEffect(() => {
     setDraftRows(getEditableCircuitRows(controllerCircuitStates));
@@ -318,6 +329,25 @@ function HardwareDetailTab({
         setHeaterError(message);
         setControllerClockError(message);
         setPumpConfigurationError(message);
+      }
+    })();
+  }, [detail]);
+
+  useEffect(() => {
+    if (detail !== "intellichlor") {
+      return;
+    }
+    void (async () => {
+      try {
+        const [profileResponse, coverResponse] = await Promise.all([
+          fetchPoolProfileSettings(),
+          fetchCurrentPoolCover()
+        ]);
+        setPoolProfile(profileResponse.data);
+        setCoverCurrent(coverResponse.data);
+        setPoolProfileError(null);
+      } catch (error) {
+        setPoolProfileError(error instanceof Error ? error.message : "Failed to load pool profile settings.");
       }
     })();
   }, [detail]);
@@ -361,17 +391,19 @@ function HardwareDetailTab({
   }, [heater]);
 
   useEffect(() => {
-    const targetOutput = readMetric(
-      chlorinator?.latest_state.target_output_percent
-        ?? chlorinator?.latest_state.output_percent
-        ?? chlorinator?.latest_state.current_output_percent
+    const configuredOutput = readMetric(
+      chlorinator?.latest_state.output_percent
+        ?? chlorinator?.latest_state.target_output_percent
     );
-    setChlorinatorOutputDraft(targetOutput == null ? "" : String(targetOutput));
+    setChlorinatorOutputDraft(configuredOutput == null ? "" : String(configuredOutput));
   }, [
-    chlorinator?.latest_state.current_output_percent,
     chlorinator?.latest_state.output_percent,
     chlorinator?.latest_state.target_output_percent
   ]);
+
+  useEffect(() => {
+    setPoolVolumeDraft(poolProfile?.volume_gallons == null ? "" : String(poolProfile.volume_gallons));
+  }, [poolProfile?.volume_gallons]);
 
   async function handleHeaterConfigurationSave(): Promise<void> {
     setHeaterConfigPending(true);
@@ -540,6 +572,29 @@ function HardwareDetailTab({
     }
   }
 
+  async function handlePoolVolumeSave(): Promise<void> {
+    const volumeGallons = Number.parseFloat(poolVolumeDraft);
+    if (!Number.isFinite(volumeGallons) || volumeGallons <= 0) {
+      setPoolVolumeMessage("Enter a positive pool volume in gallons.");
+      return;
+    }
+
+    setPoolVolumePending(true);
+    setPoolVolumeMessage(null);
+    try {
+      const response = await savePoolProfileSettings({
+        volumeGallons
+      });
+      setPoolProfile(response.data);
+      setPoolProfileError(null);
+      setPoolVolumeMessage("Pool volume saved.");
+    } catch (error) {
+      setPoolVolumeMessage(error instanceof Error ? error.message : "Failed to save pool volume.");
+    } finally {
+      setPoolVolumePending(false);
+    }
+  }
+
   const chlorinatorStatus = chlorinator?.latest_state.status;
   const chlorinatorStatusLabel = formatChlorinatorStatus(chlorinatorStatus);
   const chlorinatorStatusTone = getChlorinatorStatusTone(chlorinatorStatus);
@@ -550,16 +605,26 @@ function HardwareDetailTab({
     typeof chlorinator?.latest_state.last_comm === "string"
       ? formatRequestTimestamp(chlorinator.latest_state.last_comm)
       : "Unavailable";
-  const chlorinatorCurrentOutput = formatMetric(
-    readMetric(chlorinator?.latest_state.current_output_percent ?? chlorinator?.latest_state.output_percent),
-    "%"
+  const chlorinatorConfiguredOutputValue = readMetric(
+    chlorinator?.latest_state.output_percent
+      ?? chlorinator?.latest_state.target_output_percent
   );
-  const chlorinatorTargetOutput = formatMetric(
-    readMetric(chlorinator?.latest_state.target_output_percent ?? chlorinator?.latest_state.output_percent),
+  const chlorinatorConfiguredOutput = formatMetric(
+    chlorinatorConfiguredOutputValue,
     "%"
   );
   const chlorinatorProductionLbPerDay = readMetric(chlorinator?.latest_state.production_lb_per_day);
   const chlorinatorSuperChlorRemainingSeconds = readMetric(chlorinator?.latest_state.super_chlor_remaining_seconds);
+  const controllerWaterTempF = readMetric(controller?.latest_state.water_temp_f);
+  const estimateWaterTempF = controllerWaterTempF;
+  const estimateCoverState = coverCurrent?.current?.state ?? null;
+  const swgSupportEstimate = buildSwgSupportEstimate({
+    volumeGallons: poolProfile?.volume_gallons ?? null,
+    productionLbPerDay: chlorinatorProductionLbPerDay,
+    targetOutputPercent: chlorinatorConfiguredOutputValue,
+    waterTempF: estimateWaterTempF,
+    coverState: estimateCoverState
+  });
 
   return (
     <section className="mock-system-page">
@@ -582,9 +647,9 @@ function HardwareDetailTab({
                 controllerTime: formatControllerTime(controller?.latest_state.controller_hour_24, controller?.latest_state.controller_minute),
                 waterTemp: formatMetric(readMetric(controller?.latest_state.water_temp_f), "°F"),
                 saltLevel: formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm"),
-                chlorinatorOutput: formatMetric(readMetric(chlorinator?.latest_state.output_percent), "%"),
-                chlorinatorCurrentOutput,
-                chlorinatorTargetOutput,
+                chlorinatorOutput: chlorinatorConfiguredOutput,
+                chlorinatorCurrentOutput: chlorinatorConfiguredOutput,
+                chlorinatorTargetOutput: chlorinatorConfiguredOutput,
                 chlorinatorRunState: formatChlorinatorRunState(chlorinator?.latest_state.run_state),
                 chlorinatorStatus: chlorinatorStatusLabel,
                 chlorinatorModel,
@@ -606,23 +671,21 @@ function HardwareDetailTab({
       {detail === "intellichlor" ? (
         <>
           <section className="mock-kpi-grid">
-            <MetricCard label="Current Output" value={chlorinatorCurrentOutput} accent="pump" icon="chlorinator" />
-            <MetricCard label="Target Output" value={chlorinatorTargetOutput} accent="water" icon="system" />
+            <MetricCard label="Configured Output" value={chlorinatorConfiguredOutput} accent="pump" icon="chlorinator" />
             <MetricCard label="Salt Level" value={formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")} accent="sand" icon="salt" />
-            <MetricCard label="Water Temp" value={formatMetric(readMetric(chlorinator?.latest_state.water_temp_f), "°F")} accent="water" icon="temperature" />
-            <MetricCard label="Run State" value={formatChlorinatorRunState(chlorinator?.latest_state.run_state)} accent="sky" icon="good" />
+            <MetricCard label="Water Temp" value={formatMetric(controllerWaterTempF, "°F")} accent="water" icon="temperature" />
             <MetricCard label="Connection" value={String(chlorinator?.latest_state.comms_lost) === "true" ? "Lost" : "Online"} accent="sand" icon="system" />
+            <MetricCard label="Status" value={chlorinatorStatusLabel} accent="sky" icon="good" />
+            <MetricCard label="Model" value={chlorinatorModel} accent="water" icon="system" />
           </section>
           <section className="mock-system-grid">
             <Card title="Runtime Status" status={chlorinatorStatusLabel}>
               <dl className="system-summary-list">
                 <div><dt>Model</dt><dd>{chlorinatorModel}</dd></div>
                 <div><dt>Status</dt><dd><span className={`system-status-chip ${getStatusChipClassName(chlorinatorStatusTone)}`}>{chlorinatorStatusLabel}</span></dd></div>
-                <div><dt>Run state</dt><dd>{formatChlorinatorRunState(chlorinator?.latest_state.run_state)}</dd></div>
-                <div><dt>Current output</dt><dd>{chlorinatorCurrentOutput}</dd></div>
-                <div><dt>Target output</dt><dd>{chlorinatorTargetOutput}</dd></div>
+                <div><dt>Configured output</dt><dd>{chlorinatorConfiguredOutput}</dd></div>
                 <div><dt>Salt ppm</dt><dd>{formatMetric(readMetric(chlorinator?.latest_state.salt_ppm), "ppm")}</dd></div>
-                <div><dt>Water temp</dt><dd>{formatMetric(readMetric(chlorinator?.latest_state.water_temp_f), "°F")}</dd></div>
+                <div><dt>Water temp (controller)</dt><dd>{formatMetric(controllerWaterTempF, "°F")}</dd></div>
                 <div><dt>Last communication</dt><dd>{chlorinatorLastComm}</dd></div>
                 <div><dt>Comms lost</dt><dd>{String(chlorinator?.latest_state.comms_lost) === "true" ? "Yes" : "No"}</dd></div>
                 <div><dt>Address</dt><dd>{chlorinatorAddress}</dd></div>
@@ -656,6 +719,48 @@ function HardwareDetailTab({
                 </div>
                 {chlorinatorOutputMessage ? <p className="form-caption">{chlorinatorOutputMessage}</p> : null}
               </div>
+            </Card>
+            <Card title="Pool Volume" status="Prediction input">
+              <p className="panel-copy">Pool volume is stored as durable pool-profile configuration and is required for future ppm-normalized SWG support estimates.</p>
+              <div className="control-form">
+                <label htmlFor="pool-volume-gallons">Pool volume (gallons)</label>
+                <input
+                  id="pool-volume-gallons"
+                  inputMode="decimal"
+                  value={poolVolumeDraft}
+                  onChange={(event) => setPoolVolumeDraft(event.target.value)}
+                  disabled={poolVolumePending}
+                />
+                <div className="panel-actions">
+                  <button type="button" onClick={() => void handlePoolVolumeSave()} disabled={poolVolumePending}>
+                    {poolVolumePending ? "Saving..." : "Save pool volume"}
+                  </button>
+                </div>
+                {poolProfileError ? <p className="form-caption">{poolProfileError}</p> : null}
+                {poolVolumeMessage ? <p className="form-caption">{poolVolumeMessage}</p> : null}
+              </div>
+            </Card>
+            <Card title="24h Chlorine Support" status="Estimated">
+              {swgSupportEstimate ? (
+                <>
+                  <dl className="system-summary-list">
+                    <div><dt>Estimated FC change</dt><dd>{formatEstimatedPpmDelta(swgSupportEstimate.ppm)}</dd></div>
+                    <div><dt>Configured output</dt><dd>{chlorinatorConfiguredOutput}</dd></div>
+                    <div><dt>Pool volume</dt><dd>{poolProfile?.volume_gallons == null ? "Unavailable" : `${poolProfile.volume_gallons} gal`}</dd></div>
+                    <div><dt>Water temp (controller)</dt><dd>{formatMetric(estimateWaterTempF, "°F")}</dd></div>
+                    <div><dt>Cover state</dt><dd>{formatCoverStateSummary(estimateCoverState)}</dd></div>
+                  </dl>
+                  <p className="form-caption">{swgSupportEstimate.summary}</p>
+                </>
+              ) : (
+                <p className="panel-copy">
+                  {buildSwgSupportUnavailableMessage({
+                    volumeGallons: poolProfile?.volume_gallons ?? null,
+                    productionLbPerDay: chlorinatorProductionLbPerDay,
+                    targetOutputPercent: chlorinatorConfiguredOutputValue
+                  })}
+                </p>
+              )}
             </Card>
             <Card title="Warnings & Guidance" status={chlorinatorWarnings.length > 0 ? "Operator attention" : "Normal"}>
               {chlorinatorWarnings.length > 0 ? (
@@ -1585,6 +1690,100 @@ function getChlorinatorWarnings(chlorinator: EquipmentRecord | undefined): Array
   }
 
   return warnings;
+}
+
+function buildSwgSupportEstimate(input: {
+  volumeGallons: number | null;
+  productionLbPerDay: number | null;
+  targetOutputPercent: number | null;
+  waterTempF: number | null;
+  coverState: "on" | "off" | null;
+}): { ppm: number; summary: string } | null {
+  if (
+    input.volumeGallons == null
+    || input.productionLbPerDay == null
+    || input.targetOutputPercent == null
+  ) {
+    return null;
+  }
+
+  const basePpm =
+    input.productionLbPerDay
+    * (input.targetOutputPercent / 100)
+    * (120000 / input.volumeGallons);
+  const temperatureModifier = getSwgTemperatureModifier(input.waterTempF);
+  const coverModifier = getSwgCoverModifier(input.coverState);
+  const estimatedPpm = basePpm * temperatureModifier * coverModifier;
+
+  return {
+    ppm: estimatedPpm,
+    summary:
+      `Estimated from ${input.targetOutputPercent}% target output, `
+      + `${input.productionLbPerDay.toFixed(2)} lb/day cell production, `
+      + `${formatCoverStateSummary(input.coverState).toLowerCase()} cover context, `
+      + `${formatMetric(input.waterTempF, "°F")} water, and a simple 24h retention adjustment.`
+  };
+}
+
+function buildSwgSupportUnavailableMessage(input: {
+  volumeGallons: number | null;
+  productionLbPerDay: number | null;
+  targetOutputPercent: number | null;
+}): string {
+  if (input.volumeGallons == null) {
+    return "Configure pool volume to unlock the 24h SWG ppm estimate.";
+  }
+  if (input.productionLbPerDay == null) {
+    return "IntelliChlor model production metadata is unavailable, so the 24h SWG ppm estimate cannot be calculated yet.";
+  }
+  if (input.targetOutputPercent == null) {
+    return "Configured chlorinator output is unavailable, so the 24h SWG ppm estimate cannot be calculated yet.";
+  }
+  return "The 24h SWG ppm estimate is currently unavailable.";
+}
+
+function getSwgTemperatureModifier(waterTempF: number | null): number {
+  if (waterTempF == null) {
+    return 1;
+  }
+  if (waterTempF < 52) {
+    return 0;
+  }
+  if (waterTempF < 60) {
+    return 0.25;
+  }
+  if (waterTempF < 65) {
+    return 0.5;
+  }
+  if (waterTempF < 70) {
+    return 0.75;
+  }
+  return 1;
+}
+
+function getSwgCoverModifier(coverState: "on" | "off" | null): number {
+  if (coverState === "off") {
+    return 0.85;
+  }
+  if (coverState === "on") {
+    return 1;
+  }
+  return 0.92;
+}
+
+function formatCoverStateSummary(value: "on" | "off" | null): string {
+  if (value === "on") {
+    return "Cover On";
+  }
+  if (value === "off") {
+    return "Cover Off";
+  }
+  return "Cover Unknown";
+}
+
+function formatEstimatedPpmDelta(value: number): string {
+  const rounded = value.toFixed(1);
+  return value >= 0 ? `+${rounded} ppm` : `${rounded} ppm`;
 }
 
 function formatCountValue(value: number | null | undefined): string {

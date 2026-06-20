@@ -243,8 +243,7 @@ function interpretIntellichlorAction(
             payload: {
               ...connectivityPayload,
               output_percent: targetOutput,
-              target_output_percent: targetOutput,
-              run_state: deriveRunState(targetOutput, null, null)
+              target_output_percent: targetOutput
             }
           }
         ]
@@ -271,10 +270,7 @@ function interpretIntellichlorAction(
               ...connectivityPayload,
               salt_ppm: saltPpm,
               status_code: statusCode,
-              status,
-              current_output_percent: currentOutput,
-              output_percent: currentOutput,
-              run_state: deriveRunState(currentOutput, statusCode, checksumByte)
+              status
             }
           }
         ]
@@ -317,8 +313,7 @@ function interpretIntellichlorAction(
             payload: {
               ...connectivityPayload,
               target_output_percent: targetOutput,
-              output_percent: targetOutput,
-              run_state: deriveRunState(targetOutput, null, null)
+              output_percent: targetOutput
             }
           }
         ]
@@ -343,12 +338,9 @@ function interpretIntellichlorAction(
             subject: "equipment.state.chlorinator",
             payload: {
               ...connectivityPayload,
-              current_output_percent: currentOutput,
-              output_percent: currentOutput,
               water_temp_f: waterTempF,
               status_code: statusCode,
-              status,
-              run_state: deriveRunState(currentOutput, statusCode, null)
+              status
             }
           }
         ]
@@ -364,23 +356,6 @@ function interpretIntellichlorAction(
         normalizedEvents: []
       };
   }
-}
-
-function deriveRunState(
-  outputPercent: number | null,
-  statusCode: number | null,
-  _: number | null
-): "producing" | "idle" | "off" | "unknown" {
-  if (statusCode === 8) {
-    return "unknown";
-  }
-  if (outputPercent == null) {
-    return "unknown";
-  }
-  if (outputPercent <= 0) {
-    return "idle";
-  }
-  return "producing";
 }
 
 function resolveModelMetadata(modelName: string): { productionLbPerDay: number } | null {
@@ -409,6 +384,11 @@ function normalizeModelName(payload: Uint8Array): string | null {
   if (/^Intellichlor--(\d+)/i.test(text)) {
     const match = text.match(/^Intellichlor--(\d+)/i);
     return match ? `IC${match[1]}` : text;
+  }
+
+  if (/^Intellichlor\+\+(\d+)/i.test(text)) {
+    const match = text.match(/^Intellichlor\+\+(\d+)/i);
+    return match ? `PLUS${match[1]}` : text;
   }
 
   return text;

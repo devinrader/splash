@@ -73,6 +73,11 @@ import {
   type PoolChemistrySettingsView
 } from "./pool-chemistry-settings.js";
 import {
+  PoolProfileSettingsService,
+  SqlitePoolProfileSettingsRepository,
+  type PoolProfileSettingsView
+} from "./pool-profile-settings.js";
+import {
   ChemistryReadingsService,
   SqliteChemistryReadingsRepository,
   type ChemistryHistoryQueryInput,
@@ -149,6 +154,7 @@ export interface AppOptions {
   weatherForecast?: WeatherForecastService;
   weatherLocationSettings?: WeatherLocationSettingsService;
   geocodingSettings?: GeocodingSettingsService;
+  poolProfileSettings?: PoolProfileSettingsService;
   poolChemistrySettings?: PoolChemistrySettingsService;
   chemistryReadings?: ChemistryReadingsService;
   chemistryObservations?: ChemistryObservationsService;
@@ -205,6 +211,7 @@ export class App {
   private readonly weatherForecast: WeatherForecastService;
   private readonly weatherLocationSettings: WeatherLocationSettingsService;
   private readonly geocodingSettings: GeocodingSettingsService;
+  private readonly poolProfileSettings: PoolProfileSettingsService;
   private readonly poolChemistrySettings: PoolChemistrySettingsService;
   private readonly chemistryReadings: ChemistryReadingsService;
   private readonly chemistryObservations: ChemistryObservationsService;
@@ -286,6 +293,12 @@ export class App {
           this.events.publish("weather.updated", view as unknown as Record<string, unknown>);
         }
       });
+    this.poolProfileSettings =
+      options.poolProfileSettings ??
+      new PoolProfileSettingsService(
+        this.config.poolId,
+        this.sqliteDatabase ? new SqlitePoolProfileSettingsRepository(this.sqliteDatabase) : null
+      );
     this.poolChemistrySettings =
       options.poolChemistrySettings ??
       new PoolChemistrySettingsService(
@@ -476,6 +489,14 @@ export class App {
 
   async updateGeocodingProviderConfig(providerId: string, input: unknown): Promise<GeocodingSettingsView> {
     return this.geocodingSettings.updateGeocodingProviderConfig(providerId, input);
+  }
+
+  async getPoolProfileSettings(): Promise<PoolProfileSettingsView> {
+    return this.poolProfileSettings.getPoolProfileSettings();
+  }
+
+  async updatePoolProfileSettings(input: unknown): Promise<PoolProfileSettingsView> {
+    return this.poolProfileSettings.updatePoolProfileSettings(input);
   }
 
   async getPoolChemistrySettings(): Promise<PoolChemistrySettingsView> {
@@ -1686,6 +1707,8 @@ export class App {
         updateGeocodingSettings: async (input) => this.updateGeocodingSettings(input) as unknown as Record<string, unknown>,
         updateGeocodingProviderConfig: async (providerId, input) =>
           this.updateGeocodingProviderConfig(providerId, input) as unknown as Record<string, unknown>,
+        getPoolProfileSettings: async () => this.getPoolProfileSettings() as unknown as Record<string, unknown>,
+        updatePoolProfileSettings: async (input) => this.updatePoolProfileSettings(input) as unknown as Record<string, unknown>,
         getPoolChemistrySettings: async () => this.getPoolChemistrySettings() as unknown as Record<string, unknown>,
         updatePoolChemistrySettings: async (input) => this.updatePoolChemistrySettings(input) as unknown as Record<string, unknown>,
         getWaterTestingSchedule: async () => this.getWaterTestingSchedule() as unknown as Record<string, unknown>,

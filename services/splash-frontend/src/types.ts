@@ -946,6 +946,20 @@ export interface PoolCoverEventCreateResponse {
   error: unknown;
 }
 
+export interface PoolProfileSettingsData {
+  volume_gallons: number | null;
+  source: "sqlite";
+}
+
+export interface PoolProfileSettingsResponse {
+  data: PoolProfileSettingsData;
+  error: unknown;
+}
+
+export interface PoolProfileSettingsSaveInput {
+  volumeGallons: number;
+}
+
 export type SwimmabilityStatus = "good" | "caution" | "poor" | "unknown";
 export type SwimmabilityDriverSeverity = "good" | "neutral" | "caution" | "poor" | "unknown";
 export type SwimmabilityConfidence = "high" | "medium" | "low" | "unknown";

@@ -47,6 +47,8 @@ import type {
   GeocodingSettingsSaveInput,
   EquipmentResponse,
   PlatformStatusResponse,
+  PoolProfileSettingsResponse,
+  PoolProfileSettingsSaveInput,
   PoolChemistrySettingsResponse,
   PoolChemistrySettingsSaveInput,
   NotificationReadResponse,
@@ -788,6 +790,30 @@ export async function saveGeocodingProviderConfig(
     throw await buildApiError(response, "Geocoding provider config save failed.");
   }
   return (await response.json()) as GeocodingSettingsResponse;
+}
+
+export async function fetchPoolProfileSettings(): Promise<PoolProfileSettingsResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/pool-profile"));
+  if (!response.ok) {
+    throw await buildApiError(response, "Pool profile settings request failed.");
+  }
+  return (await response.json()) as PoolProfileSettingsResponse;
+}
+
+export async function savePoolProfileSettings(input: PoolProfileSettingsSaveInput): Promise<PoolProfileSettingsResponse> {
+  const response = await fetch(buildApiUrl("/api/settings/pool-profile"), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      volume_gallons: input.volumeGallons
+    })
+  });
+  if (!response.ok) {
+    throw await buildApiError(response, "Pool profile settings save failed.");
+  }
+  return (await response.json()) as PoolProfileSettingsResponse;
 }
 
 export async function fetchPoolChemistrySettings(): Promise<PoolChemistrySettingsResponse> {

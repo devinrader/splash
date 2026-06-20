@@ -49,9 +49,21 @@ test("parseIntellichlorFrame decodes take-control ACK and model response", () =>
   assert.equal(model.fields.model_name, "IC40");
   assert.equal(model.fields.production_lb_per_day, 1.4);
   assert.equal(model.normalizedEvents?.[0]?.payload.model, "IC40");
+
+  const plusModel = parseIntellichlorFrame(
+    Uint8Array.from([16, 2, 0, 3, 0, 73, 110, 116, 101, 108, 108, 105, 99, 104, 108, 111, 114, 43, 43, 51, 48, 142, 16, 3]),
+    {
+      frameId: "frame-3",
+      occurredAt: "2026-06-18T04:20:00Z"
+    }
+  );
+  assert.equal(plusModel.messageType, "intellichlor_model");
+  assert.equal(plusModel.fields.model_name, "PLUS30");
+  assert.equal(plusModel.fields.production_lb_per_day, 1.1);
+  assert.equal(plusModel.normalizedEvents?.[0]?.payload.model, "PLUS30");
 });
 
-test("parseIntellichlorFrame decodes action 18 salt/status and action 22 iChlor output/temp", () => {
+test("parseIntellichlorFrame decodes action 18 salt/status and action 22 partial iChlor status without normalizing active-production state", () => {
   const action18 = parseIntellichlorFrame(Uint8Array.from([16, 2, 80, 18, 62, 2, 178, 16, 3]), {
     occurredAt: "2026-06-17T20:02:00Z"
   });
@@ -61,6 +73,7 @@ test("parseIntellichlorFrame decodes action 18 salt/status and action 22 iChlor 
   assert.equal(action18.fields.status, "low_salt");
   assert.equal(action18.normalizedEvents?.[0]?.payload.salt_ppm, 3100);
   assert.equal(action18.normalizedEvents?.[0]?.payload.status, "low_salt");
+  assert.equal("current_output_percent" in (action18.normalizedEvents?.[0]?.payload ?? {}), false);
 
   const action22 = parseIntellichlorFrame(Uint8Array.from([16, 2, 16, 22, 0, 15, 73, 0, 5, 16, 133, 16, 3]), {
     occurredAt: "2026-06-17T20:03:00Z"
@@ -71,8 +84,8 @@ test("parseIntellichlorFrame decodes action 18 salt/status and action 22 iChlor 
   assert.equal(action22.fields.water_temp_f, 73);
   assert.equal(action22.fields.status_code, 5);
   assert.equal(action22.fields.status, "clean_cell");
-  assert.equal(action22.normalizedEvents?.[0]?.payload.current_output_percent, 15);
   assert.equal(action22.normalizedEvents?.[0]?.payload.water_temp_f, 73);
+  assert.equal("current_output_percent" in (action22.normalizedEvents?.[0]?.payload ?? {}), false);
 });
 
 test("parseIntellichlorFrame decodes keepalive and fractional target output without crashing on partial payloads", () => {

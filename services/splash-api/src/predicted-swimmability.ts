@@ -194,15 +194,32 @@ function buildPredictionForHorizon(
     assumptions.push("No circulation summary was available.");
   }
 
-  if (input.chlorinator.runState === "producing" && (input.chlorinator.outputPercent ?? 0) > 0) {
-    score += Math.min(8, Math.round((input.chlorinator.outputPercent ?? 0) / 10));
-    assumptions.push(`SWG output is set to ${input.chlorinator.outputPercent}% and currently producing.`);
-  } else if (input.chlorinator.runState === "unknown" || input.chlorinator.outputPercent == null) {
+  const chlorinatorTargetOutput = resolveChlorinatorTargetOutput(input.chlorinator);
+  if (chlorinatorTargetOutput != null && chlorinatorTargetOutput > 0) {
+    const circulationSupportFraction = circulationSummary == null ? null : clamp(circulationSummary.runtime_percent / 100, 0, 1);
+    const supportScore = Math.min(8, Math.round(chlorinatorTargetOutput / 15));
+    score += circulationSupportFraction == null
+      ? Math.max(1, supportScore - 2)
+      : Math.max(1, Math.round(supportScore * circulationSupportFraction));
+    assumptions.push(`SWG target output is set to ${chlorinatorTargetOutput}% duty-cycle support.`);
+
+    const estimatedGenerationLb = estimateSwgGenerationLb({
+      chlorinator: input.chlorinator,
+      targetOutputPercent: chlorinatorTargetOutput,
+      circulationSummary,
+      horizonHours
+    });
+    if (estimatedGenerationLb != null) {
+      assumptions.push(`Estimated SWG chlorine support through ${formatHorizonLabel(horizon)} is about ${estimatedGenerationLb.toFixed(2)} lb.`);
+    } else if (circulationSummary == null) {
+      assumptions.push("SWG support is estimated without recent circulation-runtime evidence.");
+    }
+  } else if (chlorinatorTargetOutput == null) {
     confidenceRank -= 1;
-    assumptions.push("Chlorinator support is uncertain because live state is incomplete.");
+    assumptions.push("Configured chlorinator output is unavailable.");
   } else if (horizon !== "24h") {
     score -= 4;
-    drivers.push("No active chlorinator support is visible right now.");
+    drivers.push("No SWG duty-cycle support is configured right now.");
   }
 
   const chlorineSupport = summarizeRecentChlorineAdditions(input.chemicalAdditions, generatedAt);
@@ -279,9 +296,9 @@ function buildPredictionForHorizon(
         key: "chlorinator",
         label: "Chlorinator",
         value:
-          input.chlorinator.runState && input.chlorinator.outputPercent != null
-            ? `${input.chlorinator.runState} @ ${input.chlorinator.outputPercent}%`
-            : "Unknown",
+          chlorinatorTargetOutput != null
+            ? `${chlorinatorTargetOutput}% target`
+            : "Unavailable",
         provenance: chlorinatorProvenance
       },
       {
@@ -490,6 +507,7 @@ function buildCirculationProvenance(
 
 function buildChlorinatorProvenance(chlorinator: ChlorinatorLatestState, evaluatedAt: string): ValueProvenance {
   const freshness = classifyAgeFreshness(chlorinator.updatedAt, evaluatedAt, { freshHours: 1, agingHours: 6 });
+  const targetOutputPercent = resolveChlorinatorTargetOutput(chlorinator);
   return buildValueProvenance({
     value_kind: "measured",
     source_type: "controller",
@@ -498,9 +516,9 @@ function buildChlorinatorProvenance(chlorinator: ChlorinatorLatestState, evaluat
     confidence_band:
       chlorinator.updatedAt == null
         ? "unknown"
-        : chlorinator.runState === "unknown" || chlorinator.outputPercent == null
+        : targetOutputPercent == null
           ? "medium"
-          : freshness === "fresh"
+        : freshness === "fresh"
             ? "high"
             : freshness === "aging"
               ? "medium"
@@ -509,7 +527,9 @@ function buildChlorinatorProvenance(chlorinator: ChlorinatorLatestState, evaluat
     evaluated_at: evaluatedAt,
     reasons: [
       chlorinator.updatedAt ? "Chlorinator telemetry is available." : "No chlorinator telemetry is available.",
-      chlorinator.runState === "unknown" ? "Chlorinator run state is incomplete." : "Chlorinator run state is populated."
+      targetOutputPercent == null
+        ? "Configured chlorinator output is unavailable."
+        : `Configured chlorinator output target is ${targetOutputPercent}%.`
     ]
   });
 }
@@ -580,10 +600,33 @@ function deriveConfidenceBlockers(input: {
   if (input.chlorinator.freshness_state === "missing" || input.chlorinator.freshness_state === "unavailable") {
     blockers.push("Chlorinator telemetry is unavailable.");
   } else if (input.chlorinator.confidence_band === "medium" || input.chlorinator.confidence_band === "low") {
-    blockers.push("Chlorinator support is incomplete.");
+    blockers.push("Configured chlorinator output is unavailable.");
   }
 
   return blockers.slice(0, 4);
+}
+
+function resolveChlorinatorTargetOutput(chlorinator: ChlorinatorLatestState): number | null {
+  return chlorinator.targetOutputPercent ?? chlorinator.outputPercent ?? null;
+}
+
+function estimateSwgGenerationLb(input: {
+  chlorinator: ChlorinatorLatestState;
+  targetOutputPercent: number;
+  circulationSummary: PumpCirculationSummaryItemView | null;
+  horizonHours: number;
+}): number | null {
+  const productionLbPerDay = input.chlorinator.productionLbPerDay ?? null;
+  if (productionLbPerDay == null) {
+    return null;
+  }
+
+  const outputFraction = clamp(input.targetOutputPercent / 100, 0, 1);
+  const circulationFraction = input.circulationSummary == null
+    ? 1
+    : clamp(input.circulationSummary.runtime_percent / 100, 0, 1);
+  const horizonFraction = input.horizonHours / 24;
+  return productionLbPerDay * outputFraction * circulationFraction * horizonFraction;
 }
 
 function confidenceToRank(value: SwimmabilityConfidence): number {

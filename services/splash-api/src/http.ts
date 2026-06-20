@@ -68,6 +68,10 @@ import {
   PoolChemistrySettingsUnavailableError,
   PoolChemistrySettingsValidationError
 } from "./pool-chemistry-settings.js";
+import {
+  PoolProfileSettingsUnavailableError,
+  PoolProfileSettingsValidationError
+} from "./pool-profile-settings.js";
 import type { SwimmabilityView } from "./swimmability.js";
 import {
   WaterTestingScheduleUnavailableError,
@@ -132,6 +136,8 @@ export interface HttpHandlers {
   getGeocodingSettings?(): Promise<Record<string, unknown>>;
   updateGeocodingSettings?(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   updateGeocodingProviderConfig?(providerId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  getPoolProfileSettings?(): Promise<Record<string, unknown>>;
+  updatePoolProfileSettings?(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   getPoolChemistrySettings(): Promise<Record<string, unknown>>;
   updatePoolChemistrySettings(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   getWaterTestingSchedule?(): Promise<Record<string, unknown>>;
@@ -480,6 +486,33 @@ export class LocalHttpServer implements HttpServer {
           data: await this.handlers.updateGeocodingProviderConfig(providerId, body),
           error: null
         });
+      }
+
+      if (req.method === "GET" && req.url === "/api/settings/pool-profile") {
+        if (!this.handlers.getPoolProfileSettings) {
+          throw new HttpResponseError(503, {
+            data: null,
+            error: {
+              code: "service_unavailable",
+              message: "Pool profile settings are unavailable."
+            }
+          });
+        }
+        return json(req, res, 200, { data: await this.handlers.getPoolProfileSettings(), error: null });
+      }
+
+      if (req.method === "PUT" && req.url === "/api/settings/pool-profile") {
+        if (!this.handlers.updatePoolProfileSettings) {
+          throw new HttpResponseError(503, {
+            data: null,
+            error: {
+              code: "service_unavailable",
+              message: "Pool profile settings are unavailable."
+            }
+          });
+        }
+        const body = await readJsonBody(req);
+        return json(req, res, 200, { data: await this.handlers.updatePoolProfileSettings(body), error: null });
       }
 
       if (req.method === "GET" && req.url === "/api/settings/pool-chemistry") {
@@ -1139,6 +1172,27 @@ export class LocalHttpServer implements HttpServer {
       }
 
       if (error instanceof GeocodingSettingsUnavailableError) {
+        return json(req, res, 503, {
+          data: null,
+          error: {
+            code: "service_unavailable",
+            message: error.message
+          }
+        });
+      }
+
+      if (error instanceof PoolProfileSettingsValidationError) {
+        return json(req, res, 400, {
+          data: null,
+          error: {
+            code: "validation_error",
+            message: error.message,
+            details: error.details
+          }
+        });
+      }
+
+      if (error instanceof PoolProfileSettingsUnavailableError) {
         return json(req, res, 503, {
           data: null,
           error: {

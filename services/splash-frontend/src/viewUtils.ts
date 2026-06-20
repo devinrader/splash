@@ -887,10 +887,9 @@ export function getHardwareDetailFacts(
       return [
         { label: "Model", value: input.chlorinatorModel },
         { label: "Salt Level", value: input.saltLevel },
-        { label: "Current Output", value: input.chlorinatorCurrentOutput },
-        { label: "Target Output", value: input.chlorinatorTargetOutput },
+        { label: "Configured Output", value: input.chlorinatorOutput },
         { label: "Protocol", value: "Pentair RS485" },
-        { label: "Cell Status", value: input.chlorinatorRunState },
+        { label: "Water Temp", value: input.waterTemp },
         { label: "Status Detail", value: input.chlorinatorStatus },
         { label: "Address", value: input.chlorinatorAddress },
         { label: "Last Message", value: input.chlorinatorLastComm }

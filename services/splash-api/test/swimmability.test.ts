@@ -229,8 +229,10 @@ test("buildPredictedSwimmabilityView projects horizon predictions with show-your
     chlorinator: {
       saltPpm: 3200,
       outputPercent: 40,
-      runState: "producing",
+      targetOutputPercent: 40,
+      runState: "unknown",
       status: "ok",
+      productionLbPerDay: 1.4,
       updatedAt: "2026-06-04T11:59:00.000Z"
     },
     chemicalAdditions: [
@@ -254,6 +256,11 @@ test("buildPredictedSwimmabilityView projects horizon predictions with show-your
   assert.ok(view.predictions[0].predicted_inputs.length > 0);
   assert.ok(Array.isArray(view.predictions[0].confidence_blockers));
   assert.equal(view.predictions[0].provenance.prediction.source_type, "prediction_model");
+  assert.equal(view.predictions[0].provenance.chlorinator.confidence_band, "high");
+  assert.equal(view.predictions[0].confidence_blockers.includes("Configured chlorinator output is unavailable."), false);
+  assert.ok(
+    view.predictions[0].assumptions.some((value) => value.includes("SWG target output is set to 40% duty-cycle support."))
+  );
 });
 
 test("swimmability API route returns the assessment", async () => {

@@ -734,7 +734,18 @@ test("renders an explicit unavailable state when controller schedules are not ye
               equipment_type: "controller",
               display_name: "Main Controller",
               protocol_name: "pentair_easytouch",
-              latest_state: {}
+              latest_state: {
+                water_temp_f: 84
+              }
+            },
+            {
+              id: "chlorinator-main",
+              equipment_type: "chlorinator",
+              display_name: "Main Chlorinator",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                salt_ppm: 3400
+              }
             }
           ],
           error: null
@@ -829,6 +840,230 @@ test("renders maintenance recommendations in Routines above the alerts inbox", a
         });
       }
 
+      if (input.endsWith("/swimmability")) {
+        return response({
+          data: {
+            status: "caution",
+            score: 62,
+            summary: "Current chemistry needs attention.",
+            headline: "Needs Attention",
+            confidence: "medium",
+            last_chemistry_age_label: "3 hours ago",
+            highlights: [],
+            updated_at: "2026-06-12T22:00:00.000Z",
+            drivers: [],
+            inputs: {
+              chemistry_latest_at: "2026-06-12T19:00:00.000Z",
+              cover_latest_at: null,
+              forecast_fetched_at: "2026-06-12T21:00:00.000Z",
+              telemetry_latest_at: "2026-06-12T21:55:00.000Z"
+            },
+            input_provenance: {
+              chemistry: {
+                value_kind: "measured",
+                source_type: "manual_log",
+                source_detail: null,
+                freshness_state: "aging",
+                confidence_band: "medium",
+                measured_at: "2026-06-12T19:00:00.000Z",
+                evaluated_at: "2026-06-12T22:00:00.000Z",
+                reasons: ["Latest chemistry is a few hours old."]
+              },
+              cover: {
+                value_kind: "measured",
+                source_type: "manual_log",
+                source_detail: null,
+                freshness_state: "missing",
+                confidence_band: "unknown",
+                measured_at: null,
+                evaluated_at: "2026-06-12T22:00:00.000Z",
+                reasons: ["No recent cover event is available."]
+              },
+              weather_forecast: {
+                value_kind: "derived",
+                source_type: "weather_service",
+                source_detail: null,
+                freshness_state: "fresh",
+                confidence_band: "high",
+                measured_at: "2026-06-12T21:00:00.000Z",
+                evaluated_at: "2026-06-12T22:00:00.000Z",
+                reasons: ["Forecast data was refreshed recently."]
+              },
+              water_temperature: {
+                value_kind: "measured",
+                source_type: "sensor",
+                source_detail: "controller",
+                freshness_state: "fresh",
+                confidence_band: "high",
+                measured_at: "2026-06-12T21:55:00.000Z",
+                evaluated_at: "2026-06-12T22:00:00.000Z",
+                reasons: ["Controller water temperature telemetry is current."]
+              },
+              rainfall_since_chemistry: {
+                value_kind: "derived",
+                source_type: "weather_service",
+                source_detail: null,
+                freshness_state: "fresh",
+                confidence_band: "high",
+                measured_at: "2026-06-12T21:00:00.000Z",
+                evaluated_at: "2026-06-12T22:00:00.000Z",
+                reasons: ["No meaningful rainfall has occurred since the last chemistry test."]
+              }
+            }
+          },
+          error: null
+        });
+      }
+
+      if (input.includes("/chemistry/history?")) {
+        return response({
+          data: {
+            start: "2026-02-12T22:00:00.000Z",
+            end: "2026-06-12T22:00:00.000Z",
+            interval: "raw",
+            readings: [
+              {
+                id: "reading-1",
+                pool_id: "pool-1",
+                ph: 7.6,
+                free_chlorine: 3.5,
+                total_chlorine: 4,
+                total_alkalinity: null,
+                calcium_hardness: null,
+                cyanuric_acid: null,
+                source: "manual",
+                recorded_at: "2026-06-12T19:00:00.000Z",
+                created_at: "2026-06-12T19:01:00.000Z"
+              },
+              {
+                id: "reading-0",
+                pool_id: "pool-1",
+                ph: null,
+                free_chlorine: null,
+                total_chlorine: null,
+                total_alkalinity: 90,
+                calcium_hardness: 250,
+                cyanuric_acid: 40,
+                source: "manual",
+                recorded_at: "2026-06-09T19:00:00.000Z",
+                created_at: "2026-06-09T19:01:00.000Z"
+              }
+            ],
+            series: []
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/api/settings/water-testing-schedule")) {
+        return response({
+          data: {
+            source: "sqlite",
+            items: [
+              {
+                chemicalKey: "free_chlorine",
+                displayName: "Free Chlorine",
+                enabled: true,
+                expectedIntervalValue: 3,
+                expectedIntervalUnit: "days",
+                staleThresholdValue: 3,
+                staleThresholdUnit: "days",
+                unavailableThresholdValue: 7,
+                unavailableThresholdUnit: "days",
+                status: "current",
+                lastObservedAt: "2026-06-12T19:00:00.000Z",
+                updatedAt: "2026-06-12T18:00:00.000Z"
+              },
+              {
+                chemicalKey: "ph",
+                displayName: "pH",
+                enabled: true,
+                expectedIntervalValue: 3,
+                expectedIntervalUnit: "days",
+                staleThresholdValue: 3,
+                staleThresholdUnit: "days",
+                unavailableThresholdValue: 7,
+                unavailableThresholdUnit: "days",
+                status: "current",
+                lastObservedAt: "2026-06-12T19:00:00.000Z",
+                updatedAt: "2026-06-12T18:00:00.000Z"
+              },
+              {
+                chemicalKey: "total_alkalinity",
+                displayName: "Total Alkalinity",
+                enabled: true,
+                expectedIntervalValue: 7,
+                expectedIntervalUnit: "days",
+                staleThresholdValue: 7,
+                staleThresholdUnit: "days",
+                unavailableThresholdValue: 14,
+                unavailableThresholdUnit: "days",
+                status: "current",
+                lastObservedAt: "2026-06-09T19:00:00.000Z",
+                updatedAt: "2026-06-12T18:00:00.000Z"
+              },
+              {
+                chemicalKey: "calcium_hardness",
+                displayName: "Calcium Hardness",
+                enabled: true,
+                expectedIntervalValue: 30,
+                expectedIntervalUnit: "days",
+                staleThresholdValue: 30,
+                staleThresholdUnit: "days",
+                unavailableThresholdValue: 60,
+                unavailableThresholdUnit: "days",
+                status: "current",
+                lastObservedAt: "2026-06-09T19:00:00.000Z",
+                updatedAt: "2026-06-12T18:00:00.000Z"
+              },
+              {
+                chemicalKey: "cyanuric_acid",
+                displayName: "Cyanuric Acid",
+                enabled: true,
+                expectedIntervalValue: 30,
+                expectedIntervalUnit: "days",
+                staleThresholdValue: 30,
+                staleThresholdUnit: "days",
+                unavailableThresholdValue: 60,
+                unavailableThresholdUnit: "days",
+                status: "current",
+                lastObservedAt: "2026-06-09T19:00:00.000Z",
+                updatedAt: "2026-06-12T18:00:00.000Z"
+              },
+              {
+                chemicalKey: "salt",
+                displayName: "Salt",
+                enabled: true,
+                expectedIntervalValue: 30,
+                expectedIntervalUnit: "days",
+                staleThresholdValue: 30,
+                staleThresholdUnit: "days",
+                unavailableThresholdValue: 60,
+                unavailableThresholdUnit: "days",
+                status: "current",
+                lastObservedAt: "2026-06-12T21:55:00.000Z",
+                updatedAt: "2026-06-12T18:00:00.000Z"
+              },
+              {
+                chemicalKey: "water_temperature",
+                displayName: "Water Temperature",
+                enabled: true,
+                expectedIntervalValue: 1,
+                expectedIntervalUnit: "hours",
+                staleThresholdValue: 1,
+                staleThresholdUnit: "hours",
+                unavailableThresholdValue: 1,
+                unavailableThresholdUnit: "hours",
+                status: "current",
+                lastObservedAt: "2026-06-12T21:55:00.000Z",
+                updatedAt: "2026-06-12T18:00:00.000Z"
+              }
+            ]
+          },
+          error: null
+        });
+      }
+
       if (input.includes("/notifications")) {
         return response({
           data: {
@@ -850,6 +1085,18 @@ test("renders maintenance recommendations in Routines above the alerts inbox", a
     assert.ok(screen.getByText("Recommended Next Steps"));
     assert.ok(screen.getByText("Retest free chlorine and pH"));
     assert.ok(screen.getByText("Run a manual free chlorine and pH test and log the result."));
+    assert.ok(screen.getByText("Current Swimmability Inputs"));
+    assert.ok(screen.getByRole("table", { name: "current swimmability inputs" }));
+    assert.ok(screen.getByText("Free chlorine"));
+    assert.ok(screen.getByText("3.5 ppm"));
+    assert.ok(screen.getByText("Combined chlorine"));
+    assert.ok(screen.getByText("0.5 ppm"));
+    assert.ok(screen.getByText("Alkalinity"));
+    assert.ok(screen.getByText("90 ppm"));
+    assert.ok(screen.getByText("Calcium hardness"));
+    assert.ok(screen.getByText("250 ppm"));
+    assert.ok(screen.getByText("Cyanuric acid"));
+    assert.ok(screen.getByText("40 ppm"));
     assert.ok(screen.getByRole("button", { name: "Mark all read" }));
   });
 });
@@ -1453,6 +1700,15 @@ test("renders IntelliChlor hardware details and submits an output command", asyn
         return response({
           data: [
             {
+              id: "controller-main",
+              equipment_type: "controller",
+              display_name: "Main Controller",
+              protocol_name: "pentair_easytouch",
+              latest_state: {
+                water_temp_f: 84
+              }
+            },
+            {
               id: "chlorinator-main",
               equipment_type: "chlorinator",
               display_name: "Main Chlorinator",
@@ -1462,12 +1718,8 @@ test("renders IntelliChlor hardware details and submits an output command", asyn
                 model: "PLUS40",
                 salt_ppm: 3200,
                 output_percent: 45,
-                current_output_percent: 40,
-                target_output_percent: 45,
-                run_state: "producing",
                 status: "low_flow",
                 status_code: 1,
-                water_temp_f: 78,
                 connected: true,
                 comms_lost: false,
                 last_comm: "2026-06-17T19:59:00Z",
@@ -1482,6 +1734,47 @@ test("renders IntelliChlor hardware details and submits an output command", asyn
 
       if (input.endsWith("/platform/status")) {
         return platformStatusResponse();
+      }
+
+      if (input.endsWith("/api/settings/pool-profile") && (!init || !init.method)) {
+        return response({
+          data: {
+            volume_gallons: 18000,
+            source: "sqlite"
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/api/settings/pool-profile") && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body ?? "{}")) as {
+          volume_gallons?: number;
+        };
+        assert.equal(body.volume_gallons, 22000);
+        return response({
+          data: {
+            volume_gallons: 22000,
+            source: "sqlite"
+          },
+          error: null
+        });
+      }
+
+      if (input.endsWith("/pool/cover") && (!init || !init.method)) {
+        return response({
+          data: {
+            current: {
+              id: "cover-1",
+              pool_id: "pool-1",
+              state: "on",
+              cover_type: "solar",
+              source: "manual",
+              recorded_at: "2026-06-17T18:00:00Z",
+              created_at: "2026-06-17T18:00:00Z"
+            }
+          },
+          error: null
+        });
       }
 
       if (input.includes("/equipment/chlorinator-main/control")) {
@@ -1509,10 +1802,16 @@ test("renders IntelliChlor hardware details and submits an output command", asyn
   await waitFor(() => {
     assert.ok(screen.getByText("Runtime Status"));
     assert.ok(screen.getByText("Output Control"));
+    assert.ok(screen.getByText("Pool Volume"));
+    assert.ok(screen.getByText("24h Chlorine Support"));
+    assert.ok(screen.getAllByText("Configured Output").length >= 1);
+    assert.ok(screen.getAllByText("Water temp (controller)").length >= 1);
     assert.ok(screen.getByText("Warnings & Guidance"));
     assert.ok(screen.getByText("Production & Diagnostics"));
     assert.ok(screen.getAllByText("PLUS40").length >= 1);
     assert.ok(screen.getAllByText("Low Flow").length >= 1);
+    assert.equal((screen.getByLabelText("Pool volume (gallons)") as HTMLInputElement).value, "18000");
+    assert.ok(screen.getByText("+4.2 ppm"));
   });
 
   fireEvent.change(screen.getByLabelText("Target output percent"), { target: { value: "35" } });
@@ -1520,6 +1819,14 @@ test("renders IntelliChlor hardware details and submits an output command", asyn
 
   await waitFor(() => {
     assert.ok(screen.getByText("Output command accepted. Awaiting refreshed IntelliChlor telemetry."));
+  });
+
+  fireEvent.change(screen.getByLabelText("Pool volume (gallons)"), { target: { value: "22000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save pool volume" }));
+
+  await waitFor(() => {
+    assert.ok(screen.getByText("Pool volume saved."));
+    assert.equal((screen.getByLabelText("Pool volume (gallons)") as HTMLInputElement).value, "22000");
   });
 });
 
